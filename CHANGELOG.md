@@ -28,3 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   back/forward show the file the address names.
 - A new version of a bundle or a collection keeps the `entry_path` the caller names; it was
   ignored and ICS picked `index.html` or `README.md` instead.
+- An older GitLab sync that was still uploading when a newer one landed no longer publishes
+  over it: the order check is repeated under a lock on the binding.
+- The sign-in page retries loading its configuration, so Google sign-in no longer disappears
+  until a reload when the page opened while the server was restarting.
