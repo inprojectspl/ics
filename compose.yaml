@@ -1,0 +1,217 @@
+name: ics
+
+# Values from `.env` (in the repo root) are substituted into these variables.
+# Copy `.env.example` to `.env` and fill it in before the first `docker compose up`.
+#
+# Production layout:
+#   - Postgres 18.3 runs on the HOST (not in a container). The backend
+#     connects through host.docker.internal (extra_hosts: host-gateway).
+#   - TLS and routing end at an external reverse proxy (e.g. nginx) in a
+#     separate stack, attached to the `edge` network (external, name from
+#     ICS_EDGE_NETWORK).
+#   - The frontend is a one-shot copier: it copies dist/ into the shared
+#     `ics_static` volume (external) and exits. The proxy serves the static
+#     files from that volume.
+#   - Example proxy configuration: docs/deploy/nginx.example.conf.
+
+# Shared environment blocks, merged into `backend` and `arq-worker`.
+x-smtp-env: &smtp-env
+  # SMTP, optional (empty means e-mails only go to the database outbox).
+  ICS_SMTP_HOST: ${ICS_SMTP_HOST:-}
+  ICS_SMTP_PORT: ${ICS_SMTP_PORT:-587}
+  ICS_SMTP_FROM: ${ICS_SMTP_FROM:-ICS <no-reply@ics.localhost>}
+  ICS_SMTP_USER: ${ICS_SMTP_USER:-}
+  ICS_SMTP_PASSWORD: ${ICS_SMTP_PASSWORD:-}
+  ICS_SMTP_USE_TLS: ${ICS_SMTP_USE_TLS:-false}
+
+x-notifications-env: &notifications-env
+  # Notifications (ADR-0023). Web Push is off without the VAPID key.
+  ICS_VAPID_PRIVATE_KEY: ${ICS_VAPID_PRIVATE_KEY:-}
+  ICS_VAPID_SUBJECT: ${ICS_VAPID_SUBJECT:-}
+  ICS_NOTIFICATIONS_INBOX_MAX: ${ICS_NOTIFICATIONS_INBOX_MAX:-150}
+  ICS_NOTIFICATIONS_RETENTION_DAYS: ${ICS_NOTIFICATIONS_RETENTION_DAYS:-30}
+  ICS_NOTIFICATIONS_UPDATE_DEBOUNCE_SECONDS: ${ICS_NOTIFICATIONS_UPDATE_DEBOUNCE_SECONDS:-20}
+  ICS_NOTIFICATIONS_EMAIL_BATCH_SECONDS: ${ICS_NOTIFICATIONS_EMAIL_BATCH_SECONDS:-600}
+  ICS_NOTIFICATIONS_CHAT_BATCH_SECONDS: ${ICS_NOTIFICATIONS_CHAT_BATCH_SECONDS:-60}
+  ICS_NOTIFICATIONS_DIGEST_HOUR: ${ICS_NOTIFICATIONS_DIGEST_HOUR:-8}
+  ICS_NOTIFICATIONS_TIMEZONE: ${ICS_NOTIFICATIONS_TIMEZONE:-Europe/Warsaw}
+
+services:
+  backend:
+    build:
+      context: ./backend
+      target: prod
+    # Above uvicorn's --timeout-graceful-shutdown (70 s, see the Dockerfile).
+    stop_grace_period: 80s
+    extra_hosts:
+      # The backend reaches Postgres on the host through this alias.
+      # Requires `pg_hba.conf` to allow 172.16.0.0/12 for the `ics` user.
+      - "host.docker.internal:host-gateway"
+    environment:
+      # Set to 1 to start an older image on a newer schema (rollback).
+      ICS_SKIP_MIGRATIONS: ${ICS_SKIP_MIGRATIONS:-}
+      ICS_DATABASE_URL: ${ICS_DATABASE_URL:-postgresql+asyncpg://ics:${ICS_PG_PASSWORD}@host.docker.internal:5432/ics}
+      ICS_REDIS_URL: ${ICS_REDIS_URL:-redis://redis:6379/0}
+
+      # File storage: a local volume by default, S3/R2 through .env (see .env.example).
+      ICS_STORAGE_URL: ${ICS_STORAGE_URL:-fs:///data/storage}
+      ICS_S3_ENDPOINT_URL: ${ICS_S3_ENDPOINT_URL:-}
+      ICS_S3_ACCESS_KEY_ID: ${ICS_S3_ACCESS_KEY_ID:-}
+      ICS_S3_SECRET_ACCESS_KEY: ${ICS_S3_SECRET_ACCESS_KEY:-}
+      ICS_S3_REGION: ${ICS_S3_REGION:-auto}
+
+      # Token signing secret. The backend refuses to start with the default
+      # 'dev-secret-change-me' when ICS_DEBUG=0 (validated in app/config.py).
+      ICS_SECRET_KEY: ${ICS_SECRET_KEY:-dev-secret-change-me}
+
+      # Public hosts of the application.
+      ICS_BASE_URL: ${ICS_BASE_URL:-http://ics.localhost}
+      ICS_HTML_VIEWER_BASE: ${ICS_HTML_VIEWER_BASE:-http://html.ics.localhost}
+      ICS_CORS_ORIGINS: ${ICS_CORS_ORIGINS:-http://ics.localhost}
+      ICS_ALLOWED_DOMAINS: ${ICS_ALLOWED_DOMAINS:-}
+      ICS_SYNC_IMAGE: ${ICS_SYNC_IMAGE:-}
+
+      # Logging and mode.
+      ICS_DEBUG: ${ICS_DEBUG:-0}
+      ICS_LOG_LEVEL: ${ICS_LOG_LEVEL:-info}
+      # OCR of scanned PDFs (ADR-0021); the runs go to `ocr-worker`.
+      ICS_OCR_ENABLED: ${ICS_OCR_ENABLED:-1}
+      ICS_OCR_AUTO: ${ICS_OCR_AUTO:-1}
+      ICS_DEV_STUB_SSO: ${ICS_DEV_STUB_SSO:-false}
+      ICS_ALLOW_SELF_REGISTER: ${ICS_ALLOW_SELF_REGISTER:-false}
+
+      # First admin on first start: when both are set and the database has
+      # no admin yet, the container creates one.
+      ICS_BOOTSTRAP_ADMIN_EMAIL: ${ICS_BOOTSTRAP_ADMIN_EMAIL:-}
+      ICS_BOOTSTRAP_ADMIN_PASSWORD: ${ICS_BOOTSTRAP_ADMIN_PASSWORD:-}
+
+      # Google OIDC (optional).
+      ICS_GOOGLE_OIDC_CLIENT_ID: ${ICS_GOOGLE_OIDC_CLIENT_ID:-}
+      ICS_GOOGLE_OIDC_CLIENT_SECRET: ${ICS_GOOGLE_OIDC_CLIENT_SECRET:-}
+
+      # OAuth 2.1 authorization server for MCP. Required when MCP is enabled:
+      # generate an RSA key with `openssl genrsa -out priv.pem 2048` and pass
+      # the PEM directly or as a path.
+      ICS_OAUTH_ISSUER: ${ICS_OAUTH_ISSUER:-}
+      ICS_OAUTH_PRIVATE_KEY_PEM: ${ICS_OAUTH_PRIVATE_KEY_PEM:-}
+      ICS_OAUTH_PRIVATE_KEY_PEM_PATH: ${ICS_OAUTH_PRIVATE_KEY_PEM_PATH:-}
+      ICS_OAUTH_KID: ${ICS_OAUTH_KID:-ics-2026-05}
+      ICS_OAUTH_ACCESS_TOKEN_TTL: ${ICS_OAUTH_ACCESS_TOKEN_TTL:-3600}
+      ICS_OAUTH_REFRESH_TOKEN_TTL: ${ICS_OAUTH_REFRESH_TOKEN_TTL:-2592000}
+      ICS_MCP_RESOURCE_URI: ${ICS_MCP_RESOURCE_URI:-}
+
+      # HTML bundle security policy.
+      ICS_SECURITY_POLICY: ${ICS_SECURITY_POLICY:-permissive}
+      ICS_TRUSTED_CDN_HOSTS: ${ICS_TRUSTED_CDN_HOSTS:-cdn.jsdelivr.net,cdnjs.cloudflare.com,unpkg.com,esm.sh,cdn.skypack.dev,fonts.googleapis.com,fonts.gstatic.com,ajax.googleapis.com,cdn.tailwindcss.com,d3js.org,cdn.plot.ly}
+
+      # Limits.
+      ICS_MAX_ASSET_BYTES: ${ICS_MAX_ASSET_BYTES:-104857600}
+      ICS_MAX_FILES_PER_BUNDLE: ${ICS_MAX_FILES_PER_BUNDLE:-500}
+      ICS_LOCKOUT_THRESHOLD: ${ICS_LOCKOUT_THRESHOLD:-10}
+      ICS_LOCKOUT_MINUTES: ${ICS_LOCKOUT_MINUTES:-15}
+
+      # SMTP (optional) and notifications: shared with `arq-worker`.
+      <<: [*smtp-env, *notifications-env]
+    volumes:
+      # Used only with ICS_STORAGE_URL=fs://...; harmless with S3/R2.
+      - asset_storage:/data/storage
+    depends_on:
+      redis:
+        condition: service_started
+    networks:
+      - ics
+      - edge
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2).status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+      target: prod
+    # One-shot copier: copies the static files into the shared volume and exits.
+    # The reverse proxy (a separate stack) serves them straight from the volume.
+    restart: "no"
+    volumes:
+      - ics_static:/static
+    networks:
+      - ics
+
+  arq-worker: &worker
+    build:
+      context: ./backend
+      target: prod
+    command: ["arq", "app.jobs.worker.WorkerSettings"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      # Same DB and Redis as the backend, so everything stays in one process group.
+      ICS_DATABASE_URL: ${ICS_DATABASE_URL:-postgresql+asyncpg://ics:${ICS_PG_PASSWORD}@host.docker.internal:5432/ics}
+      ICS_REDIS_URL: ${ICS_REDIS_URL:-redis://redis:6379/0}
+      ICS_STORAGE_URL: ${ICS_STORAGE_URL:-fs:///data/storage}
+      ICS_S3_ENDPOINT_URL: ${ICS_S3_ENDPOINT_URL:-}
+      ICS_S3_ACCESS_KEY_ID: ${ICS_S3_ACCESS_KEY_ID:-}
+      ICS_S3_SECRET_ACCESS_KEY: ${ICS_S3_SECRET_ACCESS_KEY:-}
+      ICS_S3_REGION: ${ICS_S3_REGION:-auto}
+      ICS_SECRET_KEY: ${ICS_SECRET_KEY:-dev-secret-change-me}
+      ICS_BASE_URL: ${ICS_BASE_URL:-http://ics.localhost}
+      ICS_OAUTH_ISSUER: ${ICS_OAUTH_ISSUER:-}
+      ICS_OAUTH_PRIVATE_KEY_PEM: ${ICS_OAUTH_PRIVATE_KEY_PEM:-}
+      ICS_OAUTH_PRIVATE_KEY_PEM_PATH: ${ICS_OAUTH_PRIVATE_KEY_PEM_PATH:-}
+      ICS_OAUTH_KID: ${ICS_OAUTH_KID:-ics-2026-05}
+      ICS_MCP_RESOURCE_URI: ${ICS_MCP_RESOURCE_URI:-}
+      ICS_DEBUG: ${ICS_DEBUG:-0}
+      ICS_LOG_LEVEL: ${ICS_LOG_LEVEL:-info}
+      # The worker sends notification e-mails and Chat cards (ADR-0023).
+      <<: [*smtp-env, *notifications-env]
+      # The backend runs the migrations; two containers migrating at once race.
+      ICS_SKIP_MIGRATIONS: "1"
+    volumes:
+      - asset_storage:/data/storage
+    depends_on:
+      redis:
+        condition: service_started
+      # Healthy means migrated. Also makes `up` fail loudly when the backend
+      # cannot start, instead of reporting a deploy that crash-loops.
+      backend:
+        condition: service_healthy
+    networks:
+      - ics
+    restart: unless-stopped
+
+  # OCR runs (ADR-0021): an own queue and process, CPU bound, one document at
+  # a time by default. Same image, environment and storage as `arq-worker`.
+  ocr-worker:
+    <<: *worker
+    command: ["arq", "app.jobs.ocr_worker.OcrWorkerSettings"]
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    networks:
+      - ics
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+networks:
+  ics:
+    driver: bridge
+  edge:
+    external: true
+    name: ${ICS_EDGE_NETWORK:-edge}
+
+volumes:
+  redis_data:
+  asset_storage:
+  # Shared static volume, created once by hand on the server:
+  #   docker volume create ics_static
+  # The reverse proxy (a separate stack) mounts it read-only.
+  ics_static:
+    external: true

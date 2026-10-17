@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ICS - Internal Content Sharing</title>
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" sizes="any" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
+    <!-- Web app manifest: required for push on iOS (home screen app) and for
+         installing on Android (ADR-0023). -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#f5f7fa" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#101419" media="(prefers-color-scheme: dark)" />
+    <meta name="description" content="ICS: internal sharing of Markdown and HTML documents." />
+
+    <!-- Theme and language init (pre-paint, kills FOUC for dark mode).
+         The language rule mirrors detectLocale() in src/lib/i18n.ts. -->
+    <script>
+      (function () {
+        var root = document.documentElement;
+        try {
+          var saved = localStorage.getItem("ics-theme");
+          var dark = saved === "dark" ||
+            (saved !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          root.setAttribute("data-theme", dark ? "dark" : "light");
+          var locale = localStorage.getItem("ics-locale");
+          if (locale === "pl" || locale === "en") {
+            root.lang = locale;
+            return;
+          }
+        } catch (e) {}
+        var langs = navigator.languages || [navigator.language || ""];
+        for (var i = 0; i < langs.length; i++) {
+          var base = String(langs[i]).toLowerCase().split("-")[0];
+          if (base === "pl" || base === "en") {
+            root.lang = base;
+            return;
+          }
+        }
+      })();
+    </script>
+
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

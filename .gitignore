@@ -1,0 +1,131 @@
+# ---------- Secrets and keys ----------
+# Never commit tokens, keys, env files with passwords or the private half of
+# a binding's Ed25519 key pair.
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*_rsa
+*_rsa.pub
+*_ed25519
+*_ed25519.pub
+secrets/
+*.secret
+
+# ---------- Local AI agent settings ----------
+.claude/
+
+# ---------- Local Docker Compose overlays ----------
+compose.local.yaml
+compose.override.yaml
+docker-compose.override.yaml
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+dist/
+build/
+*.egg
+*.egg-info/
+pip-wheel-metadata/
+
+# ---------- Node / Vite / Frontend ----------
+node_modules/
+.npm/
+.eslintcache
+.vite/
+.turbo/
+frontend/dist/
+frontend/build/
+frontend/coverage/
+frontend/.vitest/
+
+# `tsc -b` emit of tsconfig.node.json goes to `.tsbuild-node/`; the other
+# entries catch stray copies next to the configs.
+frontend/.tsbuild-node/
+frontend/vite.config.js
+frontend/vite.config.d.ts
+frontend/vitest.config.js
+frontend/vitest.config.d.ts
+
+# ---------- IDE / editor ----------
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.recommended.json
+.idea/
+*.swp
+*.swo
+*~
+.fleet/
+.zed/
+
+# ---------- OS ----------
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ---------- Docker bind mounts ----------
+# Compose uses named volumes; these catch bind mounts pointed into the repo by mistake.
+data/
+storage/
+caddy_data/
+caddy_config/
+pg_data/
+redis_data/
+
+# ---------- Databases / backups ----------
+*.sqlite
+*.sqlite3
+*.db
+*.sql
+*.dump
+*.bak
+backup/
+backups/
+
+# ---------- Logs ----------
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---------- Generated / caches ----------
+*.tsbuildinfo
+.parcel-cache/
+.cache/
+.tmp/
+.temp/
+
+# ---------- Test artifacts ----------
+playwright-report/
+test-results/
+*.snap.new
+__snapshots__/__diff_output__/
+
+# ---------- Local scratch ----------
+/scratch/
+/sandbox/
+*.scratch.*
+site/

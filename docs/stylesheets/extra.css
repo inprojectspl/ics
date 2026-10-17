@@ -1,0 +1,44 @@
+/* Match the ICS app: blue accent for links and controls, orange brand mark. */
+:root,
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #ffffff;
+  --md-primary-fg-color--light: #ffffff;
+  --md-primary-fg-color--dark: #f3f4f6;
+  --md-primary-bg-color: #111827;
+  --md-primary-bg-color--light: #4b5563;
+  --md-accent-fg-color: #145cb8;
+  --md-typeset-a-color: #1769d2;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #111827;
+  --md-primary-fg-color--light: #1f2937;
+  --md-primary-fg-color--dark: #0b1120;
+  --md-primary-bg-color: #f9fafb;
+  --md-primary-bg-color--light: #d1d5db;
+  --md-accent-fg-color: #a6caff;
+  --md-typeset-a-color: #8abbff;
+}
+
+.md-header {
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+  box-shadow: none;
+}
+
+.md-tabs {
+  background-color: var(--md-primary-fg-color);
+  color: var(--md-primary-bg-color);
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.md-typeset img {
+  border-radius: 6px;
+}
+
+[data-md-color-scheme="default"] .md-search__form {
+  background-color: #f3f4f6;
+}
+
+[data-md-color-scheme="default"] .md-search__form:hover {
+  background-color: #e5e7eb;
+}

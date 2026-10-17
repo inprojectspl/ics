@@ -1,0 +1,13 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  // Local preview against an isolated backend: `vite --config vite.verify.config.ts`.
+  // Bundle budget run by CI after the build: `node scripts/check-bundle.mjs`.
+  "entry": ["vite.verify.config.ts", "scripts/check-bundle.mjs"],
+  // Brand asset export run by hand (public/brand/README.md), not part of the build.
+  "ignore": ["public/brand/export.mjs"],
+  // Font files are referenced by url() in src/styles/fonts.css, which knip does not parse.
+  "ignoreDependencies": ["@fontsource-variable/jetbrains-mono", "@fontsource-variable/source-serif-4"],
+  // e2e specs import app modules inside page.evaluate(), resolved by the Vite
+  // dev server in the browser, not by Node.
+  "ignoreUnresolved": ["^/src/"]
+}

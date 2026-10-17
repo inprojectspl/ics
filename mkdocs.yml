@@ -1,0 +1,139 @@
+site_name: ICS documentation
+site_description: User guide, deployment and reference for ICS (Internal Content Sharing), self-hosted document sharing for teams and their AI agents.
+site_url: https://inprojectspl.github.io/ics/
+repo_url: https://github.com/inprojectspl/ics
+repo_name: inprojectspl/ics
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; inProjects spółka z o.o. sp.k. Released under the MIT License.
+
+theme:
+  name: material
+  logo: images/ics-mark.svg
+  favicon: images/ics-mark.svg
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+  features:
+    - navigation.tabs
+    - content.action.edit
+    - content.code.copy
+    - navigation.footer
+    - navigation.indexes
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - search.suggest
+    - toc.follow
+
+extra_css:
+  - stylesheets/extra.css
+
+extra:
+  generator: false
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/inprojectspl/ics
+    - icon: material/web
+      link: https://inprojects.ai
+      name: inProjects.ai
+
+plugins:
+  - search
+  - gh-admonitions
+  - redirects:
+      redirect_maps:
+        index.md: guide/README.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+exclude_docs: |
+  requirements.txt
+
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
+
+nav:
+  - User guide:
+      - Introduction: guide/README.md
+      - guide/getting-started.md
+      - guide/documents.md
+      - guide/formats.md
+      - guide/versions.md
+      - guide/search.md
+      - guide/sharing.md
+      - guide/projects.md
+      - guide/graph.md
+      - guide/notifications.md
+      - guide/account.md
+      - guide/ai-agents.md
+      - guide/gitlab.md
+      - guide/administration.md
+  - Deployment: DEPLOY.md
+  - Reference:
+      - api-errors.md
+      - notifications-api.md
+      - DESIGN.md
+  - Decisions:
+      - Overview: decisions/README.md
+      - decisions/0001-comments-feature-deferred.md
+      - decisions/0002-quality-bar.md
+      - decisions/0003-dependency-major-upgrades.md
+      - decisions/0004-version-preview-readonly.md
+      - decisions/0005-link-hierarchy.md
+      - decisions/0006-rendered-markdown-cache.md
+      - decisions/0007-liberal-password-policy.md
+      - decisions/0008-mit-license.md
+      - decisions/0009-english-first-with-ui-i18n.md
+      - decisions/0010-ui-i18n.md
+      - decisions/0011-backend-i18n.md
+      - decisions/0012-unified-app-navigation.md
+      - decisions/0013-pdf-assets.md
+      - decisions/0014-office-documents.md
+      - decisions/0015-asset-metadata-model.md
+      - decisions/0016-asset-relation-graph.md
+      - decisions/0017-project-shares.md
+      - decisions/0018-external-references.md
+      - decisions/0019-agent-context-pack.md
+      - decisions/0020-personal-access-tokens.md
+      - decisions/0021-document-ocr.md
+      - decisions/0022-pdf-reader.md
+      - decisions/0023-notifications.md
+      - decisions/0024-app-shell-and-design-system.md
+      - decisions/0025-graph-explorer.md
+      - decisions/0026-unified-document-search.md

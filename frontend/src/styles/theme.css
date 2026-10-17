@@ -1,0 +1,462 @@
+/*
+ * ICS theme: the single source of truth for colours, type, radii, shadows
+ * and motion (docs/DESIGN.md, sections 4 and 5). Components use the
+ * utilities these tokens generate (`bg-surface`, `text-text-secondary`,
+ * `rounded-control`, `font-reading`); raw values appear only in this file.
+ */
+
+@import "tailwindcss";
+
+/* Dark mode follows `data-theme` on <html>, which the pre-paint script in
+   index.html and lib/theme.ts resolve from the stored preference (light,
+   dark or system). CSS never reads the media query itself, so a page has
+   exactly one active palette. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme {
+  /* Stock palettes, fonts, sizes, radii and shadows are switched off: a
+     class outside this token set (`bg-blue-500`, `rounded-3xl`) generates no
+     CSS, and tests/designTokens.test.ts rejects it in the source. */
+  --color-*: initial;
+  --font-*: initial;
+  --text-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+  --ease-*: initial;
+
+  /* ---------- COLOURS (light) ---------- */
+  /* Cool neutral surfaces, one calm blue for interaction. The orange ICS
+     mark is identity only, never a button or a link. */
+  --color-canvas: #f5f7fa;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #f0f3f7;
+  --color-surface-hover: #e9eff6;
+  --color-border: #dce3ec;
+  --color-border-strong: #c6d0dc;
+  --color-text-primary: #182332;
+  --color-text-secondary: #4b5b70;
+  --color-text-tertiary: #64748b;
+  --color-accent: #1769d2;
+  --color-accent-hover: #145cb8;
+  --color-accent-soft: #e8f2ff;
+  --color-on-accent: #ffffff;
+  --color-brand-mark: #ff5500;
+  --color-success: #147d59;
+  --color-success-soft: #e6f4ee;
+  --color-warning: #946200;
+  --color-warning-soft: #fdf3dc;
+  --color-danger: #b42332;
+  --color-danger-soft: #fcebed;
+  /* Dimmed backdrop under drawers, sheets and dialogs. */
+  --color-scrim: rgb(16 24 36 / 0.42);
+
+  /* Markdown content: callout and quote accents, code surfaces. */
+  --color-info: #1769d2;
+  --color-quote: #5b5b86;
+  --color-code-bg: #f4f6f9;
+  --color-code-inline: #eef1f5;
+  --color-code-ink: #1f2b3b;
+
+  /* ---------- TYPOGRAPHY ---------- */
+  /* UI in the platform face (San Francisco on Apple devices), long-form
+     reading in Source Serif 4, code in JetBrains Mono. Both web fonts are
+     self-hosted (fonts.css). */
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial,
+    sans-serif;
+  --font-reading: "Source Serif 4 Variable", "Source Serif 4", Georgia, serif;
+  --font-code: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,
+    monospace;
+  /* Code shows the characters as typed: JetBrains Mono's contextual
+     ligatures would draw `-->` as one arrow. The default-mono pair covers
+     bare <pre>/<code> (Markdown code blocks) through preflight. */
+  --font-code--font-feature-settings: "liga" 0, "calt" 0;
+  --default-mono-font-family: var(--font-code);
+  --default-mono-font-feature-settings: "liga" 0, "calt" 0;
+
+  /* Named roles, not a free size ramp. UI copy is 14-15 px, metadata
+     12-13 px, prose 18 px on desktop and 17 px on phones. */
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1.35;
+  --text-meta: 0.8125rem;
+  --text-meta--line-height: 1.4;
+  --text-ui: 0.875rem;
+  --text-ui--line-height: 1.45;
+  --text-body: 0.9375rem;
+  --text-body--line-height: 1.55;
+  --text-item: 0.9375rem;
+  --text-item--line-height: 1.4;
+  --text-title: 1.25rem;
+  --text-title--line-height: 1.3;
+  --text-title--letter-spacing: -0.01em;
+  --text-heading: clamp(1.5rem, 1.1rem + 1.2vw, 2rem);
+  --text-heading--line-height: 1.2;
+  --text-heading--letter-spacing: -0.02em;
+  --text-prose: clamp(1.0625rem, 1rem + 0.25vw, 1.125rem);
+  --text-prose--line-height: 1.7;
+  --text-lead: clamp(1.125rem, 1.05rem + 0.3vw, 1.25rem);
+  --text-lead--line-height: 1.6;
+  /* Headings inside a rendered document. */
+  --text-h4: 1.125rem;
+  --text-h4--line-height: 1.4;
+  --text-h3: 1.3125rem;
+  --text-h3--line-height: 1.35;
+  --text-h3--letter-spacing: -0.01em;
+  --text-h2: clamp(1.375rem, 1.2rem + 0.8vw, 1.6875rem);
+  --text-h2--line-height: 1.25;
+  --text-h2--letter-spacing: -0.015em;
+  --text-h1: clamp(1.625rem, 1.3rem + 1.4vw, 2.125rem);
+  --text-h1--line-height: 1.2;
+  --text-h1--letter-spacing: -0.02em;
+  --text-display: clamp(1.875rem, 1.4rem + 2vw, 2.625rem);
+  --text-display--line-height: 1.12;
+  --text-display--letter-spacing: -0.025em;
+
+  /* ---------- GEOMETRY ---------- */
+  --radius-xs: 4px;
+  --radius-control: 10px;
+  --radius-card: 14px;
+  --radius-overlay: 18px;
+
+  /* Cards barely lift; only real overlays (menus, dialogs, drawers) float. */
+  --shadow-card: 0 1px 2px rgb(24 35 50 / 0.035);
+  --shadow-floating: 0 12px 36px rgb(24 35 50 / 0.14), 0 2px 6px rgb(24 35 50 / 0.06);
+
+  /* ---------- MOTION ---------- */
+  /* Mirrors MOTION in lib/motion.ts, which drives the Anime.js transitions. */
+  --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* ---------- LAYOUT ---------- */
+  --reading-width: 1100px;
+  --breakout-width: 1280px;
+  --content-width: 1480px;
+  --gutter: clamp(1rem, 0.4rem + 2.2vw, 2rem);
+  --topbar-height: 3.5rem;
+  --sidebar-width: 16rem;
+  --sidebar-rail: 4rem;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --color-canvas: #101419;
+  --color-surface: #181f28;
+  --color-surface-subtle: #202a36;
+  --color-surface-hover: #263243;
+  --color-border: #323f51;
+  --color-border-strong: #405269;
+  --color-text-primary: #f4f7fb;
+  --color-text-secondary: #b7c3d2;
+  --color-text-tertiary: #a8b5c4;
+  --color-accent: #8abbff;
+  --color-accent-hover: #a6caff;
+  --color-accent-soft: #193451;
+  --color-on-accent: #071929;
+  --color-brand-mark: #ff5500;
+  --color-success: #5ad6a0;
+  --color-success-soft: #173a2e;
+  --color-warning: #f3bf65;
+  --color-warning-soft: #3d311a;
+  --color-danger: #ff8b93;
+  --color-danger-soft: #45222a;
+  --color-scrim: rgb(0 0 0 / 0.55);
+  --color-info: #8abbff;
+  --color-quote: #b9b7e6;
+  --color-code-bg: #141a22;
+  --color-code-inline: #243040;
+  --color-code-ink: #dbe4ee;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.14);
+  --shadow-floating: 0 16px 44px rgb(0 0 0 / 0.38), 0 2px 8px rgb(0 0 0 / 0.2);
+}
+
+/* ---------- BASE ---------- */
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html {
+    font-family: var(--font-ui);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "kern", "liga", "calt";
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-text-primary);
+    font-size: var(--text-ui);
+    line-height: var(--text-ui--line-height);
+  }
+
+  :where(h1, h2, h3, h4, h5, h6) {
+    text-wrap: balance;
+    overflow-wrap: break-word;
+  }
+  :where(p, li, blockquote, figcaption, dd) {
+    text-wrap: pretty;
+  }
+
+  /* Form controls do not inherit the page font by default. */
+  :where(button, input, select, textarea) {
+    font: inherit;
+    color: inherit;
+  }
+
+  :where(button, a, input, textarea, select, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  /* Pointer only where something reacts; disabled controls say so. */
+  button:not(:disabled):not([aria-disabled="true"]),
+  [role="button"]:not([aria-disabled="true"]),
+  summary,
+  label[for],
+  select,
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="file"] {
+    cursor: pointer;
+  }
+  button:disabled,
+  button[aria-disabled="true"],
+  [role="button"][aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+
+  ::selection {
+    background-color: var(--color-accent-soft);
+    color: var(--color-text-primary);
+  }
+
+  /* Tabular figures wherever numbers are compared in columns. */
+  :where(td, th, time, data) {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------- MARKDOWN: EDITORIAL BREAKOUT ---------- */
+/*
+ * Wide elements may extend beyond the text column up to --breakout-width.
+ * max-width uses cqw of the .md-container size container (vw is wrong next to
+ * a sidebar); centring with left + translateX keeps block flow and margin
+ * collapsing intact, which a grid on .markdown-body would break.
+ */
+.md-container {
+  container-type: inline-size;
+}
+/* The class comes from MD_BREAKOUT (markdown-theme.ts). Direct children only:
+ * a table nested in a quote, list or callout stays in its parent's column and
+ * scrolls on its own. */
+.markdown-body > .md-breakout {
+  width: fit-content;
+  min-width: 100%;
+  max-width: min(var(--breakout-width), 100cqw - 2 * var(--gutter));
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* A cell min-width makes many-column tables scroll in .table-wrap instead of
+ * squeezing columns into unreadable strips. */
+.markdown-body table:not(.kv-table) :is(th, td) {
+  min-width: 7rem;
+}
+
+/* Before hydration a raw widget <pre> must not widen the page. Once wrapped,
+ * the <pre> is no longer a direct child, so the rule stops applying. */
+.markdown-body > pre[data-widget] {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* ---------- MARKDOWN: TASK LIST ---------- */
+/*
+ * Not flex: every child would become a flex item and split `**Label** value`
+ * into columns. The checkbox is positioned absolutely instead.
+ */
+.markdown-body ul.contains-task-list {
+  list-style: none;
+  padding-left: 0;
+  margin-left: 0;
+}
+.markdown-body li.task-list-item,
+.markdown-body li.task-list-item-row {
+  position: relative;
+  padding-left: 1.6rem;
+  list-style: none;
+  margin-left: 0;
+}
+.markdown-body li.task-list-item > input[type="checkbox"],
+.markdown-body li.task-list-item-row > input[type="checkbox"] {
+  position: absolute;
+  left: 0;
+  top: 0.5em;
+  margin: 0;
+}
+
+/* ---------- MARKDOWN: TABLE border edge ---------- */
+/*
+ * The last row's border-b would double the .table-wrap border. Tailwind's
+ * `last:` targets the last cell in a row, not the last row.
+ */
+.markdown-body table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* ---------- MARKDOWN: KEY-VALUE TABLE ---------- */
+/*
+ * .kv-table comes from hydrateMarkdown.ts: the label column is nowrap, the
+ * value column takes the rest. Not a grid with `display: contents`: on real
+ * documents it lost rows.
+ */
+.kv-table {
+  width: auto;
+  max-width: 100%;
+  border: 0;
+  border-collapse: collapse;
+}
+.kv-table thead {
+  /* A kv-table header is typically a generic "Field / Value" and carries
+     no information beyond the first-column labels. Hiding it gives the
+     look of native MD (Quick Look). */
+  display: none;
+}
+.kv-table tbody td {
+  border: 0;
+  padding: 0.35rem 0;
+  vertical-align: top;
+}
+.kv-table tbody td:first-child {
+  white-space: nowrap;
+  padding-right: 1.5rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.kv-table tbody td:first-child strong {
+  font-weight: 600;
+}
+.kv-table tbody td:last-child {
+  color: var(--color-text-secondary);
+}
+/* The .table-wrap wrapper (`overflow-x-auto`) makes sense for wide tables,
+   but a kv-table is min-content and needs no scroll. */
+.table-wrap:has(> .kv-table) {
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  margin: 1.5rem 0;
+}
+
+/* Mobile (<640px): the desktop kv-table with `nowrap` on the first column
+   forces a minimum width, which with long labels leaves the second column
+   ~30% of the viewport and values break letter by letter. A stacked layout
+   (label above value, each full width) is the native MD pattern on mobile
+   (e.g. Obsidian). */
+@media (max-width: 640px) {
+  .kv-table,
+  .kv-table tbody,
+  .kv-table tbody tr {
+    display: block;
+    width: 100%;
+  }
+  .kv-table tbody td {
+    display: block;
+    width: 100%;
+    padding: 0;
+  }
+  .kv-table tbody tr {
+    margin-bottom: 0.75rem;
+  }
+  .kv-table tbody td:first-child {
+    white-space: normal;
+    padding-right: 0;
+    padding-bottom: 0.1rem;
+  }
+}
+
+/* ---------- THIN SCROLLBARS (macOS overlay style) ---------- */
+/* Overlay-thin, rounded, inset thumb that only asserts itself on hover -
+   the single most "native desktop" detail. Track stays invisible. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--color-text-tertiary) 40%, transparent) transparent;
+}
+*::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: color-mix(in oklch, var(--color-text-tertiary) 42%, transparent);
+  border-radius: 9999px;
+  /* Transparent border + padding-box clip = a slim thumb floating in a
+     gutter, exactly like the macOS overlay scrollbar. */
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in oklch, var(--color-text-tertiary) 68%, transparent);
+}
+
+/* ---------- THIN SCROLLBARS ---------- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--color-text-tertiary) 40%, transparent) transparent;
+}
+*::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: color-mix(in oklab, var(--color-text-tertiary) 42%, transparent);
+  border-radius: 9999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in oklab, var(--color-text-tertiary) 68%, transparent);
+}
+
+/* ---------- SKELETON ---------- */
+/* The one looping animation allowed: it only runs while content loads. The
+   skeleton mirrors the real row geometry, so the swap never shifts layout. */
+@keyframes skeleton-sweep {
+  0% {
+    background-position: 150% 0;
+  }
+  100% {
+    background-position: -150% 0;
+  }
+}
+.skeleton {
+  background-color: var(--color-surface-subtle);
+  background-image: linear-gradient(
+    90deg,
+    transparent 20%,
+    color-mix(in oklab, var(--color-surface) 80%, transparent) 50%,
+    transparent 80%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: skeleton-sweep 1.4s ease-standard infinite;
+  border-radius: var(--radius-xs);
+}

@@ -1,0 +1,125 @@
+%PDF-1.3
+%‚„œ”
+1 0 obj
+<<
+/Producer (pypdf)
+>>
+endobj
+2 0 obj
+<<
+/Type /Pages
+/Count 2
+/Kids [ 5 0 R 7 0 R ]
+>>
+endobj
+3 0 obj
+<<
+/Type /Catalog
+/Pages 2 0 R
+/Outlines 11 0 R
+>>
+endobj
+4 0 obj
+<<
+/Type /Font
+/Subtype /Type1
+/BaseFont /Helvetica
+>>
+endobj
+5 0 obj
+<<
+/Type /Page
+/Resources <<
+/Font <<
+/F1 4 0 R
+>>
+>>
+/MediaBox [ 0.0 0.0 612 792 ]
+/Parent 2 0 R
+/Contents 6 0 R
+>>
+endobj
+6 0 obj
+<<
+/Length 82
+>>
+stream
+BT
+/F1 12 Tf
+14 TL
+72 720 Td
+(Kangaroo field guide) Tj T*
+(Page one text) Tj T*
+ET
+endstream
+endobj
+7 0 obj
+<<
+/Type /Page
+/Resources <<
+/Font <<
+/F1 4 0 R
+>>
+>>
+/MediaBox [ 0.0 0.0 612 792 ]
+/Parent 2 0 R
+/Contents 8 0 R
+>>
+endobj
+8 0 obj
+<<
+/Length 65
+>>
+stream
+BT
+/F1 12 Tf
+14 TL
+72 720 Td
+(Second page about wombats) Tj T*
+ET
+endstream
+endobj
+9 0 obj
+<<
+/D [ 5 0 R /Fit ]
+/S /GoTo
+>>
+endobj
+10 0 obj
+<<
+/A 9 0 R
+/Title (Intro)
+/Parent 11 0 R
+/Count 0
+>>
+endobj
+11 0 obj
+<<
+/First 10 0 R
+/Count 1
+/Last 10 0 R
+>>
+endobj
+xref
+0 12
+0000000000 65535 f 
+0000000015 00000 n 
+0000000054 00000 n 
+0000000119 00000 n 
+0000000185 00000 n 
+0000000255 00000 n 
+0000000387 00000 n 
+0000000519 00000 n 
+0000000651 00000 n 
+0000000766 00000 n 
+0000000814 00000 n 
+0000000884 00000 n 
+trailer
+<<
+/Size 12
+/Root 3 0 R
+/Info 1 0 R
+>>
+startxref
+942
+%%EOF

@@ -1,0 +1,621 @@
+[
+ {
+  "name": "ctx_default",
+  "cl100k": 1596,
+  "pack": {
+   "project": {
+    "slug": "fpwksxn9ak",
+    "name": "Portal klienta",
+    "external": null
+   },
+   "task": {
+    "system": "openproject",
+    "wp": "4712",
+    "ancestors": []
+   },
+   "doc_types": {
+    "specification": "Treat as the binding technical contract when implementing or testing the component.",
+    "design": "Read before any design or implementation work that touches the described area.",
+    "business_goals": "Read first when scoping work or judging whether a change is worth doing.",
+    "policy": "Obey as a binding rule; flag any task that would conflict with it.",
+    "decision": "Check before proposing an alternative; it records why an option was chosen.",
+    "research": "Use as background evidence; conclusions may be outdated, verify key facts.",
+    "runbook": "Follow step by step when operating, deploying or recovering the described system.",
+    "requirements": "Read before designing or implementing a feature; it defines what must be delivered."
+   },
+   "documents": [
+    {
+     "slug": "fjzupf26q74u",
+     "title": "Specyfikacja API konta klienta v2",
+     "doc_type": "specification",
+     "summary": "Aktualne API konta klienta: OAuth 2.1 z PKCE, paginacja faktur, zgody marketingowe.",
+     "estimated_tokens": 1484,
+     "version": 1,
+     "required": true,
+     "via": [
+      {
+       "kind": "direct",
+       "role": "context",
+       "required": true
+      },
+      {
+       "kind": "project_key",
+       "reason": "Aktualny kontrakt API dla portalu i aplikacji"
+      },
+      {
+       "kind": "successor_of",
+       "slug": "j6veb8rqfyj9",
+       "required": false
+      }
+     ]
+    },
+    {
+     "slug": "j6veb8rqfyj9",
+     "title": "Specyfikacja API konta klienta v1",
+     "freshness": "superseded",
+     "collapsed": true,
+     "superseded_by": "fjzupf26q74u"
+    },
+    {
+     "slug": "3gdvv9m359ba",
+     "title": "Projekt UI panelu klienta",
+     "doc_type": "design",
+     "summary": "Ekrany panelu klienta: logowanie, pulpit, faktury i profil, podejście mobile first.",
+     "estimated_tokens": 1004,
+     "version": 1,
+     "via": [
+      {
+       "kind": "direct",
+       "role": "context",
+       "required": false
+      }
+     ]
+    },
+    {
+     "slug": "un929eawyrwu",
+     "title": "Cele biznesowe portalu klienta",
+     "doc_type": "business_goals",
+     "summary": "Po co budujemy portal: mniej zgłoszeń telefonicznych, faktury online, krótsza obsługa serwisowa.",
+     "estimated_tokens": 245,
+     "version": 1,
+     "via": [
+      {
+       "kind": "project_key",
+       "reason": "Przeczytaj przed każdą decyzją o zakresie"
+      }
+     ]
+    },
+    {
+     "slug": "fugskm7uttbh",
+     "title": "Polityka retencji danych klienta",
+     "doc_type": "policy",
+     "freshness": "review_overdue",
+     "summary": "Jak długo przechowujemy faktury, logi logowania i dane nieaktywnych kont.",
+     "estimated_tokens": 69,
+     "version": 1,
+     "via": [
+      {
+       "kind": "project_key",
+       "reason": "Ograniczenia prawne dotyczące danych klientów"
+      }
+     ]
+    },
+    {
+     "slug": "wsks7s4hxq2p",
+     "title": "ADR: wybór dostawcy SSO",
+     "doc_type": "decision",
+     "summary": "Wybieramy Keycloak we własnej infrastrukturze jako wspólne SSO portalu i aplikacji.",
+     "estimated_tokens": 141,
+     "version": 1,
+     "via": [
+      {
+       "kind": "direct",
+       "role": "reference",
+       "required": false
+      }
+     ]
+    },
+    {
+     "slug": "m5tnd3g4yfn3",
+     "title": "Raport z testów użyteczności",
+     "doc_type": "research",
+     "summary": "Wyniki testów z 8 klientami: problem z pobieraniem PDF, prośba o powiadomienia.",
+     "estimated_tokens": 96,
+     "version": 1,
+     "via": [
+      {
+       "kind": "neighbour",
+       "from": "3gdvv9m359ba",
+       "type": "contradicts"
+      }
+     ]
+    },
+    {
+     "slug": "ezwbm243qkkc",
+     "title": "Runbook: wdrożenie portalu",
+     "doc_type": "runbook",
+     "freshness": "review_overdue",
+     "summary": "Wdrożenie portalu krok po kroku: migracje, stopniowe przełączanie ruchu, wycofanie.",
+     "estimated_tokens": 111,
+     "version": 1,
+     "via": [
+      {
+       "kind": "neighbour",
+       "from": "fjzupf26q74u",
+       "type": "required_by"
+      }
+     ]
+    },
+    {
+     "slug": "8f372cwgsuwa",
+     "title": "Wymagania aplikacji mobilnej",
+     "doc_type": "requirements",
+     "summary": "Wymagania aplikacji mobilnej: biometria, powiadomienia push, API v2.",
+     "estimated_tokens": 43,
+     "version": 1,
+     "via": [
+      {
+       "kind": "neighbour",
+       "from": "fjzupf26q74u",
+       "type": "required_by"
+      }
+     ]
+    },
+    {
+     "slug": "zqcyyyg9n73a",
+     "title": "Wymagania RODO dla portalu",
+     "doc_type": "requirements",
+     "summary": "Prawo do pobrania i usunięcia danych w portalu, zgodnie z polityką retencji.",
+     "estimated_tokens": 74,
+     "version": 1,
+     "via": [
+      {
+       "kind": "neighbour",
+       "from": "fugskm7uttbh",
+       "type": "basis_for"
+      }
+     ]
+    },
+    {
+     "slug": "sbu375yzq9c7",
+     "title": "Wymagania: logowanie i konto klienta",
+     "doc_type": "requirements",
+     "summary": "Wymagania funkcjonalne i niefunkcjonalne dla logowania, profilu klienta i listy faktur.",
+     "estimated_tokens": 208,
+     "version": 1,
+     "via": [
+      {
+       "kind": "neighbour",
+       "from": "fjzupf26q74u",
+       "type": "derived_from"
+      }
+     ]
+    }
+   ],
+   "edges": [
+    [
+     "fjzupf26q74u",
+     "supersedes",
+     "j6veb8rqfyj9",
+     {
+      "note": "v2 przechodzi na OAuth 2.1 i obsługuje aplikację mobilną"
+     }
+    ],
+    [
+     "3gdvv9m359ba",
+     "depends_on",
+     "fjzupf26q74u"
+    ],
+    [
+     "wsks7s4hxq2p",
+     "references",
+     "fjzupf26q74u"
+    ],
+    [
+     "3gdvv9m359ba",
+     "relates_to",
+     "wsks7s4hxq2p"
+    ],
+    [
+     "3gdvv9m359ba",
+     "contradicts",
+     "m5tnd3g4yfn3",
+     {
+      "note": "Klienci nie znajdują pobierania PDF w obecnym projekcie"
+     }
+    ],
+    [
+     "ezwbm243qkkc",
+     "depends_on",
+     "fjzupf26q74u"
+    ],
+    [
+     "8f372cwgsuwa",
+     "depends_on",
+     "fjzupf26q74u"
+    ],
+    [
+     "zqcyyyg9n73a",
+     "derived_from",
+     "fugskm7uttbh"
+    ],
+    [
+     "sbu375yzq9c7",
+     "derived_from",
+     "un929eawyrwu"
+    ],
+    [
+     "fjzupf26q74u",
+     "derived_from",
+     "sbu375yzq9c7"
+    ],
+    [
+     "j6veb8rqfyj9",
+     "derived_from",
+     "sbu375yzq9c7"
+    ],
+    [
+     "3gdvv9m359ba",
+     "derived_from",
+     "sbu375yzq9c7"
+    ]
+   ],
+   "warnings": [
+    {
+     "code": "superseded",
+     "params": {
+      "slug": "j6veb8rqfyj9",
+      "successor": "fjzupf26q74u",
+      "required": false
+     }
+    },
+    {
+     "code": "contradicts",
+     "params": {
+      "from": "3gdvv9m359ba",
+      "to": "m5tnd3g4yfn3"
+     }
+    }
+   ],
+   "truncated": null,
+   "hidden_count": 0,
+   "estimated_tokens": 1268
+  }
+ },
+ {
+  "name": "ctx_b600",
+  "cl100k": 623,
+  "pack": {
+   "project": {
+    "slug": "fpwksxn9ak",
+    "name": "Portal klienta",
+    "external": null
+   },
+   "task": {
+    "system": "openproject",
+    "wp": "4712",
+    "ancestors": []
+   },
+   "doc_types": {
+    "specification": "Treat as the binding technical contract when implementing or testing the component.",
+    "design": "Read before any design or implementation work that touches the described area.",
+    "business_goals": "Read first when scoping work or judging whether a change is worth doing."
+   },
+   "documents": [
+    {
+     "slug": "fjzupf26q74u",
+     "title": "Specyfikacja API konta klienta v2",
+     "doc_type": "specification",
+     "summary": "Aktualne API konta klienta: OAuth 2.1 z PKCE, paginacja faktur, zgody marketingowe.",
+     "estimated_tokens": 1484,
+     "version": 1,
+     "required": true,
+     "via": [
+      {
+       "kind": "direct",
+       "role": "context",
+       "required": true
+      },
+      {
+       "kind": "project_key",
+       "reason": "Aktualny kontrakt API dla portalu i aplikacji"
+      },
+      {
+       "kind": "successor_of",
+       "slug": "j6veb8rqfyj9",
+       "required": false
+      }
+     ]
+    },
+    {
+     "slug": "j6veb8rqfyj9",
+     "title": "Specyfikacja API konta klienta v1",
+     "freshness": "superseded",
+     "collapsed": true,
+     "superseded_by": "fjzupf26q74u"
+    },
+    {
+     "slug": "3gdvv9m359ba",
+     "title": "Projekt UI panelu klienta",
+     "doc_type": "design",
+     "summary": "Ekrany panelu klienta: logowanie, pulpit, faktury i profil, podejście mobile first.",
+     "estimated_tokens": 1004,
+     "version": 1,
+     "via": [
+      {
+       "kind": "direct",
+       "role": "context",
+       "required": false
+      }
+     ]
+    },
+    {
+     "slug": "un929eawyrwu",
+     "title": "Cele biznesowe portalu klienta",
+     "doc_type": "business_goals",
+     "summary": "Po co budujemy portal: mniej zgłoszeń telefonicznych, faktury online, krótsza obsługa serwisowa.",
+     "estimated_tokens": 245,
+     "version": 1,
+     "via": [
+      {
+       "kind": "project_key",
+       "reason": "Przeczytaj przed każdą decyzją o zakresie"
+      }
+     ]
+    }
+   ],
+   "edges": [
+    [
+     "fjzupf26q74u",
+     "supersedes",
+     "j6veb8rqfyj9",
+     {
+      "note": "v2 przechodzi na OAuth 2.1 i obsługuje aplikację mobilną"
+     }
+    ],
+    [
+     "3gdvv9m359ba",
+     "depends_on",
+     "fjzupf26q74u"
+    ]
+   ],
+   "warnings": [
+    {
+     "code": "superseded",
+     "params": {
+      "slug": "j6veb8rqfyj9",
+      "successor": "fjzupf26q74u",
+      "required": false
+     }
+    }
+   ],
+   "truncated": {
+    "documents": 2,
+    "neighbours": 5,
+    "needed_tokens": 1449,
+    "max_budget_tokens": 4000,
+    "seed": "fjzupf26q74u"
+   },
+   "hidden_count": 0,
+   "estimated_tokens": 514
+  }
+ },
+ {
+  "name": "ctx_noproject",
+  "cl100k": 1190,
+  "pack": {
+   "project": null,
+   "task": {
+    "system": "openproject",
+    "wp": "4712",
+    "ancestors": []
+   },
+   "doc_types": {
+    "specification": "Treat as the binding technical contract when implementing or testing the component.",
+    "design": "Read before any design or implementation work that touches the described area.",
+    "decision": "Check before proposing an alternative; it records why an option was chosen.",
+    "research": "Use as background evidence; conclusions may be outdated, verify key facts.",
+    "runbook": "Follow step by step when operating, deploying or recovering the described system.",
+    "requirements": "Read before designing or implementing a feature; it defines what must be delivered."
+   },
+   "documents": [
+    {
+     "slug": "fjzupf26q74u",
+     "title": "Specyfikacja API konta klienta v2",
+     "doc_type": "specification",
+     "summary": "Aktualne API konta klienta: OAuth 2.1 z PKCE, paginacja faktur, zgody marketingowe.",
+     "estimated_tokens": 1484,
+     "version": 1,
+     "required": true,
+     "via": [
+      {
+       "kind": "direct",
+       "role": "context",
+       "required": true
+      },
+      {
+       "kind": "successor_of",
+       "slug": "j6veb8rqfyj9",
+       "required": false
+      }
+     ]
+    },
+    {
+     "slug": "j6veb8rqfyj9",
+     "title": "Specyfikacja API konta klienta v1",
+     "freshness": "superseded",
+     "collapsed": true,
+     "superseded_by": "fjzupf26q74u"
+    },
+    {
+     "slug": "3gdvv9m359ba",
+     "title": "Projekt UI panelu klienta",
+     "doc_type": "design",
+     "summary": "Ekrany panelu klienta: logowanie, pulpit, faktury i profil, podejście mobile first.",
+     "estimated_tokens": 1004,
+     "version": 1,
+     "via": [
+      {
+       "kind": "direct",
+       "role": "context",
+       "required": false
+      }
+     ]
+    },
+    {
+     "slug": "wsks7s4hxq2p",
+     "title": "ADR: wybór dostawcy SSO",
+     "doc_type": "decision",
+     "summary": "Wybieramy Keycloak we własnej infrastrukturze jako wspólne SSO portalu i aplikacji.",
+     "estimated_tokens": 141,
+     "version": 1,
+     "via": [
+      {
+       "kind": "direct",
+       "role": "reference",
+       "required": false
+      }
+     ]
+    },
+    {
+     "slug": "m5tnd3g4yfn3",
+     "title": "Raport z testów użyteczności",
+     "doc_type": "research",
+     "summary": "Wyniki testów z 8 klientami: problem z pobieraniem PDF, prośba o powiadomienia.",
+     "estimated_tokens": 96,
+     "version": 1,
+     "via": [
+      {
+       "kind": "neighbour",
+       "from": "3gdvv9m359ba",
+       "type": "contradicts"
+      }
+     ]
+    },
+    {
+     "slug": "ezwbm243qkkc",
+     "title": "Runbook: wdrożenie portalu",
+     "doc_type": "runbook",
+     "freshness": "review_overdue",
+     "summary": "Wdrożenie portalu krok po kroku: migracje, stopniowe przełączanie ruchu, wycofanie.",
+     "estimated_tokens": 111,
+     "version": 1,
+     "via": [
+      {
+       "kind": "neighbour",
+       "from": "fjzupf26q74u",
+       "type": "required_by"
+      }
+     ]
+    },
+    {
+     "slug": "8f372cwgsuwa",
+     "title": "Wymagania aplikacji mobilnej",
+     "doc_type": "requirements",
+     "summary": "Wymagania aplikacji mobilnej: biometria, powiadomienia push, API v2.",
+     "estimated_tokens": 43,
+     "version": 1,
+     "via": [
+      {
+       "kind": "neighbour",
+       "from": "fjzupf26q74u",
+       "type": "required_by"
+      }
+     ]
+    },
+    {
+     "slug": "sbu375yzq9c7",
+     "title": "Wymagania: logowanie i konto klienta",
+     "doc_type": "requirements",
+     "summary": "Wymagania funkcjonalne i niefunkcjonalne dla logowania, profilu klienta i listy faktur.",
+     "estimated_tokens": 208,
+     "version": 1,
+     "via": [
+      {
+       "kind": "neighbour",
+       "from": "fjzupf26q74u",
+       "type": "derived_from"
+      }
+     ]
+    }
+   ],
+   "edges": [
+    [
+     "fjzupf26q74u",
+     "supersedes",
+     "j6veb8rqfyj9",
+     {
+      "note": "v2 przechodzi na OAuth 2.1 i obsługuje aplikację mobilną"
+     }
+    ],
+    [
+     "3gdvv9m359ba",
+     "depends_on",
+     "fjzupf26q74u"
+    ],
+    [
+     "wsks7s4hxq2p",
+     "references",
+     "fjzupf26q74u"
+    ],
+    [
+     "3gdvv9m359ba",
+     "relates_to",
+     "wsks7s4hxq2p"
+    ],
+    [
+     "3gdvv9m359ba",
+     "contradicts",
+     "m5tnd3g4yfn3",
+     {
+      "note": "Klienci nie znajdują pobierania PDF w obecnym projekcie"
+     }
+    ],
+    [
+     "ezwbm243qkkc",
+     "depends_on",
+     "fjzupf26q74u"
+    ],
+    [
+     "8f372cwgsuwa",
+     "depends_on",
+     "fjzupf26q74u"
+    ],
+    [
+     "fjzupf26q74u",
+     "derived_from",
+     "sbu375yzq9c7"
+    ],
+    [
+     "j6veb8rqfyj9",
+     "derived_from",
+     "sbu375yzq9c7"
+    ],
+    [
+     "3gdvv9m359ba",
+     "derived_from",
+     "sbu375yzq9c7"
+    ]
+   ],
+   "warnings": [
+    {
+     "code": "superseded",
+     "params": {
+      "slug": "j6veb8rqfyj9",
+      "successor": "fjzupf26q74u",
+      "required": false
+     }
+    },
+    {
+     "code": "contradicts",
+     "params": {
+      "from": "3gdvv9m359ba",
+      "to": "m5tnd3g4yfn3"
+     }
+    }
+   ],
+   "truncated": null,
+   "estimated_tokens": 932
+  }
+ }
+]

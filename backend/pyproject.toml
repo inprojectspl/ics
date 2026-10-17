@@ -1,0 +1,136 @@
+[project]
+name = "ics-backend"
+version = "0.1.0"
+description = "ICS - Internal Content Sharing backend"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic[email]>=2.9",
+    "pydantic-settings>=2.6",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.30",
+    "alembic>=1.13",
+    "authlib>=1.3",
+    "joserfc>=1.7",
+    "itsdangerous>=2.2",
+    "httpx>=0.27",
+    "redis>=5.2",
+    "arq>=0.26",
+    "markdown-it-py[plugins]>=3.0",
+    "bleach[css]>=6.2",
+    "lxml>=5.3",
+    "html5lib>=1.1",
+    "argon2-cffi>=23.1",
+    "cryptography>=43.0",
+    "python-multipart>=0.0.12",
+    "aiofiles>=24.1",
+    "aiobotocore>=2.15",
+    "aiosmtplib>=3.0",
+    "ulid-py>=1.1",
+    "structlog>=24.4",
+    "orjson>=3.10",
+    "markdownify>=1.2.3",
+    "pypdf>=6.1",
+    "mammoth>=1.12",
+    "olefile>=0.47",
+    # Local OCR of scanned PDFs (ADR-0021): page rendering and the PP-OCR engine.
+    "pypdfium2>=5.13",
+    "rapidocr>=3.9",
+    "onnxruntime>=1.30",
+    "opencv-python-headless>=4.12",
+    "http-ece>=1.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "pytest-xdist>=3.6",
+    "httpx>=0.27",
+    "ruff>=0.8",
+    "debugpy>=1.8",
+    "ipython>=8.29",
+    "mypy>=2.3.1",
+    "types-aiofiles>=25.1.0.20260518",
+    "types-bleach>=6.4.0.20260728",
+    "types-olefile>=0.47.0.20260508",
+    "lxml-stubs>=0.5.1",
+]
+
+[tool.uv]
+# rapidocr asks for opencv-python, which needs libGL on a slim image; the
+# headless build ships the same `cv2` without the GUI libraries.
+override-dependencies = ["opencv-python; sys_platform == 'never'"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "RUF"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["app"]
+plugins = ["pydantic.mypy"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+strict_equality = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+
+# Libraries without type information (no inline types, no stub package).
+[[tool.mypy.overrides]]
+module = [
+    "aiobotocore.*",
+    "arq.*",
+    "authlib.*",
+    "http_ece.*",
+    "botocore.*",
+    "markdownify.*",
+    "mammoth.*",
+    "mdit_py_plugins.*",
+    "pypdfium2.*",
+    "rapidocr.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+# `-n auto`: pytest-xdist spreads tests across CPUs. Each worker gets its
+# own `ics_test_<worker_id>` database and a separate Redis DB number (setup
+# in `tests/conftest.py`). Locally ~3-4x faster, in CI it depends on the
+# vCPU count. Disable with `-p no:xdist` when debugging a single test (pdb
+# does not work with multiple processes).
+addopts = "-n auto"
+
+[tool.coverage.run]
+source = ["app"]
+branch = true
+# SQLAlchemy's async mode runs each DB call through greenlets; without this
+# coverage stops recording a function after its first query.
+concurrency = ["greenlet", "thread"]
+omit = [
+    "app/bootstrap.py",
+    "app/db.py",
+    "app/main.py",
+    "app/jobs/worker.py",
+]
+
+[tool.coverage.report]
+precision = 1
+skip_empty = true
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]

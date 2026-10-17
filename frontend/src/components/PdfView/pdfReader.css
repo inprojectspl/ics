@@ -1,0 +1,15 @@
+/* Page spacing of the PDF reader over pdf.js' own viewer styles. */
+.pdf-reader {
+  /* Pinch and Ctrl+wheel zoom the document, not the whole page. */
+  touch-action: pan-x pan-y;
+  overscroll-behavior: contain;
+}
+
+.pdf-reader .pdfViewer {
+  padding: 12px 0 24px;
+}
+
+.pdf-reader .pdfViewer .page {
+  margin: 0 auto 12px;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.18);
+}

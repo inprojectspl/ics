@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>ICS | Logo and icons</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 56px; background: #f5f3ee; color: #101419; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  main { max-width: 1088px; margin: auto; }
+  header { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 28px; border-bottom: 1px solid #d4d1ca; }
+  h1 { font-size: 32px; letter-spacing: -1px; margin: 0; font-weight: 600; }
+  header p, .label { font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: #666863; }
+  .hero { display: grid; grid-template-columns: 1fr 1fr; margin-top: 28px; }
+  .panel { min-height: 270px; display: flex; align-items: center; justify-content: center; background: #fff; }
+  .panel.dark { background: #101419; }
+  .panel img { width: 320px; max-width: 80%; }
+  section { margin-top: 34px; }
+  h2 { font-size: 15px; font-weight: 600; margin: 0 0 18px; }
+  .row { display: flex; align-items: center; gap: 32px; }
+  .apps { display: grid; grid-template-columns: 1.2fr 1fr; gap: 24px; }
+  .app-card { padding: 28px; background: #e7e5df; }
+  .icon { width: 120px; height: 120px; }
+  .round { border-radius: 26%; }
+  .circle { border-radius: 50%; }
+  figure { margin: 0; text-align: center; }
+  figcaption { margin-top: 12px; font-size: 12px; color: #656862; }
+  .sizes { justify-content: space-between; min-height: 120px; }
+  .sizes figure { min-width: 36px; }
+  .sizes img { display: block; margin: auto; }
+  .scale-panel { padding: 24px; background: white; }
+  .scale-panel.dark { background: #101419; }
+  .scale-panel.dark figcaption { color: #acb1b7; }
+  .bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .mono { display: flex; align-items: center; justify-content: space-around; padding: 18px; background: white; }
+  .mono img { width: 64px; }
+  .mono .inverse { padding: 14px; background: #101419; }
+  .swatches { display: flex; gap: 24px; padding: 20px 0; }
+  .swatches i { display: inline-block; width: 20px; height: 20px; vertical-align: middle; margin-right: 8px; border-radius: 50%; }
+  .swatches span { font: 12px monospace; }
+  footer { margin-top: 32px; border-top: 1px solid #d4d1ca; padding-top: 18px; display: flex; justify-content: space-between; gap: 24px; font-size: 12px; color: #656862; }
+  a { color: inherit; }
+  @media(max-width: 720px) { body { padding: 24px; } header, footer { display: block; } .hero,.apps,.bottom { grid-template-columns: 1fr; } .row { gap: 18px; } .icon { width: 96px; height: 96px; } }
+</style>
+<main>
+  <header><h1>ICS. Content, connected.</h1><p>Logo / production set</p></header>
+  <div class="hero">
+    <div class="panel"><img src="logo-lockup.svg" alt="ICS logo on a light background"></div>
+    <div class="panel dark"><img src="logo-lockup-white.svg" alt="ICS logo on a dark background"></div>
+  </div>
+  <section class="apps">
+    <div>
+      <h2>App icon</h2>
+      <div class="app-card row">
+        <figure><img class="icon round" src="../icons/app-icon.svg" alt="Rounded icon"><figcaption>Standard</figcaption></figure>
+        <figure><img class="icon circle" src="../icons/app-icon-maskable.svg" alt="Icon in a circle"><figcaption>Circular mask</figcaption></figure>
+        <figure><img class="icon round" src="../icons/app-icon-maskable.svg" alt="Icon with a rounded mask"><figcaption>Rounded mask</figcaption></figure>
+      </div>
+    </div>
+    <div>
+      <h2>Colour and single-colour versions</h2>
+      <div class="mono"><img src="../logo.svg" alt="Orange symbol"><img src="logo-mono.svg" alt="Dark symbol"><div class="inverse"><img src="logo-white.svg" alt="White symbol"></div></div>
+      <div class="swatches"><span><i style="background:#ff5500"></i>#FF5500</span><span><i style="background:#101419"></i>#101419</span></div>
+    </div>
+  </section>
+  <section>
+    <h2>Legibility at actual size</h2>
+    <div class="bottom">
+      <div class="scale-panel"><div class="row sizes">
+        <figure><img src="../favicon-16x16.png" width="16" height="16" alt=""><figcaption>16 px</figcaption></figure>
+        <figure><img src="../favicon.svg" width="24" height="24" alt=""><figcaption>24 px</figcaption></figure>
+        <figure><img src="../favicon-32x32.png" width="32" height="32" alt=""><figcaption>32 px</figcaption></figure>
+        <figure><img src="../logo.svg" width="48" height="48" alt=""><figcaption>48 px</figcaption></figure>
+        <figure><img src="../logo.svg" width="64" height="64" alt=""><figcaption>64 px</figcaption></figure>
+      </div></div>
+      <div class="scale-panel dark"><div class="row sizes">
+        <figure><img src="../favicon-16x16.png" width="16" height="16" alt=""><figcaption>16 px</figcaption></figure>
+        <figure><img src="../favicon.svg" width="24" height="24" alt=""><figcaption>24 px</figcaption></figure>
+        <figure><img src="../favicon-32x32.png" width="32" height="32" alt=""><figcaption>32 px</figcaption></figure>
+        <figure><img src="../logo.svg" width="48" height="48" alt=""><figcaption>48 px</figcaption></figure>
+        <figure><img src="../logo.svg" width="64" height="64" alt=""><figcaption>64 px</figcaption></figure>
+      </div></div>
+    </div>
+  </section>
+  <footer><span>Five nodes. One central point. ICS orange.</span><a href="README.md">Files and usage rules</a></footer>
+</main>
+</html>

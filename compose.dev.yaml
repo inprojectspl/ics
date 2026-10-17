@@ -1,0 +1,178 @@
+# =============================================================================
+# ICS development overlay
+#
+# Use together with compose.yaml:
+#     docker compose -f compose.yaml -f compose.dev.yaml up
+#
+# Overrides:
+# - postgres as a container (not the host), so nobody needs PG 18.3 locally
+# - mailpit as a fake SMTP mailbox
+# - edge as a local bridge (not external), so `make dev` does not need an
+#   existing external network
+# - ics_static as a local volume (not external)
+# - frontend stage `dev` (Vite hot reload on 5173)
+# - backend stage `dev` with hot reload
+# =============================================================================
+
+# Dev mail (MailPit takes SMTP on 1025, web UI on 8025) and the dev-only Web
+# Push key pair (ADR-0023); production generates its own with
+# `python -m app.cli vapid-keygen`.
+x-dev-mail-env: &dev-mail-env
+  ICS_SMTP_HOST: "mailpit"
+  ICS_SMTP_PORT: "1025"
+  ICS_SMTP_FROM: "ICS dev <no-reply@ics.localhost>"
+  ICS_VAPID_PRIVATE_KEY: "${ICS_VAPID_PRIVATE_KEY:-34BBWO2aQXMocWDQiRYyIDbdrivCDUBuPrpH0RFeIK0}"
+  ICS_VAPID_SUBJECT: "mailto:dev@example.com"
+  ICS_NOTIFICATIONS_EMAIL_BATCH_SECONDS: "${ICS_NOTIFICATIONS_EMAIL_BATCH_SECONDS:-30}"
+
+services:
+  backend:
+    build:
+      target: dev
+    # Open notification streams (SSE) never close on their own; without the
+    # timeout a reload waits for them forever.
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/app", "--timeout-graceful-shutdown", "3"]
+    # In dev the backend talks to the postgres container on the `ics`
+    # network, so ICS_DATABASE_URL skips host.docker.internal.
+    extra_hosts: !reset []
+    volumes:
+      - ./backend/app:/app/app:cached
+      - ./backend/alembic.ini:/app/alembic.ini:cached
+      - ./backend/migrations:/app/migrations:cached
+      - ./backend/tests:/app/tests:cached
+      - ./backend/pyproject.toml:/app/pyproject.toml:cached
+      - asset_storage:/data/storage
+    environment:
+      ICS_DATABASE_URL: "postgresql+asyncpg://ics:ics@postgres:5432/ics"
+      ICS_DEBUG: "1"
+      ICS_LOG_LEVEL: "debug"
+      # Dev-stub SSO off, so the login screen comes first.
+      # Set to "1" to call the API with curl without logging in.
+      ICS_DEV_STUB_SSO: "0"
+      ICS_SECRET_KEY: "dev-secret-change-me"
+      ICS_PG_PASSWORD: "ics"
+      ICS_CORS_ORIGINS: "http://localhost,http://localhost:5173,http://ics.localhost"
+      # HTML bundles open on their own origin, served by the Vite dev server
+      # (the `htmlViewerHost` plugin in frontend/vite.config.ts).
+      ICS_HTML_VIEWER_BASE: "http://html.ics.localhost:5173"
+      # Organisation domain for local accounts (SSO, invites, org-only links).
+      ICS_ALLOWED_DOMAINS: "${ICS_ALLOWED_DOMAINS:-example.com}"
+      # Default admin, created on start when no admin exists yet. Idempotent.
+      ICS_BOOTSTRAP_ADMIN_EMAIL: "admin@example.com"
+      ICS_BOOTSTRAP_ADMIN_PASSWORD: "AdminAdmin1!"
+      <<: *dev-mail-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mailpit:
+        condition: service_started
+    networks:
+      - ics
+
+  arq-worker: &dev-worker
+    build:
+      target: dev
+    extra_hosts: !reset []
+    volumes:
+      - ./backend/app:/app/app:cached
+      - ./backend/pyproject.toml:/app/pyproject.toml:cached
+      - asset_storage:/data/storage
+    environment:
+      ICS_DATABASE_URL: "postgresql+asyncpg://ics:ics@postgres:5432/ics"
+      ICS_DEBUG: "1"
+      ICS_LOG_LEVEL: "debug"
+      ICS_SECRET_KEY: "dev-secret-change-me"
+      ICS_PG_PASSWORD: "ics"
+      <<: *dev-mail-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mailpit:
+        condition: service_started
+    networks:
+      - ics
+
+  ocr-worker: *dev-worker
+
+  postgres:
+    image: postgres:18.3-alpine
+    # PG 18+ keeps data in a versioned subdirectory (for pg_upgrade). The
+    # volume is mounted at /var/lib/postgresql and PGDATA points to
+    # /var/lib/postgresql/18/docker.
+    environment:
+      POSTGRES_USER: ics
+      POSTGRES_PASSWORD: "ics"
+      POSTGRES_DB: ics
+      PGDATA: /var/lib/postgresql/18/docker
+    # 5432 is published on localhost only, for tests run from the host
+    # (`uv run pytest`). The backend uses the `ics` network anyway.
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ics"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - ics
+
+  # Redis: in production only on the `ics` network. In dev the port is
+  # published on localhost so `uv run pytest` on the host can reach it
+  # (rate limiter, worker heartbeat).
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  frontend:
+    build:
+      target: dev
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+    restart: unless-stopped
+    volumes: !override
+      - ./frontend/src:/app/src:cached
+      - ./frontend/public:/app/public:cached
+      - ./frontend/index.html:/app/index.html:cached
+      - ./frontend/vite.config.ts:/app/vite.config.ts:cached
+      - ./frontend/tsconfig.json:/app/tsconfig.json:cached
+      - ./frontend/tsconfig.node.json:/app/tsconfig.node.json:cached
+      - ./frontend/package.json:/app/package.json:cached
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    # No VITE_API_URL: Vite proxies /api to the backend (same-origin cookies).
+
+  # MailPit: fake inbox for development. Catches every e-mail the app would
+  # send over SMTP. Web UI: http://localhost:8025.
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"   # Web UI
+    environment:
+      MP_MAX_MESSAGES: "5000"
+      MP_DATABASE: /data/mailpit.db
+    volumes:
+      - mailpit_data:/data
+    networks:
+      - ics
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8025/api/v1/info"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+# Dev needs neither the external edge network nor the ics_static volume:
+# both become a local bridge and a local volume.
+networks:
+  edge: !override
+    driver: bridge
+
+volumes:
+  pg_data:
+  mailpit_data:
+  ics_static: !override {}

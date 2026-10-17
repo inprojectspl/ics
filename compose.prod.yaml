@@ -1,0 +1,68 @@
+# =============================================================================
+# ICS production overlay
+#
+# Use together with compose.yaml:
+#     docker compose -f compose.yaml -f compose.prod.yaml up -d --pull always
+#
+# Images come from ICS_IMAGE_REGISTRY (for example ghcr.io/<owner>/ics),
+# tagged IMAGE_TAG (default latest).
+#
+# Server requirements:
+#   - docker volume `ics_static` (external), created once by hand
+#   - docker network named by ICS_EDGE_NETWORK (external), from the proxy stack
+#   - Postgres 18.3 on the host, pg_hba.conf allows 172.16.0.0/12
+#   - configuration in .env (see docs/DEPLOY.md)
+# =============================================================================
+
+services:
+  backend:
+    # No build in production: the image comes from the registry.
+    image: ${ICS_IMAGE_REGISTRY}/backend:${IMAGE_TAG:-latest}
+    build: !reset null
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+        reservations:
+          memory: 256m
+
+  frontend:
+    image: ${ICS_IMAGE_REGISTRY}/frontend:${IMAGE_TAG:-latest}
+    build: !reset null
+    # restart: "no" is inherited from compose.yaml (one-shot copier).
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+
+  arq-worker:
+    image: ${ICS_IMAGE_REGISTRY}/backend:${IMAGE_TAG:-latest}
+    build: !reset null
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+        reservations:
+          memory: 128m
+
+  ocr-worker:
+    image: ${ICS_IMAGE_REGISTRY}/backend:${IMAGE_TAG:-latest}
+    build: !reset null
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          # The OCR child peaks at about 1.1 GB for an A4 page at 200 dpi.
+          memory: 1536m
+        reservations:
+          memory: 256m
+
+  redis:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          # Sessions, arq and the notification inboxes (ADR-0023, section 9).
+          memory: 512m

@@ -1,0 +1,79 @@
+ICS (Internal Content Sharing)
+Copyright (c) 2026 inProjects spółka z o.o. sp.k.
+ul. Harcerzy 3, 71-465 Szczecin, Poland
+NIP: 854-240-20-87, KRS: 0000650754
+
+This product is licensed under the MIT License (see LICENSE).
+
+It depends on third-party open source software distributed under its own
+licenses. Most dependencies use permissive licenses (MIT, BSD, Apache-2.0,
+ISC and similar). The dependencies below use weak copyleft licenses (MPL-2.0,
+EPL-2.0) and are listed so their terms are easy to find. They are used
+unmodified; their source code is available at the URLs given. No LGPL or GPL
+dependencies were found.
+
+The list was produced from the lockfiles (backend/uv.lock,
+frontend/package-lock.json) with pip-licenses and license-checker. Versions
+change as dependencies are updated; the complete and current list of
+third-party licenses is available from the package metadata, for example:
+
+    cd backend && uvx pip-licenses --python .venv/bin/python --with-urls
+    cd frontend && npx license-checker --summary
+
+
+Backend (Python), shipped in the backend image
+----------------------------------------------
+
+certifi 2026.7.22
+  License: MPL-2.0
+  Source:  https://github.com/certifi/python-certifi
+  Used by: httpx (via httpcore); provides the Mozilla CA certificate bundle.
+
+orjson 3.12.0
+  License: MPL-2.0 AND (Apache-2.0 OR MIT)
+  Source:  https://github.com/ijl/orjson
+  Used by: the backend directly (JSON responses).
+
+
+Frontend (JavaScript), included in the built frontend bundle
+------------------------------------------------------------
+
+dompurify 3.4.15
+  License: MPL-2.0 OR Apache-2.0 (used under Apache-2.0 or MPL-2.0, at the
+           recipient's choice)
+  Source:  https://github.com/cure53/DOMPurify
+  Used by: mermaid
+
+elkjs 0.9.3
+  License: EPL-2.0
+  Source:  https://github.com/kieler/elkjs
+  Used by: mermaid (ELK graph layout, loaded on demand)
+
+
+Frontend build tooling (not included in the built bundle)
+---------------------------------------------------------
+
+lightningcss 1.32.0 and 1.33.0, with its platform-specific binary packages
+(lightningcss-<platform>)
+  License: MPL-2.0
+  Source:  https://github.com/parcel-bundler/lightningcss
+  Used by: vite and @tailwindcss/vite, at build time only
+
+
+Names and logos
+---------------
+
+The names "inProjects" and "inProjects.ai" and the inProjects.ai logo belong
+to inProjects spółka z o.o. sp.k. and are not licensed under the MIT License:
+the license covers the software, not these names or the logo. You may keep the
+existing "Built by inProjects.ai" credit and logo unchanged to say where the
+software comes from, but you may not use them for your own products or
+services, or in a way that suggests our endorsement, without our written
+permission.
+
+The logo is in these files:
+  docs/images/inprojects-logo.svg
+  docs/images/inprojects-logo-white.svg
+  frontend/src/components/InProjectsLogo.tsx
+
+Contact: info@inprojects.pl
