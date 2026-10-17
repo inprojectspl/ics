@@ -26,6 +26,7 @@ from app.collections_io import (
 from app.config import Settings
 from app.errors import ApiError
 from app.html_bundle import (
+    APP_ORIGIN_SANDBOX,
     build_csp,
     content_type_for,
     is_allowed_path,
@@ -217,9 +218,12 @@ async def serve_bundle_file(
     *,
     version: int | None = None,
     body_prelude: str | None = None,
+    app_origin: bool = False,
 ) -> Response:
     """Stream one html_bundle file with strict security headers. The caller
-    has already authorized access.
+    has already authorized access. `app_origin` marks a response from the
+    app's own origin, which is sandboxed so the bundle cannot act as the
+    signed-in visitor.
 
     Without `session` only the env CDN allowlist applies, so HTTP handlers
     should pass it. `request` enables the 304 on If-None-Match. `version`
@@ -241,7 +245,8 @@ async def serve_bundle_file(
         hosts = await cdn_allowlist.trusted_hosts(session, settings)
     else:
         hosts = settings.trusted_cdn_hosts_set
-    headers = _static_headers(build_csp(hosts), rel_path=rel, etag=etag)
+    csp = build_csp(hosts) + (APP_ORIGIN_SANDBOX if app_origin else "")
+    headers = _static_headers(csp, rel_path=rel, etag=etag)
 
     # 304 short-circuit for non-HTML only: the HTML entry is `no-store` and
     # gets no ETag, so it is never revalidated.

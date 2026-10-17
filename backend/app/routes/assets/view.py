@@ -108,11 +108,13 @@ async def asset_static(
     session: Annotated[AsyncSession, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> Response:
-    """Same-origin preview, a fallback for legacy direct links; normal
-    rendering goes through the isolated viewer via `/html-grant`."""
+    """Sandboxed preview for legacy direct links; normal rendering goes
+    through the isolated viewer via `/html-grant`."""
     asset, role = await permissions.get_viewable_asset_by_slug(session, slug, user)
     _gate_bundle_for_read_only(role, asset)
-    return await serve_bundle_file(asset, path, settings, session=session, request=request)
+    return await serve_bundle_file(
+        asset, path, settings, session=session, request=request, app_origin=True
+    )
 
 
 @router.get("/by-slug/{slug}/render", response_class=HTMLResponse)
