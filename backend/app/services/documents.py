@@ -11,14 +11,13 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import PurePosixPath
 from typing import Any
 
 import orjson
 
 from app.bundle_scan import Finding, apply_report, prompt_injection, report_of
 from app.child_process import run_child
-from app.collections_io import normalize_collection_path
+from app.collections_io import upload_basename
 from app.config import Settings
 from app.domain_errors import InvalidInputError, LimitExceededError
 from app.models import Asset
@@ -127,7 +126,7 @@ def filename(kind: str, raw: str | None) -> str:
         raise InvalidInputError(
             doc_type.wrong_file_code, f"accepted files: {', '.join(doc_type.extensions)}"
         )
-    return normalize_collection_path(PurePosixPath(raw.replace("\\", "/")).name)
+    return upload_basename(raw)
 
 
 def assert_size(kind: str, size: int, settings: Settings) -> None:
