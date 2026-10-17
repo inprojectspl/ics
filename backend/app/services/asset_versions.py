@@ -242,8 +242,11 @@ def edit_files(
     return _stage
 
 
-def write_uploads(pairs: Sequence[tuple[ReadableFile, str]], *, max_bytes: int) -> Stage:
-    """Full replacement from uploaded `(file, rel_path)` pairs."""
+def write_uploads(
+    pairs: Sequence[tuple[ReadableFile, str]], *, max_bytes: int, entry_path: str | None = None
+) -> Stage:
+    """Full replacement from uploaded `(file, rel_path)` pairs; `entry_path`
+    (already checked against them) overrides the derived entry file."""
 
     async def _stage(draft: VersionDraft) -> StagedTree:
         results = await put_all(
@@ -252,7 +255,7 @@ def write_uploads(pairs: Sequence[tuple[ReadableFile, str]], *, max_bytes: int) 
         written = [rel for rel, _ in results]
         return StagedTree(
             size_bytes=sum(size for _, size in results),
-            entry_path=derive_entry_path(draft.asset.kind, written),
+            entry_path=entry_path or derive_entry_path(draft.asset.kind, written),
             file_count=len(written),
         )
 
