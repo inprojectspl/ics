@@ -18,7 +18,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import audit, permissions, quota, search
 from app.auth import CurrentUser
-from app.collections_io import normalize_collection_path, pick_entry, read_markdown_files
+from app.collections_io import (
+    normalize_collection_path,
+    pick_entry,
+    read_markdown_files,
+    upload_basename,
+)
 from app.config import Settings, get_settings
 from app.db import get_session
 from app.errors import ApiError
@@ -71,10 +76,11 @@ async def upload_markdown(
 ) -> dict:
     if not file.filename or not file.filename.lower().endswith(".md"):
         raise ApiError(status.HTTP_400_BAD_REQUEST, "md_file_required", "only .md files accepted")
+    filename = upload_basename(file.filename)
 
     slug = generate_slug()
     storage = storage_from_url(settings.storage_url)
-    storage_key = f"assets/{slug}/v1/{file.filename}"
+    storage_key = f"assets/{slug}/v1/{filename}"
     try:
         size = await storage.put(
             storage_key, chunked(file, ByteBudget(settings.max_asset_bytes, "file too large"))
@@ -99,9 +105,9 @@ async def upload_markdown(
         content_updated_by=user.id,
         project_id=project.id if project else None,
         kind="md_single",
-        title=file.filename.removesuffix(".md"),
+        title=filename.removesuffix(".md"),
         storage_prefix=f"assets/{slug}",
-        entry_path=file.filename,
+        entry_path=filename,
         security_status="clean",
         size_bytes=size,
         version=1,

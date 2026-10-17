@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import permissions
 from app.auth import CurrentUser
-from app.collections_io import normalize_collection_path
+from app.collections_io import normalize_collection_path, upload_basename
 from app.config import Settings, get_settings
 from app.db import get_session
 from app.errors import ApiError
@@ -142,7 +142,7 @@ async def create_version(
         f = files[0]
         if not f.filename or not f.filename.lower().endswith(".md"):
             raise ApiError(status.HTTP_400_BAD_REQUEST, "md_file_required", "expected a .md file")
-        pairs = [(f, f.filename)]
+        pairs = [(f, upload_basename(f.filename))]
     elif documents.is_document(asset.kind):
         doc_type = documents.document_type(asset.kind)
         if len(files) != 1:

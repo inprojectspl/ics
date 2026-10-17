@@ -79,6 +79,16 @@ def _collapsed_entry(slot: Slot, successor: str) -> dict[str, Any]:
     return line
 
 
+def _chain_end(slots: dict[UUID, Slot], slot: Slot) -> Slot:
+    """The full entry a superseded document collapses into: in a chain
+    A <- B <- C both A and B are listed under C."""
+    seen = {slot.asset.id}
+    while slot.collapsed_into is not None and slot.collapsed_into not in seen:
+        seen.add(slot.collapsed_into)
+        slot = slots[slot.collapsed_into]
+    return slot
+
+
 def _ordered(slots: dict[UUID, Slot]) -> list[tuple[Slot, list[Slot]]]:
     """Full entries in pack order, each with the superseded documents that
     collapsed into it (shown right after it)."""
@@ -87,7 +97,7 @@ def _ordered(slots: dict[UUID, Slot]) -> list[tuple[Slot, list[Slot]]]:
     followers: dict[UUID, list[Slot]] = {}
     for s in slots.values():
         if s.collapsed_into is not None:
-            followers.setdefault(s.collapsed_into, []).append(s)
+            followers.setdefault(_chain_end(slots, s).asset.id, []).append(s)
     return [(s, sorted(followers.get(s.asset.id, []), key=lambda f: f.rank)) for s in lead]
 
 

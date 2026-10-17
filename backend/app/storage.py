@@ -295,7 +295,8 @@ class S3Storage(Storage):
                     Delete={"Objects": payload, "Quiet": True},
                 )
 
-            async for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
+            directory = prefix.rstrip("/") + "/"
+            async for page in paginator.paginate(Bucket=self.bucket, Prefix=directory):
                 for obj in page.get("Contents", []) or []:
                     batch.append({"Key": obj["Key"]})
                     # DeleteObjects caps at 1000 keys per request.
@@ -306,16 +307,17 @@ class S3Storage(Storage):
     async def copy_prefix(self, src_prefix: str, dst_prefix: str) -> int:
         # Server-side copies, issued concurrently: every content edit copies the
         # whole version tree on the request path.
-        src_stats = await self.list_prefix_stats(src_prefix)
-        if not src_stats:
-            raise FileNotFoundError(f"source prefix not found: {src_prefix}")
+        # A prefix names a directory: listing `v1` alone would also match `v10`.
         src_norm = src_prefix.rstrip("/") + "/"
         dst_norm = dst_prefix.rstrip("/") + "/"
+        src_stats = await self.list_prefix_stats(src_norm)
+        if not src_stats:
+            raise FileNotFoundError(f"source prefix not found: {src_prefix}")
         sem = asyncio.Semaphore(_S3_COPY_CONCURRENCY)
         async with self._client() as client:
 
             async def _copy_one(src_key: str) -> None:
-                rel = src_key[len(src_norm) :] if src_key.startswith(src_norm) else src_key
+                rel = src_key[len(src_norm) :]
                 async with sem:
                     await client.copy_object(
                         Bucket=self.bucket,

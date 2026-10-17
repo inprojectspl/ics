@@ -217,4 +217,6 @@ async def share_static(
     share, asset = await _resolve_share(token, session)
     await _assert_share_view(request, share, asset, session, settings)
     assert_bundle_renderable_for_visitors(asset)
-    return await serve_bundle_file(asset, path, settings, session=session, request=request)
+    return await serve_bundle_file(
+        asset, path, settings, session=session, request=request, app_origin=True
+    )

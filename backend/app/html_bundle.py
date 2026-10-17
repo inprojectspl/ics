@@ -72,6 +72,12 @@ def _render_csp(cdn: str) -> str:
 BUNDLE_CSP: str = _render_csp("")
 
 
+# For bundle files served on the app origin (legacy `/static/` links): an
+# opaque origin, so scripts still run but carry no ICS session (the session
+# cookie is SameSite=Lax and the CSRF check rejects `Origin: null`).
+APP_ORIGIN_SANDBOX = " sandbox allow-scripts allow-popups allow-modals allow-downloads;"
+
+
 def build_csp(trusted_hosts: frozenset[str] | None = None) -> str:
     """`BUNDLE_CSP` with the trusted CDN hosts added to script, style, font and
     connect sources."""

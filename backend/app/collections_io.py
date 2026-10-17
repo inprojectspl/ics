@@ -24,6 +24,12 @@ def normalize_collection_path(p: str) -> str:
     return "/".join(parts)
 
 
+def upload_basename(raw: str) -> str:
+    """Storage name of a single uploaded file: its last path segment. Browsers
+    send a base name, other clients may send any path."""
+    return normalize_collection_path(PurePosixPath(raw.replace("\\", "/")).name)
+
+
 #: Shared partial-read limit for MCP-facing endpoints (file-mcp, share
 #: resolve). One constant, so clients learn a single pagination protocol.
 MAX_LINES_RANGE = 2000
