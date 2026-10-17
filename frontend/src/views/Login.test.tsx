@@ -65,6 +65,26 @@ describe("Login", () => {
     expect(screen.getByText("No account? Ask an admin.")).toBeInTheDocument();
   });
 
+  it("shows Google sign-in once the config answers after a failed attempt", async () => {
+    // A request lost while the server restarts must not hide Google until a reload.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      authConfig
+        .mockRejectedValueOnce(new Error("502"))
+        .mockResolvedValue({ google_oidc_enabled: true, self_register_enabled: false });
+      render(<Login onLogged={vi.fn()} />);
+      await waitFor(() => expect(authConfig).toHaveBeenCalledTimes(1));
+      expect(screen.queryByRole("link", { name: /Google/ })).not.toBeInTheDocument();
+
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(await screen.findByRole("link", { name: /Sign in with Google/ })).toBeInTheDocument();
+      expect(authConfig).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("renders in Polish and reports a failed login in Polish", async () => {
     setLocale("pl", { persist: false });
     login.mockRejectedValue(new Error("401"));

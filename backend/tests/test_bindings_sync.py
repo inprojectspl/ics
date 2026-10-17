@@ -223,3 +223,49 @@ async def test_sync_over_owner_quota_returns_413_and_cleans_storage(client, sess
     r = await client.post(f"/api/bindings/{binding_id}/sync", files=_files(binding_id, key, bundle))
     assert r.status_code == 413
     await _assert_untouched(session, asset, fs_storage)
+
+
+@pytest.mark.asyncio
+async def test_older_push_that_waited_on_its_bundle_does_not_overwrite_a_newer_one(
+    client, session, fs_storage, monkeypatch
+):
+    """The order check ran once, before the bundle was read: a newer push
+    committed while an older one was still uploading let the older one
+    publish its content over it."""
+    from sqlalchemy import update
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from starlette.datastructures import UploadFile
+
+    from app.config import get_settings
+    from app.models import GitLabBinding
+
+    asset, binding_id, key = await _new_binding(client, session)
+    older = datetime.now(UTC) - timedelta(minutes=10)
+    newer = datetime.now(UTC) - timedelta(minutes=1)
+    original_read = UploadFile.read
+
+    async def read_while_a_newer_push_lands(self, *args, **kwargs):
+        if self.filename == "b.tar.gz":
+            engine = create_async_engine(get_settings().database_url)
+            async with async_sessionmaker(engine)() as other:
+                await other.execute(
+                    update(GitLabBinding)
+                    .where(GitLabBinding.id == binding_id)
+                    .values(last_sync_timestamp=newer)
+                )
+                await other.commit()
+            await engine.dispose()
+        return await original_read(self, *args, **kwargs)
+
+    monkeypatch.setattr(UploadFile, "read", read_while_a_newer_push_lands)
+    bundle = _make_tar_gz({"README.md": b"# old content\n"})
+
+    r = await client.post(
+        f"/api/bindings/{binding_id}/sync",
+        files=_files(binding_id, key, bundle, ts=_iso(older)),
+    )
+
+    assert r.status_code == 409, r.text
+    assert r.json()["code"] == "replay_rejected"
+    await session.refresh(asset)
+    assert asset.version == 1

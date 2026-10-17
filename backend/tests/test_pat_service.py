@@ -128,7 +128,8 @@ async def test_no_plaintext_secret_is_stored(session):
     token, plaintext = await pat.create(session, user=user, name="ps", expires_at=_in_days(1))
     await session.commit()
 
-    secret = plaintext.rsplit("_", 1)[-1]
+    # The random part may itself contain "_", so split after the prefix.
+    secret = plaintext.removeprefix(pat.TOKEN_PREFIX).partition("_")[2]
     row = (
         await session.execute(
             text("SELECT * FROM personal_access_tokens WHERE id = :id"), {"id": token.id}
