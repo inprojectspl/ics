@@ -72,33 +72,53 @@ export function useCollectionDoc({
   // loadFile]) but still reads the latest activePath when invoked.
   const activePathRef = useRef(activePath);
   activePathRef.current = activePath;
+  const initialPathRef = useRef(initialPath);
+  initialPathRef.current = initialPath;
+
+  // Every file load takes a ticket and only the latest one may write, so a
+  // late answer for an earlier click or for the previous document is dropped.
+  const ticketRef = useRef(0);
+  // The path the latest load asked for, which may still be in flight.
+  const requestedRef = useRef<string | null>(null);
+  // The `initialPath` already acted on, so a re-render or a fresh doc does
+  // not reload it, and the URL change made by `openFile` does not either.
+  const appliedPathRef = useRef<string | undefined>(undefined);
+
+  const showFile = useCallback(
+    async (d: AssetDoc, target: string): Promise<void> => {
+      const ticket = ++ticketRef.current;
+      requestedRef.current = target;
+      if (!target || target === d.entry_path || d.kind !== "md_collection") {
+        setActivePath(target);
+        setHtml(d.html);
+        return;
+      }
+      try {
+        const f = await loadFile(target);
+        if (ticket !== ticketRef.current) return;
+        setActivePath(f.path);
+        setHtml(f.html);
+      } catch (e) {
+        if (ticket === ticketRef.current) fail(e, "file");
+      }
+    },
+    [loadFile, fail],
+  );
 
   // Fetch the doc once per key (slug/token), independently of path changes.
   useEffect(() => {
     let cancelled = false;
+    // Drops file answers still in flight for the previous document.
+    ticketRef.current++;
+    requestedRef.current = null;
     setDoc(null);
     fail(null);
     loadDoc()
-      .then(async (d) => {
+      .then((d) => {
         if (cancelled) return;
         setDoc(d);
-        const target = initialPath || d.entry_path || "";
-        setActivePath(target);
-        if (!target || target === d.entry_path) {
-          setHtml(d.html);
-          return;
-        }
-        // A deep link to a non-entry file: the path effect below sees
-        // `initialPath === activePath` and bails out, so fetch it here.
-        if (d.kind !== "md_collection") return;
-        try {
-          const f = await loadFile(target);
-          if (cancelled) return;
-          setActivePath(f.path);
-          setHtml(f.html);
-        } catch (e) {
-          if (!cancelled) fail(e, "file");
-        }
+        appliedPathRef.current = initialPathRef.current;
+        return showFile(d, initialPathRef.current || d.entry_path || "");
       })
       .catch((e) => !cancelled && fail(e));
     return () => {
@@ -109,50 +129,24 @@ export function useCollectionDoc({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
-  // When the initial-path prop changes externally (e.g. browser back/forward
-  // updates the URL) and we already have the doc loaded, fetch that file.
+  // The address changed (back/forward, a link): show the file it names, or
+  // the entry when it names none.
   useEffect(() => {
-    if (!doc || doc.kind !== "md_collection") return;
-    if (!initialPath || initialPath === activePath) return;
-    let cancelled = false;
-    if (initialPath === doc.entry_path) {
-      setActivePath(initialPath);
-      setHtml(doc.html);
-      return;
-    }
-    loadFile(initialPath)
-      .then((f) => {
-        if (cancelled) return;
-        setActivePath(f.path);
-        setHtml(f.html);
-      })
-      .catch((e) => !cancelled && fail(e, "file"));
-    return () => {
-      cancelled = true;
-    };
-    // activePath is written by this effect, so depending on it would loop;
-    // loadFile and fail are stable for the lifetime of a doc.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialPath, doc]);
+    if (!doc || doc.kind !== "md_collection" || appliedPathRef.current === initialPath) return;
+    appliedPathRef.current = initialPath;
+    const target = initialPath || doc.entry_path || "";
+    if (target !== requestedRef.current) void showFile(doc, target);
+  }, [initialPath, doc, showFile]);
 
   const openFile = useCallback(
     (target: string) => {
       if (!doc || doc.kind !== "md_collection") return;
-      if (target === activePath) return;
+      if (target === requestedRef.current) return;
+      appliedPathRef.current = target;
       onNavigate?.(target);
-      if (target === doc.entry_path) {
-        setActivePath(target);
-        setHtml(doc.html);
-        return;
-      }
-      loadFile(target)
-        .then((f) => {
-          setActivePath(f.path);
-          setHtml(f.html);
-        })
-        .catch((e) => fail(e, "file"));
+      void showFile(doc, target);
     },
-    [doc, activePath, loadFile, onNavigate, fail],
+    [doc, onNavigate, showFile],
   );
 
   const reload = useCallback(
@@ -163,6 +157,7 @@ export function useCollectionDoc({
         fail(null);
 
         if (fresh.kind !== "md_collection") {
+          ticketRef.current++;
           setHtml(fresh.html || "");
           return;
         }
@@ -175,25 +170,24 @@ export function useCollectionDoc({
               ? currentActive
               : fresh.entry_path)
             ?? "";
-
-        if (!desired) {
-          setActivePath("");
-          setHtml(fresh.html || "");
-          return;
-        }
-        if (desired === fresh.entry_path) {
+        const ticket = ++ticketRef.current;
+        requestedRef.current = desired;
+        if (!desired || desired === fresh.entry_path) {
           setActivePath(desired);
-          setHtml(fresh.html);
+          setHtml(fresh.html || "");
           return;
         }
         try {
           const f = await loadFile(desired);
+          if (ticket !== ticketRef.current) return;
           setActivePath(f.path);
           setHtml(f.html);
         } catch (e) {
+          if (ticket !== ticketRef.current) return;
           // The requested file vanished between mutation and reload -
           // fall back to the fresh entry rather than wedging the view.
           if (fresh.entry_path) {
+            requestedRef.current = fresh.entry_path;
             setActivePath(fresh.entry_path);
             setHtml(fresh.html);
           } else {

@@ -26,6 +26,7 @@ import { graphHref } from "../lib/graphHref";
 import { displayTitle } from "../lib/displayTitle";
 import { formatRelative } from "../lib/format";
 import { t } from "../lib/i18n";
+import { navigate } from "../lib/navigate";
 import { hasOcrState } from "../lib/ocr";
 import { useCollectionDoc } from "../lib/useCollectionDoc";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
@@ -79,7 +80,9 @@ export function Viewer({ slug, path, version, basePath, tab }: Props) {
     (p: string) => `${baseRef.current}?p=${encodeURIComponent(p)}${version ? `&ver=${version}` : ""}`,
     [version],
   );
-  const onNavigate = useCallback((p: string) => window.history.pushState({}, "", pathHref(p)), [pathHref]);
+  // Through the router, so `path` follows the address and back/forward
+  // return to the file the address names.
+  const onNavigate = useCallback((p: string) => navigate(pathHref(p)), [pathHref]);
   const { doc, html, activePath, error, docErrorStatus, docErrorCode, openFile, reload, collectionCtx } =
     useCollectionDoc({
       // A version change is a different document for the hook.
