@@ -7,6 +7,8 @@ import { t } from "../lib/i18n";
 
 type Props = { onLogged: () => void };
 
+const CONFIG_RETRIES = 5;
+
 export function Login({ onLogged }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -14,8 +16,26 @@ export function Login({ onLogged }: Props) {
   const [busy, setBusy] = useState(false);
   const [cfg, setCfg] = useState<AuthConfig | null>(null);
 
+  // Retried with backoff (about 30 s in all): an answer lost while the
+  // server restarts would otherwise hide Google sign-in until a reload.
   useEffect(() => {
-    api.authConfig().then(setCfg).catch(() => setCfg(null));
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const load = (attempt: number) => {
+      api
+        .authConfig()
+        .then((c) => !cancelled && setCfg(c))
+        .catch(() => {
+          if (!cancelled && attempt < CONFIG_RETRIES) {
+            timer = setTimeout(() => load(attempt + 1), 1000 * 2 ** attempt);
+          }
+        });
+    };
+    load(0);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, []);
 
   const onSubmit = async (e: FormEvent) => {
