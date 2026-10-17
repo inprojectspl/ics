@@ -286,3 +286,39 @@ async def test_failed_stream_aborts_the_multipart_upload(stub_storage, monkeypat
         await s.put("a/v1/big.bin", src())
     assert stub.calls[-1][0] == "abort_multipart_upload"
     assert "a/v1/big.bin" not in stub._objects
+
+
+@pytest.mark.asyncio
+async def test_copy_prefix_copies_only_its_own_version(stub_storage):
+    """`v1` is a directory: listing it as a bare key prefix also matched
+    `v10`, whose files landed in the copy under a nested path."""
+    s, stub = stub_storage
+
+    async def src(data: bytes):
+        yield data
+
+    await s.put("assets/a/v1/x.md", src(b"one"))
+    await s.put("assets/a/v10/x.md", src(b"ten!!"))
+    await s.put("assets/a/v10/y.md", src(b"ten"))
+
+    total = await s.copy_prefix("assets/a/v1", "assets/a/v11")
+
+    assert total == 3
+    copied = {c[1]["Key"] for c in stub.calls if c[0] == "copy_object"}
+    assert copied == {"assets/a/v11/x.md"}
+    assert await s.list_prefix("assets/a/v10/") == ["assets/a/v10/x.md", "assets/a/v10/y.md"]
+
+
+@pytest.mark.asyncio
+async def test_delete_prefix_leaves_sibling_versions(stub_storage):
+    s, stub = stub_storage
+
+    async def src():
+        yield b"x"
+
+    await s.put("assets/a/v1/x.md", src())
+    await s.put("assets/a/v10/x.md", src())
+    await s.delete_prefix("assets/a/v1")
+
+    deletes = [c for c in stub.calls if c[0] == "delete_objects"]
+    assert {o["Key"] for d in deletes for o in d[1]["Delete"]["Objects"]} == {"assets/a/v1/x.md"}
