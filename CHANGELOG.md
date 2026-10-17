@@ -26,3 +26,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Restoring version 1 on S3 or R2 storage no longer copies the files of versions 10 to 19.
 - The collection reader shows the last file clicked even when answers arrive out of order, and
   back/forward show the file the address names.
+- A new version of a bundle or a collection keeps the `entry_path` the caller names; it was
+  ignored and ICS picked `index.html` or `README.md` instead.

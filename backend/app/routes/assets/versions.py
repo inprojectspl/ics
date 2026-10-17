@@ -115,6 +115,7 @@ async def create_version(
     change_note: Annotated[
         str | None, Form(max_length=asset_versions.CHANGE_NOTE_MAX_CHARS)
     ] = None,
+    entry_path: Annotated[str | None, Form()] = None,
 ) -> dict:
     """Replace asset content with a new version. The asset's kind is
     immutable, so uploads must match the existing kind's shape:
@@ -182,11 +183,14 @@ async def create_version(
                 status.HTTP_400_BAD_REQUEST, "unsupported_kind", f"unsupported kind: {asset.kind}"
             )
 
+    entry = _requested_entry(asset.kind, entry_path, [p for _, p in pairs])
     result = await asset_versions.commit_new_version(
         session,
         asset,
         settings,
-        stage=asset_versions.write_uploads(pairs, max_bytes=settings.max_asset_bytes),
+        stage=asset_versions.write_uploads(
+            pairs, max_bytes=settings.max_asset_bytes, entry_path=entry
+        ),
         actor=user,
         audit_action="asset_versioned",
         audit_payload=lambda nv: {
@@ -205,6 +209,23 @@ async def create_version(
         "size_bytes": result.size_bytes,
         "security_status": asset.security_status,
     }
+
+
+def _requested_entry(kind: str, entry_path: str | None, paths: list[str]) -> str | None:
+    """The entry file a collection or bundle version asks for, checked
+    before anything is written; `None` lets ICS pick it. Single-file kinds
+    have no choice to make."""
+    if entry_path is None or kind not in ("md_collection", "html_bundle"):
+        return None
+    entry = normalize_collection_path(entry_path)
+    allowed = (".md",) if kind == "md_collection" else (".html", ".htm")
+    if entry not in paths or not entry.lower().endswith(allowed):
+        raise ApiError(
+            status.HTTP_400_BAD_REQUEST,
+            "invalid_entry_path",
+            f"entry_path must point to one of the uploaded {' or '.join(allowed)} files",
+        )
+    return entry
 
 
 @router.post("/{asset_id}/versions/{n}/restore", status_code=status.HTTP_201_CREATED)
