@@ -38,6 +38,7 @@ A few things behave differently from some other Markdown tools:
 
 - A single line break in the source is a line break on the page, as on GitHub and in Obsidian.
 - Raw HTML inside Markdown is not rendered; it shows as text. If you need HTML, upload an [HTML bundle](#html-bundles).
+- An AI agent can read Markdown without its HTML comments (`<!-- ... -->`), such as the timestamps a transcription tool leaves before every line: `ics_asset_read` with `format="markdown"`. Comments in code stay, and line numbers do not change. Without the option the agent gets the file as stored, which is what it should edit.
 - Amounts such as `$650k ... $350k` are not mistaken for math.
 - Every heading gets a **Link to this section** anchor you can copy.
 

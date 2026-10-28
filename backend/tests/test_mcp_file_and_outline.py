@@ -225,6 +225,26 @@ async def test_file_mcp_bundle_markdown_format_extracts_content(client, session,
 
 
 @pytest.mark.asyncio
+async def test_file_mcp_markdown_format_drops_comments_before_slicing(client, session, fs_storage):
+    user = await mk_user(session)
+    asset = await mk_asset(session, user, kind="md_single", entry_path="doc.md")
+    await session.commit()
+    await put_blob(asset, "doc.md", b"# T\n\n<!-- t: 1 -->\n**Anna:** Hi.\n")
+    await _login(client, user)
+
+    r = await client.get(f"/api/assets/by-slug/{asset.slug}/file-mcp?format=markdown&lines=3-4")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["content"] == "\n**Anna:** Hi."
+    assert body["total_lines"] == 4
+    assert body["format"] == "markdown"
+
+    raw = await client.get(f"/api/assets/by-slug/{asset.slug}/file-mcp?lines=3-3")
+    assert raw.json()["content"] == "<!-- t: 1 -->"
+    assert "format" not in raw.json()
+
+
+@pytest.mark.asyncio
 async def test_file_mcp_markdown_format_rejected_for_non_html(client, session, fs_storage):
     _, asset = await mk_html_bundle(
         client, session, {"index.html": b"<html></html>", "assets/style.css": b"body{}"}

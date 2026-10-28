@@ -180,17 +180,21 @@ async def list_md_paths(asset: Asset, settings: Settings) -> list[str]:
 
 
 MarkdownSources = list[tuple[str, str]]
-_MARKDOWN_EXTENSIONS = (".md", ".markdown")
 # Bounded so a collection with hundreds of notes cannot open an unbounded
 # number of storage connections at once.
 _READ_CONCURRENCY = 16
+
+
+def is_markdown_path(path: str) -> bool:
+    """A Markdown file by name: `.md` or `.markdown`, any case."""
+    return path.lower().endswith((".md", ".markdown"))
 
 
 async def read_markdown_files(asset: Asset, settings: Settings) -> MarkdownSources:
     """`(path, text)` of every Markdown file (`.md`, `.markdown`, any case) in the
     current version, in listing order; a file gone since listing is skipped."""
     files = await list_version_files(asset, asset.version, settings)
-    rels = [rel for rel in files if rel.lower().endswith(_MARKDOWN_EXTENSIONS)]
+    rels = [rel for rel in files if is_markdown_path(rel)]
     sem = asyncio.Semaphore(_READ_CONCURRENCY)
 
     async def _read(rel: str) -> tuple[str, str] | None:

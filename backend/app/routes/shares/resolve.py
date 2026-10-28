@@ -13,6 +13,7 @@ from fastapi import Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import audit, permissions
+from app.agent_markdown import markdown_converter
 from app.auth import CurrentUser, require_mcp_rate_limit
 from app.collections_io import (
     list_md_paths,
@@ -115,6 +116,12 @@ async def share_resolve(
             raise ApiError(
                 status.HTTP_404_NOT_FOUND, "entry_missing", "the asset has no entry file"
             )
+        # A document is converted Markdown already, like from `file-mcp`.
+        convert = (
+            markdown_converter(rel)
+            if body.format == "markdown" and not documents.is_document(asset.kind)
+            else None
+        )
         try:
             if asset.kind == "md_collection":
                 raw, tree = await asyncio.gather(
@@ -141,6 +148,8 @@ async def share_resolve(
                 "file_not_found",
                 f"file does not exist in the collection: {rel}",
             ) from None
+        if convert is not None:
+            raw = await asyncio.to_thread(convert, raw)
         # Same paging as `file-mcp`: over the limit without `lines` is a 400.
         content, total_lines, returned_range = slice_lines(raw, body.lines)
         if direct_role is None:

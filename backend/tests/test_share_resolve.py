@@ -86,6 +86,23 @@ async def test_resolve_public_returns_raw_content_and_counts_view(client, sessio
 
 
 @pytest.mark.asyncio
+async def test_resolve_markdown_format_drops_comments(client, session, fs_storage):
+    owner = await mk_user(session)
+    asset = await mk_asset(session, owner, kind="md_single", entry_path="doc.md")
+    await put_blob(asset, "doc.md", b"<!-- generator v1 -->\n# Hello")
+    share = await _mk_share(session, asset)
+    await session.commit()
+    await _login(client, owner)
+
+    r = await _resolve(client, share.token, format="markdown")
+    assert r.status_code == 200, r.text
+    assert r.json()["content"] == "\n# Hello"
+
+    r = await _resolve(client, share.token)
+    assert r.json()["content"] == "<!-- generator v1 -->\n# Hello"
+
+
+@pytest.mark.asyncio
 async def test_resolve_untitled_asset(client, session, fs_storage):
     # `title` is nullable, so the response model must accept None.
     owner = await mk_user(session)
