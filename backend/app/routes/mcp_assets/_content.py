@@ -13,11 +13,11 @@ from typing import Any
 from fastapi import status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_markdown import markdown_converter
 from app.collections_io import decode_text, normalize_collection_path, read_bytes_at_version
 from app.config import Settings
 from app.errors import ApiError
 from app.html_bundle import is_allowed_path
-from app.html_markdown import html_to_markdown
 from app.models import Asset
 from app.services import documents, ocr
 from app.services.versions import entry_path_at_version
@@ -93,11 +93,7 @@ async def load_agent_text(
             extra["ocr"] = block
         return AgentText(text, extra=extra)
 
-    to_markdown = format == "markdown"
-    if to_markdown and not target.lower().endswith((".html", ".htm")):
-        raise ApiError(
-            status.HTTP_400_BAD_REQUEST, "html_only", "format=markdown works on .html files only"
-        )
+    convert = markdown_converter(target) if format == "markdown" else None
     try:
         blob = await read_bytes_at_version(asset, version, target, settings)
     except FileNotFoundError as e:
@@ -112,8 +108,8 @@ async def load_agent_text(
     else:
         text = blob.decode("utf-8", errors="replace")
 
-    if not to_markdown:
+    if convert is None:
         return AgentText(text)
-    # BeautifulSoup is pure Python and a bundle page can be megabytes,
+    # Both parsers are pure Python and a file can be megabytes,
     # so the conversion runs off the event loop.
-    return AgentText(await asyncio.to_thread(html_to_markdown, text), extra={"format": "markdown"})
+    return AgentText(await asyncio.to_thread(convert, text), extra={"format": "markdown"})

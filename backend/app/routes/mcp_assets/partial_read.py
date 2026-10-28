@@ -72,9 +72,10 @@ async def file_with_line_range(
 ) -> ORJSONResponse:
     """`/by-slug/{slug}/file` with `lines=N-M` paging (2000 lines by default).
 
-    `format=markdown` converts .html before slicing; documents read as their
-    converted Markdown. Bundle files are returned as source, never rendered,
-    so the visitor `security_status` gate deliberately does not apply.
+    `format=markdown` converts .html and drops Markdown comments before
+    slicing; documents read as their converted Markdown. Bundle files are
+    returned as source, never rendered, so the visitor `security_status`
+    gate deliberately does not apply.
     """
     asset, role = await permissions.get_asset_with_role(
         session, user=user, min_role="viewer", slug=slug

@@ -40,6 +40,7 @@ class ShareResolveIn(BaseModel):
     password: str | None = Field(default=None, max_length=512)
     path: str | None = Field(default=None, max_length=512)
     lines: str | None = Field(default=None, pattern=r"^\d+-\d+$")
+    format: str | None = Field(default=None, pattern=r"^(raw|markdown)$")
 
 
 class ResolvedShareOut(BaseModel):
@@ -65,8 +66,9 @@ class ResolvedAssetOut(BaseModel):
 class ShareResolveOut(BaseModel):
     """One-shot resolve response for Bearer clients (MCP). `content` is raw
     markdown (not HTML: the agent parses the source anyway, and HTML only
-    bloats the LLM context); `tree` for md_collection, `files` for
-    html_bundle (metadata only, the bundle renders in the iso-viewer)."""
+    bloats the LLM context), without HTML comments for `format=markdown`;
+    `tree` for md_collection, `files` for html_bundle (metadata only, the
+    bundle renders in the iso-viewer)."""
 
     share: ResolvedShareOut
     asset: ResolvedAssetOut

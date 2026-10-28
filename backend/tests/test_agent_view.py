@@ -179,12 +179,29 @@ async def test_binary_bundle_file_is_415(client, session, fs_storage):
 
 
 @pytest.mark.asyncio
+async def test_markdown_without_comments_matches_file_mcp(client, session, fs_storage):
+    user = await mk_user(session)
+    asset = await mk_asset(session, user, kind="md_single", entry_path="doc.md")
+    await session.commit()
+    await put_blob(asset, "doc.md", b"# T\n\n<!-- note -->\ntext\n")
+    await login_as(client, user)
+
+    r = await _agent_view(client, asset.slug, "?format=markdown")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    agent = await _file_mcp(client, asset.slug, "?format=markdown")
+    assert body["content"] == agent["content"] == "# T\n\n\ntext"
+    assert body["format"] == "markdown"
+    assert "note" not in body["html"]
+
+
+@pytest.mark.asyncio
 async def test_markdown_format_on_non_html_is_400(client, session, fs_storage):
     _, asset = await mk_html_bundle(client, session, {"index.html": PAGE, "app.css": b"p{}"})
 
     r = await _agent_view(client, asset.slug, "?path=app.css&format=markdown")
     assert r.status_code == 400
-    assert r.json()["code"] == "html_only"
+    assert r.json()["code"] == "format_unsupported"
 
 
 @pytest.mark.asyncio

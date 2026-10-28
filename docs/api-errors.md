@@ -118,7 +118,7 @@ Codes follow the RFC 6749, RFC 7591 and RFC 8707 error names.
 | `entry_missing` | 404 | The asset has no entry file. |
 | `collection_only` | 400 | Operation works only on Markdown collections. |
 | `markdown_only` | 400 | Option works only on Markdown files. |
-| `html_only` | 400 | Option works only on `.html` files. |
+| `format_unsupported` | 400 | `format=markdown` works only on HTML and Markdown files. |
 | `not_html_bundle` | 400, 404 | Operation works only on HTML bundles. |
 | `html_bundle_not_editable` | 400 | HTML bundles have no inline-editable source. |
 | `kind_not_renderable` | 400 | Asset kind cannot be rendered by this endpoint. |
