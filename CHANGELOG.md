@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- KaTeX 0.18.11 and mermaid 12.2.0 replace versions with a published advisory (prototype pollution
+  bypassing KaTeX trust restrictions); both share one copy of KaTeX.
 - Locking an account and an admin's **Revoke all tokens** also sign out the person's AI assistants
   connected through ics-mcp: their OAuth tokens are revoked, so they no longer work again once a
   lock ends.
