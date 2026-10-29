@@ -390,6 +390,15 @@ async def register_oauth_client(client: AsyncClient, *, name: str = "Test Client
     return r.json()
 
 
+async def signed_in_oauth_client(client: AsyncClient, session: AsyncSession) -> dict:
+    """A registered OAuth client and a signed-in user ready to authorize it."""
+    dcr = await register_oauth_client(client)
+    user = await mk_user(session)
+    await session.commit()
+    await login_as(client, user)
+    return dcr
+
+
 async def do_authorize_get_code(
     client: AsyncClient,
     dcr_client_id: str,

@@ -126,7 +126,9 @@ async def _grant_refresh(form, settings: Settings, session: AsyncSession) -> JSO
 
     # A rotated token presented again means it leaked: revoke the whole chain.
     if rec.revoked_at is not None or rec.rotated_at is not None:
-        await tokens_mod.revoke_refresh_chain(session, rec, reason="reuse_detected")
+        await tokens_mod.revoke_refresh_chain(
+            session, rec, reason="reuse_detected", access_ttl=settings.oauth_access_token_ttl
+        )
         await session.commit()
         raise ApiError(
             status.HTTP_400_BAD_REQUEST, "invalid_grant", "invalid_grant: reuse detected"

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import Depends, Request, status
@@ -26,16 +25,19 @@ async def revoke_token(
 ) -> JSONResponse:
     form = await request.form()
     token_value = form.get("token")
-    hint = form.get("token_type_hint")
     # A file part named `token` is as malformed as a missing one.
     if not token_value or not isinstance(token_value, str):
         raise ApiError(status.HTTP_400_BAD_REQUEST, "invalid_request", "invalid_request")
-    if hint == "refresh_token":
-        rec = await tokens_mod.find_active_refresh(session, tokens_mod.hash_token(token_value))
-        if rec and rec.revoked_at is None:
-            rec.revoked_at = datetime.now(UTC)
-            rec.revocation_reason = "user_revoke"
-            await session.commit()
+    # `token_type_hint` is optional and may be wrong (RFC 7009, section 2.1),
+    # so the token is looked up as a refresh token whatever the hint says.
+    rec = await tokens_mod.find_active_refresh(session, tokens_mod.hash_token(token_value))
+    if rec is not None:
+        # Revoking a refresh token ends the grant: its whole rotation family
+        # and the access tokens issued with it.
+        await tokens_mod.revoke_refresh_chain(
+            session, rec, reason="user_revoke", access_ttl=settings.oauth_access_token_ttl
+        )
+        await session.commit()
         return JSONResponse({})
     # Otherwise try access JWT. Audience unknown to revoke endpoint: verify
     # the signature, then read jti+exp and blacklist. Claim rules stay off:
@@ -51,6 +53,6 @@ async def revoke_token(
         return JSONResponse({})
     # Only token errors are swallowed above: a failed write must surface as
     # a 5xx, or the client believes a still-valid token is revoked.
-    await tokens_mod.blacklist_jti(session, jti, exp)
+    await tokens_mod.blacklist_jti(session, jti, expires_at_epoch=exp)
     await session.commit()
     return JSONResponse({})

@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Revoking a refresh token works without `token_type_hint` or with a wrong one, and ends the
+  grant: the token's rotation family and the access tokens issued with it stop working at once.
+  Reuse of a rotated refresh token cuts the access tokens of its family too.
 - The loopback redirect of the built-in stdio client is checked as a parsed URL, so only the
   port may vary: `http://127.0.0.1:1@other.host/callback` no longer sends the authorization code
   to another host. Dynamic clients register only HTTPS, loopback HTTP or app-scheme callbacks, and the

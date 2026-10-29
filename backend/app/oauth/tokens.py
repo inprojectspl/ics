@@ -99,12 +99,15 @@ async def is_jti_revoked(session: AsyncSession, jti: str) -> bool:
     ) is not None
 
 
-async def blacklist_jti(session: AsyncSession, jti: str, expires_at_epoch: int) -> None:
-    """Idempotent: revoking an already revoked token (or two revokes racing)
-    is not an error."""
+async def blacklist_jti(session: AsyncSession, *jtis: str, expires_at_epoch: int) -> None:
+    """One insert for all `jtis`. Idempotent: revoking an already revoked
+    token (or two revokes racing) is not an error."""
+    if not jtis:
+        return
+    expires_at = datetime.fromtimestamp(expires_at_epoch, tz=UTC)
     await session.execute(
         pg_insert(OAuthJTIBlacklist)
-        .values(jti=jti, expires_at=datetime.fromtimestamp(expires_at_epoch, tz=UTC))
+        .values([{"jti": jti, "expires_at": expires_at} for jti in jtis])
         .on_conflict_do_nothing(index_elements=[OAuthJTIBlacklist.jti])
     )
 
@@ -137,12 +140,17 @@ async def issue_refresh_token(
 
 
 async def revoke_refresh_chain(
-    session: AsyncSession, start: OAuthRefreshToken, reason: str
+    session: AsyncSession, start: OAuthRefreshToken, reason: str, *, access_ttl: int
 ) -> None:
     """Walk the parent_id chain backwards and the children forwards, revoking
-    every token in the family. Triggered when a rotated token is reused
+    every token in the family and blacklisting the access JWT issued with each.
+    Triggered by a revocation request or when a rotated token is reused
     (= token leak detected)."""
     now = datetime.now(UTC)
+    # An access JWT is issued with its refresh token and lives `access_ttl`:
+    # only the tokens younger than that can still have a usable one.
+    live_since = now - timedelta(seconds=access_ttl)
+    live_jtis: list[str] = []
     visited: set[uuid.UUID] = set()
     queue: list[OAuthRefreshToken] = [start]
     while queue:
@@ -152,6 +160,9 @@ async def revoke_refresh_chain(
         visited.add(cur.id)
         cur.revoked_at = now
         cur.revocation_reason = reason
+        # `created_at` is unset on a token added in this transaction.
+        if cur.created_at is None or cur.created_at > live_since:
+            live_jtis.append(cur.jwt_id)
         if cur.parent_id and cur.parent_id not in visited:
             parent = await session.get(OAuthRefreshToken, cur.parent_id)
             if parent:
@@ -164,6 +175,8 @@ async def revoke_refresh_chain(
         for ch in children:
             if ch.id not in visited:
                 queue.append(ch)
+    # The blacklist row only has to outlast the JWTs it blocks.
+    await blacklist_jti(session, *live_jtis, expires_at_epoch=int(now.timestamp()) + access_ttl)
 
 
 async def find_active_refresh(
