@@ -268,7 +268,7 @@ Deleting is reserved for the document's owner, the owner of its project and admi
 
 ### Restore a deleted document
 
-Deletion is soft: the document and its versions are kept. The web app has no restore button, but the owner (or an administrator) can restore a deleted document through the ICS API, for example by asking an AI assistant connected through ics-mcp, see [AI agents](ai-agents.md).
+Deletion is soft: the document and its versions are kept. The web app has no restore button, but the owner can restore a deleted document through the ICS API, for example by asking an AI assistant connected through ics-mcp, see [AI agents](ai-agents.md).
 
 A restored document comes back with its content and history, but without its old links and grants: they stay revoked. Create new links and grants after restoring.
 

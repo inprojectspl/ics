@@ -121,7 +121,7 @@ async def _validate_pat(
     request: Request, session: AsyncSession, settings: Settings, token: str
 ) -> User:
     """Personal access token (ADR-0020): same 401 contract as the OAuth path,
-    evaluated as an ordinary user (`User.pat_request`), limited like MCP."""
+    evaluated as an ordinary user (`User.token_request`), limited like MCP."""
     row = await pat.verify(session, token)
     if row is None:
         raise _bearer_401(settings, "invalid personal access token")
@@ -135,10 +135,15 @@ async def _validate_pat(
     if await pat.record_use(session, row):
         await session.commit()
 
-    user.pat_request = True
+    user.token_request = True
     request.state.oauth_scopes = list(row.scopes)
     request.state.oauth_transport = "pat"
     return user
+
+
+# A token works without the browser, so a leaked one must not carry admin
+# powers (ADR-0020): the holder acts as an ordinary user.
+_TOKEN_TRANSPORTS = frozenset({"bearer", "pat"})
 
 
 async def get_current_user(
@@ -154,7 +159,7 @@ async def get_current_user(
     request.state.current_user = user
     # The flag lives on the (identity-mapped) instance, so reset it for every
     # other transport rather than relying on the class default.
-    user.pat_request = getattr(request.state, "oauth_transport", None) == "pat"
+    user.token_request = getattr(request.state, "oauth_transport", None) in _TOKEN_TRANSPORTS
     return user
 
 
@@ -215,8 +220,8 @@ async def _authenticate(request: Request, session: AsyncSession, settings: Setti
 
 
 async def require_admin(user: Annotated[User, Depends(get_current_user)]) -> User:
-    # `acts_as_admin` is False for a personal access token: /api/admin/* is
-    # browser only (ADR-0020).
+    # `acts_as_admin` is False for a bearer token (PAT or OAuth): /api/admin/*
+    # is browser only (ADR-0020).
     if not user.acts_as_admin:
         raise ApiError(status.HTTP_403_FORBIDDEN, "admin_required", "admin required")
     return user

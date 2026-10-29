@@ -17,7 +17,7 @@ On top of that, only administrators can:
 - read the audit log ([Audit log](#read-the-audit-log)).
 
 > [!NOTE]
-> A request made with a personal access token never gets administrator rights, even when the token belongs to an administrator. See [Account settings](account.md).
+> A request made with a personal access token, or by an AI assistant connected through ics-mcp, never gets administrator rights, even when the token belongs to an administrator. See [Account settings](account.md).
 
 ## Manage users
 

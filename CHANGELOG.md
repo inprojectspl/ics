@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- An OAuth token, as used by MCP clients, never carries administrator rights, like a personal
+  access token: an admin's agent sees what an ordinary user would and `/api/admin/*` refuses it.
+  Administration stays in the browser.
 - A refresh token or authorization code used by two requests at once is consumed once: the
   second request waits for the first and is refused, so one refresh no longer yields two live
   successors.

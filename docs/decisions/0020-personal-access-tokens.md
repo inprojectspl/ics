@@ -1,6 +1,7 @@
 # ADR-0020: Personal access tokens and enforced scopes
 
-**Status:** Accepted, 2026-09-26. Implemented (phase 4 of the document graph work).
+**Status:** Accepted, 2026-09-26. Implemented (phase 4 of the document graph work). Amended
+2026-10-29: OAuth access tokens lose admin powers the same way.
 **Decision owners:** Owner.
 **Scope:** new table `personal_access_tokens`, `backend/app/auth.py` (bearer branch),
 `backend/app/permissions.py` (no admin bypass for PAT requests), a scope dependency on
@@ -76,6 +77,10 @@ request authenticated with a PAT is evaluated **as an ordinary user**: the admin
 `effective_role`, `visible_assets_filter` and the graph access predicate (ADR-0016) are
 skipped, and all `/api/admin/*` routes reject PAT requests with 403. An admin who needs
 admin powers uses the browser.
+
+Amended 2026-10-29: the same holds for OAuth access tokens. An MCP client connected by an
+admin otherwise read every document and could call `/api/admin/*`, so a leaked token gave the
+holder the whole organisation. MCP has no admin tools, so nothing it offers depends on it.
 
 ### Enforced scopes
 

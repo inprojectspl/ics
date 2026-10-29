@@ -38,6 +38,8 @@ A locked account cannot approve access.
 > [!TIP]
 > Signing an assistant out happens on the ics-mcp side, by removing its stored tokens; see [Getting started in the ics-mcp guide](https://github.com/inprojectspl/ics-mcp/blob/main/docs/guide/getting-started.md). Personal access tokens in your ICS settings are a separate mechanism, and revoking one does not sign out ics-mcp.
 
+The assistant works with your permissions as an ordinary user: even when you are an administrator, it does not see other people's documents through your administrator rights and cannot use the administration pages.
+
 ### Personal access tokens
 
 For a script or an agent that only needs to read, you can create a personal access token instead. Such a token reads what you can read and cannot change anything. A token never carries administrator powers, even when you are an administrator. See [Account and settings](account.md) for how to create and revoke one.
