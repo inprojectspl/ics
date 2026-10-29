@@ -53,6 +53,11 @@ jobs:
       - run: uv run ruff check app tests
       - run: uv run ruff format --check app tests
       - run: uv run mypy app
+      - name: Audit runtime dependencies
+        run: |
+          uv export --frozen --no-dev --no-emit-project --format requirements-txt -o requirements.txt
+          # The export is fully pinned with hashes, so nothing needs resolving.
+          uvx pip-audit --strict --no-deps --disable-pip -r requirements.txt
       # Tests run in parallel (pytest-xdist); each worker gets its own database.
       - run: uv run pytest -q --cov=app --cov-report=term --cov-fail-under=90
 
