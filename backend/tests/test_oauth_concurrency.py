@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import get_settings
 from app.errors import ApiError
-from app.models import OAuthRefreshToken
+from app.models import OAuthClient, OAuthRefreshToken
 from app.oauth.server.token import _grant_authorization_code, _grant_refresh
 from tests.conftest import (
     do_authorize_get_code,
@@ -62,7 +62,8 @@ async def test_concurrent_refresh_leaves_no_two_live_successors(client, session)
     live = await session.scalar(
         select(func.count())
         .select_from(OAuthRefreshToken)
-        .where(OAuthRefreshToken.revoked_at.is_(None))
+        .join(OAuthClient, OAuthClient.id == OAuthRefreshToken.client_id)
+        .where(OAuthClient.client_id == dcr["client_id"], OAuthRefreshToken.revoked_at.is_(None))
     )
     assert live == 0
 
