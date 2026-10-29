@@ -80,7 +80,9 @@ admin powers uses the browser.
 
 Amended 2026-10-29: the same holds for OAuth access tokens. An MCP client connected by an
 admin otherwise read every document and could call `/api/admin/*`, so a leaked token gave the
-holder the whole organisation. MCP has no admin tools, so nothing it offers depends on it.
+holder the whole organisation. MCP has no admin tools, so nothing it offers depends on it. Locking an account and an admin's
+"revoke all tokens" also revoke the user's OAuth refresh tokens and blacklist their live access
+tokens, so a leaked MCP sign-in does not come back when a lock ends.
 
 ### Enforced scopes
 

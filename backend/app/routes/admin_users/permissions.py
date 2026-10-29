@@ -16,12 +16,11 @@ from app.constants import ROLES
 from app.db import get_session
 from app.errors import ApiError
 from app.models import Asset, User
-from app.services import pat
 from app.util import now as utc_now
 
 from ._models import LockIn, PatchUserIn
 from ._router import router
-from ._shared import _asset_stats, _user_row
+from ._shared import _asset_stats, _user_row, revoke_all_tokens
 
 
 @router.patch("/{user_id}")
@@ -138,14 +137,20 @@ async def lock_user(
         raise ApiError(status.HTTP_400_BAD_REQUEST, "cannot_lock_self", "you cannot lock yourself")
     until = utc_now() + timedelta(minutes=body.minutes)
     user.locked_until = until
-    # A lock must also cut off the tokens a local client may still hold (ADR-0020).
-    await pat.revoke_all_for_user(session, user_id=user.id, actor=admin, reason="account_locked")
+    # A lock must also cut off the tokens a client may still hold (ADR-0020),
+    # or they would work again once it expires.
+    _, oauth_revoked = await revoke_all_tokens(session, user, admin=admin, reason="account_locked")
     await audit.record(
         session,
         actor=admin,
         action="user_locked_by_admin",
         target=f"user:{user.id}",
-        payload={"until": until.isoformat(), "minutes": body.minutes, "reason": body.reason},
+        payload={
+            "until": until.isoformat(),
+            "minutes": body.minutes,
+            "reason": body.reason,
+            "oauth_revoked": oauth_revoked,
+        },
     )
     await session.commit()
     return {"locked_until": until.isoformat()}

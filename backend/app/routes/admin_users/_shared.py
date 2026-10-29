@@ -1,11 +1,26 @@
-"""Shared helpers: user row serializer + asset-stats bulk query."""
+"""Shared helpers: user row serializer, asset-stats bulk query, token revoke."""
 
 from __future__ import annotations
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.models import Asset, User
+from app.oauth import tokens as oauth_tokens
+from app.services import pat
+
+
+async def revoke_all_tokens(
+    session: AsyncSession, user: User, *, admin: User, reason: str
+) -> tuple[int, int]:
+    """Revoke the user's personal access tokens and sign their OAuth clients
+    out (ADR-0020); returns both counts."""
+    pats = await pat.revoke_all_for_user(session, user_id=user.id, actor=admin, reason=reason)
+    grants = await oauth_tokens.revoke_user_grants(
+        session, user.id, reason=reason, access_ttl=get_settings().oauth_access_token_ttl
+    )
+    return pats, grants
 
 
 def _user_row(u: User, *, asset_count: int = 0, asset_bytes: int = 0) -> dict:

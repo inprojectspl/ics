@@ -211,3 +211,38 @@ async def test_revoke_access_jwt_twice_is_idempotent(client, session, monkeypatc
     for _ in range(2):
         r = await client.post("/api/auth/oauth/revoke", data={"token": token})
         assert r.status_code == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "path", "body"),
+    [("POST", "tokens/revoke", {}), ("POST", "lock", {"minutes": 5, "reason": "leak"})],
+)
+async def test_admin_revoke_and_lock_sign_oauth_clients_out(
+    client, session, monkeypatch, method, path, body
+):
+    """Both admin actions cut the OAuth sign-ins too, so a lock that expires
+    does not bring a leaked MCP token back."""
+    from tests.conftest import mk_admin
+
+    dcr, tokens = await _connected(client, session, monkeypatch)
+    user_id = (await client.get("/api/auth/me")).json()["id"]
+    admin = await mk_admin(session)
+    await session.commit()
+    await _login(client, admin)
+
+    r = await client.request(method, f"/api/admin/users/{user_id}/{path}", json=body)
+    assert r.status_code == 200, r.text
+    if path == "lock":
+        assert (await client.delete(f"/api/admin/users/{user_id}/lock")).status_code == 200
+
+    assert await _me(client, tokens["access_token"]) == 401
+    refresh = await client.post(
+        "/api/auth/oauth/token",
+        data={
+            "grant_type": "refresh_token",
+            "refresh_token": tokens["refresh_token"],
+            "client_id": dcr["client_id"],
+        },
+    )
+    assert refresh.status_code == 400

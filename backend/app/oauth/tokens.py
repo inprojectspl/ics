@@ -8,12 +8,13 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from typing import cast
 
 from joserfc import jwt
-from sqlalchemy import CursorResult, delete, select
+from sqlalchemy import CursorResult, delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -147,10 +148,7 @@ async def revoke_refresh_chain(
     Triggered by a revocation request or when a rotated token is reused
     (= token leak detected)."""
     now = datetime.now(UTC)
-    # An access JWT is issued with its refresh token and lives `access_ttl`:
-    # only the tokens younger than that can still have a usable one.
-    live_since = now - timedelta(seconds=access_ttl)
-    live_jtis: list[str] = []
+    issued: list[tuple[str, datetime | None]] = []
     visited: set[uuid.UUID] = set()
     queue: list[OAuthRefreshToken] = [start]
     while queue:
@@ -160,9 +158,7 @@ async def revoke_refresh_chain(
         visited.add(cur.id)
         cur.revoked_at = now
         cur.revocation_reason = reason
-        # `created_at` is unset on a token added in this transaction.
-        if cur.created_at is None or cur.created_at > live_since:
-            live_jtis.append(cur.jwt_id)
+        issued.append((cur.jwt_id, cur.created_at))
         if cur.parent_id and cur.parent_id not in visited:
             parent = await session.get(OAuthRefreshToken, cur.parent_id)
             if parent:
@@ -175,8 +171,46 @@ async def revoke_refresh_chain(
         for ch in children:
             if ch.id not in visited:
                 queue.append(ch)
+    await _blacklist_live_jwts(session, issued, now=now, access_ttl=access_ttl)
+
+
+async def revoke_user_grants(
+    session: AsyncSession, user_id: uuid.UUID, *, reason: str, access_ttl: int
+) -> int:
+    """Sign every OAuth client of a user out: revoke their live refresh tokens
+    and blacklist the access JWTs still in use. Returns the refresh tokens
+    revoked."""
+    now = datetime.now(UTC)
+    revoked = await session.execute(
+        update(OAuthRefreshToken)
+        .where(OAuthRefreshToken.user_id == user_id, OAuthRefreshToken.revoked_at.is_(None))
+        .values(revoked_at=now, revocation_reason=reason)
+    )
+    # A rotated token is revoked already, yet its access JWT may still live.
+    issued = await session.execute(
+        select(OAuthRefreshToken.jwt_id, OAuthRefreshToken.created_at).where(
+            OAuthRefreshToken.user_id == user_id,
+            OAuthRefreshToken.created_at > now - timedelta(seconds=access_ttl),
+        )
+    )
+    await _blacklist_live_jwts(session, issued.tuples().all(), now=now, access_ttl=access_ttl)
+    return cast(CursorResult, revoked).rowcount or 0
+
+
+async def _blacklist_live_jwts(
+    session: AsyncSession,
+    issued: Sequence[tuple[str, datetime | None]],
+    *,
+    now: datetime,
+    access_ttl: int,
+) -> None:
+    """Blacklist the access JWT of each `(jwt_id, created_at)` refresh token
+    that can still be in use: it is issued with the refresh token and lives
+    `access_ttl`. `created_at` is unset on a token added in this transaction."""
+    live_since = now - timedelta(seconds=access_ttl)
+    live = [jti for jti, created in issued if created is None or created > live_since]
     # The blacklist row only has to outlast the JWTs it blocks.
-    await blacklist_jti(session, *live_jtis, expires_at_epoch=int(now.timestamp()) + access_ttl)
+    await blacklist_jti(session, *live, expires_at_epoch=int(now.timestamp()) + access_ttl)
 
 
 async def find_active_refresh(

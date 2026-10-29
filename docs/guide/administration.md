@@ -79,7 +79,7 @@ The top shows the **Email**, **Role**, **Sign-in** method (**Email + password**,
 | **Auto-approve HTML bundles** | When on, bundles the scanner marks as critical are published right away, without the review queue. The scan still runs and its findings go to the audit log. |
 | **Lock account** > **Lock** | A temporary sign-in lock for **15 minutes**, **1 hour** or **24 hours**, with an optional reason for the audit log. |
 | **Unlock account** > **Unlock** | Shown instead of the lock while the account is locked. Lifts the lock right away. |
-| **Access tokens** > **Revoke all tokens** | Revokes all personal access tokens of the person. Agents and scripts lose access right away. |
+| **Access tokens** > **Revoke all tokens** | Revokes all personal access tokens of the person and signs out the AI assistants connected through ics-mcp. Agents and scripts lose access right away. |
 | **Danger zone** > **Delete account** | Deletes the account together with all its documents and share links. This cannot be undone. The audit log keeps an entry with the number of deleted documents. |
 
 ### Lock an account
@@ -90,7 +90,7 @@ Locking is for situations like a lost laptop or suspicious activity.
 2. Under **Lock account**, pick the duration and optionally enter a reason.
 3. Click **Lock**.
 
-While the lock lasts, the person cannot sign in, their open sessions end on their next request, and all their personal access tokens are revoked. The account comes back on its own when the lock expires. Neither signing in with Google nor resetting the password gets around your lock. ICS also locks an account on its own after repeated failed password sign-ins; a successful Google sign-in or a password reset lifts that kind of lock.
+While the lock lasts, the person cannot sign in, their open sessions end on their next request, and all their personal access tokens are revoked and their AI assistants signed out, so these stay cut off after the lock ends. The account comes back on its own when the lock expires. Neither signing in with Google nor resetting the password gets around your lock. ICS also locks an account on its own after repeated failed password sign-ins; a successful Google sign-in or a password reset lifts that kind of lock.
 
 You cannot lock or delete your own account, and the last administrator cannot be deleted.
 

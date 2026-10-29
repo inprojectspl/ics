@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Locking an account and an admin's **Revoke all tokens** also sign out the person's AI assistants
+  connected through ics-mcp: their OAuth tokens are revoked, so they no longer work again once a
+  lock ends.
 - Access to an HTML bundle in the isolated viewer ends with what granted it: every page re-checks
   the share link (revoked or expired) or the reader's role and account, so an earlier cookie no
   longer opens the bundle, nor a version published after the link was revoked. The files a page
