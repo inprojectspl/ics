@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- `POST /api/assets/{id}/undelete` on a document that is not deleted answers `404` to anyone
+  but its owner, instead of returning its slug.
 - An HTML bundle created through `POST /api/assets/html-json`, as MCP does, counts against the
   owner's total storage quota like every other upload.
 - An OAuth token, as used by MCP clients, never carries administrator rights, like a personal

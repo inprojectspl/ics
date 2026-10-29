@@ -321,6 +321,19 @@ async def test_undelete_noop_when_not_deleted(client, session):
     assert body.get("noop") is True
 
 
+@pytest.mark.asyncio
+async def test_undelete_of_a_live_asset_does_not_name_it_to_a_stranger(client, session):
+    owner = await mk_user(session)
+    asset = await mk_asset(session, owner)
+    stranger = await mk_user(session)
+    await session.commit()
+    await _login(client, stranger)
+
+    r = await client.post(f"/api/assets/{asset.id}/undelete")
+    assert r.status_code == 404
+    assert asset.slug not in r.text
+
+
 # ---------- GET /by-slug/{slug}/security ----------
 
 
