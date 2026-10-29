@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- A refresh token or authorization code used by two requests at once is consumed once: the
+  second request waits for the first and is refused, so one refresh no longer yields two live
+  successors.
 - Revoking a refresh token works without `token_type_hint` or with a wrong one, and ends the
   grant: the token's rotation family and the access tokens issued with it stop working at once.
   Reuse of a rotated refresh token cuts the access tokens of its family too.

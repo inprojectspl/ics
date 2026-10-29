@@ -50,7 +50,10 @@ async def _grant_authorization_code(
             status.HTTP_400_BAD_REQUEST, "invalid_request", "invalid_request: missing fields"
         )
     code_hash = tokens_mod.hash_token(code)
-    row = await session.scalar(select(OAuthAuthCode).where(OAuthAuthCode.code_hash == code_hash))
+    # Locked until commit, so two exchanges of one code cannot both see it unused.
+    row = await session.scalar(
+        select(OAuthAuthCode).where(OAuthAuthCode.code_hash == code_hash).with_for_update()
+    )
     if row is None or row.used_at is not None:
         raise ApiError(status.HTTP_400_BAD_REQUEST, "invalid_grant", "invalid_grant")
     if row.expires_at < datetime.now(UTC):

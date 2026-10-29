@@ -184,9 +184,14 @@ async def find_active_refresh(
 ) -> OAuthRefreshToken | None:
     """Find refresh by hash. Returns row regardless of revoked_at; caller
     distinguishes (rotated tokens are revoked but we still need them for
-    reuse detection)."""
+    reuse detection). The row stays locked until the transaction ends, so two
+    concurrent rotations of one token run one after the other and the second
+    sees the first as reuse."""
     return await session.scalar(
-        select(OAuthRefreshToken).where(OAuthRefreshToken.token_hash == token_hash_value)
+        select(OAuthRefreshToken)
+        .where(OAuthRefreshToken.token_hash == token_hash_value)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
 
 
