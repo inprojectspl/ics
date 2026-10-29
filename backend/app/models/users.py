@@ -1,6 +1,6 @@
 """Accounts and login bookkeeping: users, auth attempts, e-mail outbox."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
@@ -58,6 +58,10 @@ class User(Base):
     # authenticated with a bearer token (personal access or OAuth) never gets
     # admin powers (ADR-0020), so admin bypasses check `acts_as_admin`, not `role`.
     token_request = False
+
+    @property
+    def is_locked(self) -> bool:
+        return self.locked_until is not None and self.locked_until > datetime.now(UTC)
 
     @property
     def acts_as_admin(self) -> bool:

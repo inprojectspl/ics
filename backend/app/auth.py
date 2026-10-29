@@ -21,10 +21,6 @@ def domain_of(email: str) -> str:
     return email.split("@")[-1].lower()
 
 
-def _is_locked(user: User) -> bool:
-    return user.locked_until is not None and user.locked_until > datetime.now(UTC)
-
-
 def _bearer_401(settings: Settings, detail: str, *, error: str = "invalid_token") -> HTTPException:
     """401 for the Bearer path, always with `WWW-Authenticate` (RFC 6750 §3).
 
@@ -106,7 +102,7 @@ async def _validate_bearer(
     user = await session.get(User, UUID(sub))
     if user is None:
         raise _bearer_401(settings, "user not found")
-    if _is_locked(user):
+    if user.is_locked:
         raise ApiError(status.HTTP_403_FORBIDDEN, "account_locked", "user locked")
 
     request.state.oauth_client_id_external = claims.get("client_id")
@@ -128,7 +124,7 @@ async def _validate_pat(
     user = await session.get(User, row.user_id)
     if user is None:
         raise _bearer_401(settings, "user not found")
-    if _is_locked(user):
+    if user.is_locked:
         raise ApiError(status.HTTP_403_FORBIDDEN, "account_locked", "user locked")
     await ratelimit.enforce(get_redis(), ratelimit.PAT_API, str(user.id), "pat_rate_limited")
     # Persisted even on read-only requests, but only when the stamp moved.
@@ -211,7 +207,7 @@ async def _authenticate(request: Request, session: AsyncSession, settings: Setti
     user = await session.get(User, UUID(user_id))
     if user is None:
         raise ApiError(status.HTTP_401_UNAUTHORIZED, "user_not_found", "user not found")
-    if _is_locked(user):
+    if user.is_locked:
         await session_store.revoke_sid(redis, sid, user_id=user_id)
         request.session.clear()
         raise ApiError(status.HTTP_403_FORBIDDEN, "account_locked", "account locked")
