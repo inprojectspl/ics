@@ -99,7 +99,7 @@ Codes follow the RFC 6749, RFC 7591 and RFC 8707 error names.
 | `invalid_grant` | 400 | Authorization code or refresh token is invalid, expired, reused or mismatched. |
 | `invalid_scope` | 400 | Requested scope is not allowed. |
 | `invalid_target` | 400 | `resource` is missing, not allowed or does not match. |
-| `invalid_redirect_uri` | 400 | Redirect URI is missing or not registered. |
+| `invalid_redirect_uri` | 400 | Redirect URI is missing, not registered, or not HTTPS, loopback HTTP or an app scheme when a client registers. |
 | `invalid_state_token` | 403 | Consent form state token is invalid. |
 | `unauthorized_client` | 400 | Unknown client or client not allowed for this flow. |
 | `unsupported_grant_type` | 400 | Grant type is not supported. |

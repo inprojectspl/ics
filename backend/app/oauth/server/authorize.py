@@ -127,6 +127,7 @@ async def authorize_get(
             user_email=user.email,
             scopes=granted,
             resource=resource,
+            redirect_origin=clients_mod.redirect_origin(redirect_uri),
             state_token=state_token,
         )
     )

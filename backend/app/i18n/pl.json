@@ -32,6 +32,7 @@
   "consent.allow": "Pozwól",
   "consent.asks": "Aplikacja prosi o dostęp w twoim imieniu do:",
   "consent.note": "Nie rozpoznajesz tej aplikacji? Wybierz „Anuluj”, a nic nie zostanie udostępnione.",
+  "consent.redirect": "Po zgodzie wrócisz do:",
   "consent.question": "Zezwolić aplikacji {client} na dostęp do ICS?",
   "consent.scope.ics": "Czytanie, tworzenie i zmienianie twoich dokumentów i projektów, w granicach twoich uprawnień",
   "consent.scope.ics:delete": "Usuwanie dokumentów",

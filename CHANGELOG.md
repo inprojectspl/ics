@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- The loopback redirect of the built-in stdio client is checked as a parsed URL, so only the
+  port may vary: `http://127.0.0.1:1@other.host/callback` no longer sends the authorization code
+  to another host. Dynamic clients register only HTTPS, loopback HTTP or app-scheme callbacks, and the
+  consent page shows where the browser goes after consent.
 - A single Markdown upload or a new version of one stores the file under its base name, so a
   name with directory segments cannot write into another document.
 - Bundle files served on the app origin (the legacy `/static/` links of documents and shares)

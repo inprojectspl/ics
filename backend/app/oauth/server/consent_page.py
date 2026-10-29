@@ -1,8 +1,8 @@
 """OAuth consent page (GET /authorize), standalone and script-free so it works
 under any CSP; palette copied from `frontend/src/styles/theme.css`.
 
-`client_name` (from unauthenticated DCR) and `resource` (query string) are
-attacker-controlled, so every dynamic value and catalogue text is escaped.
+`client_name` (from unauthenticated DCR), `resource` and the redirect (query
+string) are attacker-controlled, so every dynamic value and catalogue text is escaped.
 """
 
 from __future__ import annotations
@@ -74,6 +74,7 @@ def render_consent(
     user_email: str,
     scopes: list[str],
     resource: str,
+    redirect_origin: str,
     state_token: str,
 ) -> str:
     """The consent page in `locale`, every dynamic value escaped."""
@@ -95,7 +96,8 @@ def render_consent(
   <p class="who">{t_html("consent.signed_in_as", locale, email=strong(user_email))}</p>
   <p class="asks">{t_html("consent.asks", locale)}</p>
   <ul>{items}</ul>
-  <p class="resource">{t_html("consent.resource", locale)} <code>{html.escape(resource)}</code></p>
+  <p class="resource">{t_html("consent.resource", locale)} <code>{html.escape(resource)}</code><br>
+    {t_html("consent.redirect", locale)} <code>{html.escape(redirect_origin)}</code></p>
   <form method="post" action="/api/auth/oauth/authorize">
     <input type="hidden" name="state_token" value="{html.escape(state_token)}">
     <button type="submit" name="decision" value="allow" class="ok">{t_html("consent.allow", locale)}</button>
