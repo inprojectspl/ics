@@ -1,6 +1,7 @@
 # ADR-0004: Archived version preview is read-only and separate from restore
 
-**Status:** Accepted, implemented 2026-08-05.
+**Status:** Accepted, implemented 2026-08-05. Amended 2026-10-29: cookie entries carry their
+basis and expiry.
 **Decision owners:** Owner / Product.
 **Scope:** `app/services/versions.py`, `app/services/version_banner.py`,
 `app/routes/assets/{view,versions,_helpers}.py`, `app/routes/shares/viewer.py`,
@@ -58,6 +59,14 @@ not open the history (and vice versa): fail-closed. The visitor gate for
 `critical` without a bypass is evaluated from the **asset** status, not the
 version: the scan concerns the document, so a blocked bundle is blocked in the
 history as well.
+
+Amended 2026-10-29: each entry also records what authorized it (`u:<user id>` or
+`s:<share link id>`) and its own expiry, as `{key}~{basis}~{epoch}`. Every HTML page
+re-checks the basis, so a revoked or expired link, a lost role or a locked account
+ends access at the next page, including to a version published after the grant. The
+scripts, styles and images a page loads trust a passed check for 10 seconds in the
+process instead of querying the role for each file. Granting another document
+re-signs the cookie without extending older entries.
 
 ### 3. Shape of the "outdated version" bar in the HTML preview
 
@@ -192,8 +201,8 @@ which version, HTML bundles had no diff at all, and the whole thing lived in a
 - Serving an HTML file with the bar requires buffering it in memory (so we
   know the `Content-Length`). This applies only to HTML documents; media, JS
   and CSS are streamed as before.
-- `MAX_GRANTED_PER_COOKIE` (32) now also covers archive entries: heavy history
-  browsing across many bundles pushes out the oldest grants. The consequence
+- `MAX_GRANTED_PER_COOKIE` (24 since the entries carry a basis and expiry) also covers archive
+  entries: heavy history browsing across many bundles pushes out the grants closest to expiry. The consequence
   is having to click "Open" again; no data is lost.
 - The MCP surface got the same parameter (`file-mcp`, `files-mcp`, `source`),
   so an agent reads an archived version with the same tools as the current one

@@ -172,7 +172,7 @@ async def share_html_grant(
     don't count.
     """
     from app.routes.assets import assert_bundle_renderable_for_visitors
-    from app.routes.html_viewer import issue_grant
+    from app.routes.html_viewer import issue_grant, share_basis
 
     share, asset = await _resolve_share(token, session)
     role = await _assert_share_view(request, share, asset, session, settings, need_role=True)
@@ -196,6 +196,7 @@ async def share_html_grant(
     sig = issue_grant(
         asset.id,
         version=v if stale else None,
+        basis=share_basis(share.id),
         successor_href=successor["href"] if successor else None,
     )
     if not stale and role is None:

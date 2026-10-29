@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Access to an HTML bundle in the isolated viewer ends with what granted it: every page re-checks
+  the share link (revoked or expired) or the reader's role and account, so an earlier cookie no
+  longer opens the bundle, nor a version published after the link was revoked. The files a page
+  loads trust that check for 10 seconds. Each document keeps its own one-hour expiry; opening
+  another one does not extend it.
 - `POST /api/assets/{id}/undelete` on a document that is not deleted answers `404` to anyone
   but its owner, instead of returning its slug.
 - An HTML bundle created through `POST /api/assets/html-json`, as MCP does, counts against the
