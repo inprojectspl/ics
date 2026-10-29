@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import base64
 from typing import Annotated
 from uuid import uuid4
@@ -22,9 +21,8 @@ from app.routes.assets._create_metadata import request_summary_source
 from app.services import asset_metadata, read_size, relation_extraction
 from app.services import asset_security as asset_security_svc
 from app.services.notifications import events as notification_events
-from app.services.upload import one_chunk
-from app.slug import generate_slug, generate_token
-from app.storage import storage_from_url
+from app.services.upload import BytesFile, stage_asset_files
+from app.slug import generate_token
 
 from ._models import HtmlBundleCreate
 from ._router import router
@@ -88,18 +86,15 @@ async def create_html_bundle_json(
     if payload.entry_path not in seen_paths:
         raise ApiError(status.HTTP_400_BAD_REQUEST, "invalid_entry_path", "entry_path not in files")
 
-    storage = storage_from_url(settings.storage_url, settings)
-    slug = generate_slug()
-    prefix = f"assets/{slug}"
-
-    sem = asyncio.Semaphore(8)
-
-    async def _put_one(path: str, data: bytes) -> None:
-        async with sem:
-            # Same `{prefix}/v{N}/{path}` layout `serve_bundle_file` reads.
-            await storage.put(f"{prefix}/v1/{path}", one_chunk(data))
-
-    await asyncio.gather(*(_put_one(p, d) for p, d, _m in files_raw))
+    # The shared pipeline applies the asset size limit and the total quota,
+    # and wipes the files again when either fails, as for multipart uploads.
+    staged = await stage_asset_files(
+        [(BytesFile(data), path) for path, data, _mime in files_raw],
+        user=user,
+        settings=settings,
+        session=session,
+    )
+    slug, prefix = staged.slug, staged.storage_prefix
 
     asset = Asset(
         id=uuid4(),

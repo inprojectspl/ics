@@ -32,6 +32,7 @@
   "consent.allow": "Allow",
   "consent.asks": "The application asks for access on your behalf to:",
   "consent.note": "Don't recognise this application? Choose “Cancel” and nothing is shared.",
+  "consent.redirect": "After consent you return to:",
   "consent.question": "Allow {client} to access ICS?",
   "consent.scope.ics": "Read, create and change your documents and projects, within your permissions",
   "consent.scope.ics:delete": "Delete documents",

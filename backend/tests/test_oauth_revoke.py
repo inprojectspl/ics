@@ -52,6 +52,66 @@ async def test_revoke_refresh_token_with_hint_succeeds(client, session):
     assert reuse.status_code == 400
 
 
+async def _connected(client, session, monkeypatch) -> tuple[dict, dict]:
+    from app.config import get_settings
+    from tests.conftest import full_oauth_flow, signed_in_oauth_client
+
+    # Bearer authentication needs a resource URI; the default test settings have none.
+    monkeypatch.setattr(get_settings(), "mcp_resource_uri", "https://ics-test.example/mcp")
+    dcr = await signed_in_oauth_client(client, session)
+    return dcr, await full_oauth_flow(client, dcr["client_id"])
+
+
+async def _me(client, access_token: str) -> int:
+    r = await client.get("/api/auth/oauth/me", headers={"Authorization": f"Bearer {access_token}"})
+    return r.status_code
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("hint", [None, "access_token", "refresh_token"])
+async def test_revoking_a_refresh_token_ends_the_grant_whatever_the_hint(
+    client, session, monkeypatch, hint
+):
+    """RFC 7009: the hint is optional and may be wrong. The refresh token stops
+    working and so does the access token issued with it."""
+    dcr, body = await _connected(client, session, monkeypatch)
+    assert await _me(client, body["access_token"]) == 200
+
+    data = {"token": body["refresh_token"]}
+    if hint:
+        data["token_type_hint"] = hint
+    assert (await client.post("/api/auth/oauth/revoke", data=data)).status_code == 200
+
+    refresh = await client.post(
+        "/api/auth/oauth/token",
+        data={
+            "grant_type": "refresh_token",
+            "refresh_token": body["refresh_token"],
+            "client_id": dcr["client_id"],
+        },
+    )
+    assert refresh.status_code == 400
+    assert await _me(client, body["access_token"]) == 401
+
+
+@pytest.mark.asyncio
+async def test_refresh_reuse_also_cuts_the_newest_access_token(client, session, monkeypatch):
+    dcr, first = await _connected(client, session, monkeypatch)
+    grant = {"grant_type": "refresh_token", "client_id": dcr["client_id"]}
+    rotated = await client.post(
+        "/api/auth/oauth/token", data={**grant, "refresh_token": first["refresh_token"]}
+    )
+    assert rotated.status_code == 200
+    newest = rotated.json()["access_token"]
+    assert await _me(client, newest) == 200
+
+    reuse = await client.post(
+        "/api/auth/oauth/token", data={**grant, "refresh_token": first["refresh_token"]}
+    )
+    assert reuse.status_code == 400
+    assert await _me(client, newest) == 401
+
+
 @pytest.mark.asyncio
 async def test_revoke_access_jwt_blacklists_jti(client, session, monkeypatch):
     """POST /revoke with an access JWT -> JTI blacklisted, /me with that token -> 401."""
@@ -151,3 +211,38 @@ async def test_revoke_access_jwt_twice_is_idempotent(client, session, monkeypatc
     for _ in range(2):
         r = await client.post("/api/auth/oauth/revoke", data={"token": token})
         assert r.status_code == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "path", "body"),
+    [("POST", "tokens/revoke", {}), ("POST", "lock", {"minutes": 5, "reason": "leak"})],
+)
+async def test_admin_revoke_and_lock_sign_oauth_clients_out(
+    client, session, monkeypatch, method, path, body
+):
+    """Both admin actions cut the OAuth sign-ins too, so a lock that expires
+    does not bring a leaked MCP token back."""
+    from tests.conftest import mk_admin
+
+    dcr, tokens = await _connected(client, session, monkeypatch)
+    user_id = (await client.get("/api/auth/me")).json()["id"]
+    admin = await mk_admin(session)
+    await session.commit()
+    await _login(client, admin)
+
+    r = await client.request(method, f"/api/admin/users/{user_id}/{path}", json=body)
+    assert r.status_code == 200, r.text
+    if path == "lock":
+        assert (await client.delete(f"/api/admin/users/{user_id}/lock")).status_code == 200
+
+    assert await _me(client, tokens["access_token"]) == 401
+    refresh = await client.post(
+        "/api/auth/oauth/token",
+        data={
+            "grant_type": "refresh_token",
+            "refresh_token": tokens["refresh_token"],
+            "client_id": dcr["client_id"],
+        },
+    )
+    assert refresh.status_code == 400

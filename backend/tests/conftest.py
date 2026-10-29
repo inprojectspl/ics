@@ -145,6 +145,11 @@ async def _reset_module_globals():
         await pre_client.flushdb()
     except Exception:
         pass
+    # Bundle access re-checks are trusted for a few seconds per process; a
+    # test that revokes access must not see the previous test's verdict.
+    from app.routes import html_viewer as _html_viewer
+
+    _html_viewer._basis_ok_until.clear()
     yield
     try:
         post_client = get_redis()
@@ -388,6 +393,15 @@ async def register_oauth_client(client: AsyncClient, *, name: str = "Test Client
     )
     assert r.status_code == 201, r.text
     return r.json()
+
+
+async def signed_in_oauth_client(client: AsyncClient, session: AsyncSession) -> dict:
+    """A registered OAuth client and a signed-in user ready to authorize it."""
+    dcr = await register_oauth_client(client)
+    user = await mk_user(session)
+    await session.commit()
+    await login_as(client, user)
+    return dcr
 
 
 async def do_authorize_get_code(

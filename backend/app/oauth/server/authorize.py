@@ -71,7 +71,7 @@ async def authorize_get(
     user = await session.get(User, uuid.UUID(user_id_str))
     if user is None:
         raise ApiError(status.HTTP_401_UNAUTHORIZED, "user_not_found", "user not found")
-    if user.locked_until and user.locked_until > datetime.now(UTC):
+    if user.is_locked:
         raise ApiError(status.HTTP_403_FORBIDDEN, "account_locked", "account locked")
 
     if response_type != "code":
@@ -127,6 +127,7 @@ async def authorize_get(
             user_email=user.email,
             scopes=granted,
             resource=resource,
+            redirect_origin=clients_mod.redirect_origin(redirect_uri),
             state_token=state_token,
         )
     )

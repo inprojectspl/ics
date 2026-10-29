@@ -8,12 +8,13 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from typing import cast
 
 from joserfc import jwt
-from sqlalchemy import CursorResult, delete, select
+from sqlalchemy import CursorResult, delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -99,12 +100,15 @@ async def is_jti_revoked(session: AsyncSession, jti: str) -> bool:
     ) is not None
 
 
-async def blacklist_jti(session: AsyncSession, jti: str, expires_at_epoch: int) -> None:
-    """Idempotent: revoking an already revoked token (or two revokes racing)
-    is not an error."""
+async def blacklist_jti(session: AsyncSession, *jtis: str, expires_at_epoch: int) -> None:
+    """One insert for all `jtis`. Idempotent: revoking an already revoked
+    token (or two revokes racing) is not an error."""
+    if not jtis:
+        return
+    expires_at = datetime.fromtimestamp(expires_at_epoch, tz=UTC)
     await session.execute(
         pg_insert(OAuthJTIBlacklist)
-        .values(jti=jti, expires_at=datetime.fromtimestamp(expires_at_epoch, tz=UTC))
+        .values([{"jti": jti, "expires_at": expires_at} for jti in jtis])
         .on_conflict_do_nothing(index_elements=[OAuthJTIBlacklist.jti])
     )
 
@@ -137,12 +141,14 @@ async def issue_refresh_token(
 
 
 async def revoke_refresh_chain(
-    session: AsyncSession, start: OAuthRefreshToken, reason: str
+    session: AsyncSession, start: OAuthRefreshToken, reason: str, *, access_ttl: int
 ) -> None:
     """Walk the parent_id chain backwards and the children forwards, revoking
-    every token in the family. Triggered when a rotated token is reused
+    every token in the family and blacklisting the access JWT issued with each.
+    Triggered by a revocation request or when a rotated token is reused
     (= token leak detected)."""
     now = datetime.now(UTC)
+    issued: list[tuple[str, datetime | None]] = []
     visited: set[uuid.UUID] = set()
     queue: list[OAuthRefreshToken] = [start]
     while queue:
@@ -152,6 +158,7 @@ async def revoke_refresh_chain(
         visited.add(cur.id)
         cur.revoked_at = now
         cur.revocation_reason = reason
+        issued.append((cur.jwt_id, cur.created_at))
         if cur.parent_id and cur.parent_id not in visited:
             parent = await session.get(OAuthRefreshToken, cur.parent_id)
             if parent:
@@ -164,6 +171,46 @@ async def revoke_refresh_chain(
         for ch in children:
             if ch.id not in visited:
                 queue.append(ch)
+    await _blacklist_live_jwts(session, issued, now=now, access_ttl=access_ttl)
+
+
+async def revoke_user_grants(
+    session: AsyncSession, user_id: uuid.UUID, *, reason: str, access_ttl: int
+) -> int:
+    """Sign every OAuth client of a user out: revoke their live refresh tokens
+    and blacklist the access JWTs still in use. Returns the refresh tokens
+    revoked."""
+    now = datetime.now(UTC)
+    revoked = await session.execute(
+        update(OAuthRefreshToken)
+        .where(OAuthRefreshToken.user_id == user_id, OAuthRefreshToken.revoked_at.is_(None))
+        .values(revoked_at=now, revocation_reason=reason)
+    )
+    # A rotated token is revoked already, yet its access JWT may still live.
+    issued = await session.execute(
+        select(OAuthRefreshToken.jwt_id, OAuthRefreshToken.created_at).where(
+            OAuthRefreshToken.user_id == user_id,
+            OAuthRefreshToken.created_at > now - timedelta(seconds=access_ttl),
+        )
+    )
+    await _blacklist_live_jwts(session, issued.tuples().all(), now=now, access_ttl=access_ttl)
+    return cast(CursorResult, revoked).rowcount or 0
+
+
+async def _blacklist_live_jwts(
+    session: AsyncSession,
+    issued: Sequence[tuple[str, datetime | None]],
+    *,
+    now: datetime,
+    access_ttl: int,
+) -> None:
+    """Blacklist the access JWT of each `(jwt_id, created_at)` refresh token
+    that can still be in use: it is issued with the refresh token and lives
+    `access_ttl`. `created_at` is unset on a token added in this transaction."""
+    live_since = now - timedelta(seconds=access_ttl)
+    live = [jti for jti, created in issued if created is None or created > live_since]
+    # The blacklist row only has to outlast the JWTs it blocks.
+    await blacklist_jti(session, *live, expires_at_epoch=int(now.timestamp()) + access_ttl)
 
 
 async def find_active_refresh(
@@ -171,9 +218,14 @@ async def find_active_refresh(
 ) -> OAuthRefreshToken | None:
     """Find refresh by hash. Returns row regardless of revoked_at; caller
     distinguishes (rotated tokens are revoked but we still need them for
-    reuse detection)."""
+    reuse detection). The row stays locked until the transaction ends, so two
+    concurrent rotations of one token run one after the other and the second
+    sees the first as reuse."""
     return await session.scalar(
-        select(OAuthRefreshToken).where(OAuthRefreshToken.token_hash == token_hash_value)
+        select(OAuthRefreshToken)
+        .where(OAuthRefreshToken.token_hash == token_hash_value)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
 
 

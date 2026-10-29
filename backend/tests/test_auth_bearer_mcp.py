@@ -270,3 +270,33 @@ async def test_dev_stub_sso_rejects_unallowed_domain(client, monkeypatch):
         headers={"X-Dev-User": "attacker@malicious.example"},
     )
     assert r.status_code == 403
+
+
+# ---------- No admin powers (ADR-0020, amended) ----------
+
+
+@pytest.mark.asyncio
+async def test_admin_oauth_token_is_evaluated_as_an_ordinary_user(client, session, monkeypatch):
+    """A leaked MCP token of an admin must not read the whole organisation or
+    reach the admin API; the same admin keeps both in the browser."""
+    from tests.conftest import mk_admin, mk_asset
+
+    _enable_mcp(monkeypatch)
+    admin = await mk_admin(session)
+    stranger = await mk_user(session)
+    hidden = await mk_asset(session, stranger, title="Not for the admin token")
+    await session.commit()
+    headers = {"Authorization": f"Bearer {_make_jwt_for(admin)[0]}"}
+
+    assert (await client.get(f"/api/assets/{hidden.id}", headers=headers)).status_code == 404
+    listed = await client.get("/api/assets/index", headers=headers)
+    assert listed.status_code == 200
+    assert hidden.slug not in listed.text
+    for path in ("/api/admin/users", "/api/admin/audit/actions"):
+        r = await client.get(path, headers=headers)
+        assert r.status_code == 403, path
+        assert r.json()["code"] == "admin_required"
+
+    await _login(client, admin)
+    assert (await client.get(f"/api/assets/{hidden.id}")).status_code == 200
+    assert (await client.get("/api/admin/users")).status_code == 200

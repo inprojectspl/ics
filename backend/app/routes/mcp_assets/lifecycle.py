@@ -30,12 +30,13 @@ async def undelete_asset(
     asset = await session.get(Asset, asset_id)
     if asset is None:
         raise ApiError(status.HTTP_404_NOT_FOUND, "asset_not_found", "asset not found")
+    # Ownership first: even the no-op answer names the slug.
+    if not user.acts_as_admin and asset.owner_id != user.id:
+        raise ApiError(status.HTTP_404_NOT_FOUND, "asset_not_found", "asset not found")
     if asset.deleted_at is None:
         return ORJSONResponse(
             {"id": str(asset.id), "slug": asset.slug, "deleted_at": None, "noop": True}
         )
-    if not user.acts_as_admin and asset.owner_id != user.id:
-        raise ApiError(status.HTTP_404_NOT_FOUND, "asset_not_found", "asset not found")
     asset.deleted_at = None
     await audit.record_from_request(
         session, request, actor=user, action="asset_undeleted", target=f"asset:{asset.id}"

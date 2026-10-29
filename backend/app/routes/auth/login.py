@@ -83,7 +83,7 @@ async def login(
         await asyncio.to_thread(passwords.verify_password, body.password, _dummy_hash())
         await _login_fail(session, email, ip_hash, reason="no_password_user")
 
-    if user.locked_until and user.locked_until > now:
+    if user.is_locked:
         await _login_fail(session, email, ip_hash, reason="account_locked")
 
     if not await asyncio.to_thread(passwords.verify_password, body.password, user.password_hash):

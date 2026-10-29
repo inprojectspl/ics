@@ -8,7 +8,7 @@ from __future__ import annotations
 import pytest
 
 from app.models import ShareLink
-from app.routes.html_viewer import issue_grant
+from app.routes.html_viewer import issue_grant, user_basis
 from app.slug import generate_token
 from tests.conftest import login_as, mk_asset, mk_user, put_blob
 
@@ -60,7 +60,10 @@ async def test_isolated_viewer_is_not_sandboxed(client, session, fs_storage):
     asset = await _bundle(session, owner)
     await session.commit()
 
-    r = await client.get(f"/html/_/grant?t={issue_grant(asset.id)}", follow_redirects=False)
+    r = await client.get(
+        f"/html/_/grant?t={issue_grant(asset.id, basis=user_basis(owner.id))}",
+        follow_redirects=False,
+    )
     assert r.status_code == 302
     r = await client.get(f"/html/{asset.slug}/index.html")
     assert r.status_code == 200, r.text

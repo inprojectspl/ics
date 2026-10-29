@@ -1,4 +1,5 @@
-"""Admin: revoke every personal access token of a user (ADR-0020)."""
+"""Admin: revoke every token of a user: personal access tokens (ADR-0020)
+and the OAuth sign-ins of MCP clients."""
 
 from __future__ import annotations
 
@@ -12,9 +13,9 @@ from app.auth import AdminUser
 from app.db import get_session
 from app.errors import ApiError
 from app.models import User
-from app.services import pat
 
 from ._router import router
+from ._shared import revoke_all_tokens
 
 
 @router.post("/{user_id}/tokens/revoke")
@@ -26,8 +27,6 @@ async def revoke_user_tokens(
     user = await session.get(User, user_id)
     if user is None:
         raise ApiError(status.HTTP_404_NOT_FOUND, "user_not_found", "user not found")
-    count = await pat.revoke_all_for_user(
-        session, user_id=user.id, actor=admin, reason="admin_revoke"
-    )
+    pats, grants = await revoke_all_tokens(session, user, admin=admin, reason="admin_revoke")
     await session.commit()
-    return {"revoked": count}
+    return {"revoked": pats + grants}

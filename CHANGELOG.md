@@ -22,6 +22,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- KaTeX 0.18.11 and mermaid 12.2.0 replace versions with a published advisory (prototype pollution
+  bypassing KaTeX trust restrictions); both share one copy of KaTeX.
+- Locking an account and an admin's **Revoke all tokens** also sign out the person's AI assistants
+  connected through ics-mcp: their OAuth tokens are revoked, so they no longer work again once a
+  lock ends.
+- Access to an HTML bundle in the isolated viewer ends with what granted it: every page re-checks
+  the share link (revoked or expired) or the reader's role and account, so an earlier cookie no
+  longer opens the bundle, nor a version published after the link was revoked. The files a page
+  loads trust that check for 10 seconds. Each document keeps its own one-hour expiry; opening
+  another one does not extend it.
+- `POST /api/assets/{id}/undelete` on a document that is not deleted answers `404` to anyone
+  but its owner, instead of returning its slug.
+- An HTML bundle created through `POST /api/assets/html-json`, as MCP does, counts against the
+  owner's total storage quota like every other upload.
+- An OAuth token, as used by MCP clients, never carries administrator rights, like a personal
+  access token: an admin's agent sees what an ordinary user would and `/api/admin/*` refuses it.
+  Administration stays in the browser.
+- A refresh token or authorization code used by two requests at once is consumed once: the
+  second request waits for the first and is refused, so one refresh no longer yields two live
+  successors.
+- Revoking a refresh token works without `token_type_hint` or with a wrong one, and ends the
+  grant: the token's rotation family and the access tokens issued with it stop working at once.
+  Reuse of a rotated refresh token cuts the access tokens of its family too.
+- The loopback redirect of the built-in stdio client is checked as a parsed URL, so only the
+  port may vary: `http://127.0.0.1:1@other.host/callback` no longer sends the authorization code
+  to another host. Dynamic clients register only HTTPS, loopback HTTP or app-scheme callbacks, and the
+  consent page shows where the browser goes after consent.
 - A single Markdown upload or a new version of one stores the file under its base name, so a
   name with directory segments cannot write into another document.
 - Bundle files served on the app origin (the legacy `/static/` links of documents and shares)

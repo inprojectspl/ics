@@ -16,6 +16,7 @@ from app.config import Settings, get_settings
 from app.db import get_session
 from app.errors import ApiError
 from app.models import OAuthClient
+from app.oauth import clients as clients_mod
 from app.redis_client import get_redis
 
 from ._router import _issuer, router
@@ -38,6 +39,12 @@ async def dynamic_register(
     if not isinstance(redirect_uris, list) or not redirect_uris:
         raise ApiError(
             status.HTTP_400_BAD_REQUEST, "invalid_redirect_uri", "redirect_uris required"
+        )
+    if not all(clients_mod.registrable_redirect_uri(uri) for uri in redirect_uris):
+        raise ApiError(
+            status.HTTP_400_BAD_REQUEST,
+            "invalid_redirect_uri",
+            "redirect_uris must be HTTPS, HTTP on a loopback host or an app scheme",
         )
     client_id_str = f"dyn-{uuid.uuid4().hex[:16]}"
     audience = settings.mcp_resource_uri or _issuer(settings)

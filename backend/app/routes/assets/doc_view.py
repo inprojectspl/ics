@@ -35,7 +35,7 @@ async def asset_html_grant(
 ) -> dict:
     """Signed grant URL for the isolated viewer (viewer level). Auth is checked
     here; a critical bundle is still stopped by the visitor gate when served."""
-    from app.routes.html_viewer import issue_grant
+    from app.routes.html_viewer import issue_grant, user_basis
 
     asset, _ = await permissions.get_viewable_asset_by_slug(session, slug, user)
     if asset.kind != "html_bundle":
@@ -48,6 +48,7 @@ async def asset_html_grant(
     sig = issue_grant(
         asset.id,
         version=None if current else v,
+        basis=user_basis(user.id),
         successor_href=successor["href"] if successor else None,
     )
     return {"url": f"{settings.html_viewer_base}/_/grant?t={sig}"}

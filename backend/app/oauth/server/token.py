@@ -50,7 +50,10 @@ async def _grant_authorization_code(
             status.HTTP_400_BAD_REQUEST, "invalid_request", "invalid_request: missing fields"
         )
     code_hash = tokens_mod.hash_token(code)
-    row = await session.scalar(select(OAuthAuthCode).where(OAuthAuthCode.code_hash == code_hash))
+    # Locked until commit, so two exchanges of one code cannot both see it unused.
+    row = await session.scalar(
+        select(OAuthAuthCode).where(OAuthAuthCode.code_hash == code_hash).with_for_update()
+    )
     if row is None or row.used_at is not None:
         raise ApiError(status.HTTP_400_BAD_REQUEST, "invalid_grant", "invalid_grant")
     if row.expires_at < datetime.now(UTC):
@@ -126,7 +129,9 @@ async def _grant_refresh(form, settings: Settings, session: AsyncSession) -> JSO
 
     # A rotated token presented again means it leaked: revoke the whole chain.
     if rec.revoked_at is not None or rec.rotated_at is not None:
-        await tokens_mod.revoke_refresh_chain(session, rec, reason="reuse_detected")
+        await tokens_mod.revoke_refresh_chain(
+            session, rec, reason="reuse_detected", access_ttl=settings.oauth_access_token_ttl
+        )
         await session.commit()
         raise ApiError(
             status.HTTP_400_BAD_REQUEST, "invalid_grant", "invalid_grant: reuse detected"

@@ -10,9 +10,11 @@ from itsdangerous.timed import TimestampSigner
 from app import tokens
 from app.routes.html_viewer import (
     COOKIE_NAME,
+    _Entry,
     _read_granted,
     _sign_granted,
     issue_grant,
+    user_basis,
 )
 
 
@@ -25,15 +27,15 @@ class _FakeRequest:
 
 
 def test_grant_token_roundtrip():
-    aid = uuid4()
-    t = issue_grant(aid)
+    aid, uid = uuid4(), uuid4()
+    t = issue_grant(aid, basis=user_basis(uid))
     payload = tokens.verify("html_grant", t)
-    assert payload == str(aid)
+    assert payload == f"{aid}||u:{uid}"
 
 
 def test_grant_token_purpose_isolation():
     """A grant token must not be accepted as a reset/invite token."""
-    t = issue_grant(uuid4())
+    t = issue_grant(uuid4(), basis=user_basis(uuid4()))
     with pytest.raises(tokens.TokenInvalid):
         tokens.verify("reset", t)
     with pytest.raises(tokens.TokenInvalid):
@@ -42,7 +44,7 @@ def test_grant_token_purpose_isolation():
 
 def test_grant_token_expires():
     with patch.dict(tokens.TTL, {"html_grant": 1}):
-        t = issue_grant(uuid4())
+        t = issue_grant(uuid4(), basis=user_basis(uuid4()))
         future = int(time.time()) + 5
         with patch.object(TimestampSigner, "get_timestamp", return_value=future):
             with pytest.raises(tokens.TokenExpired):
@@ -52,34 +54,49 @@ def test_grant_token_expires():
 # ---------- access cookie ----------
 
 
+def _later(seconds: int = 600) -> int:
+    return int(time.time()) + seconds
+
+
 def test_cookie_roundtrip_single_id():
-    aid = str(uuid4())
-    value = _sign_granted({aid})
-    assert _read_granted(_FakeRequest({COOKIE_NAME: value})) == {aid}
+    granted = {str(uuid4()): _Entry(user_basis(uuid4()), _later())}
+    value = _sign_granted(granted)
+    assert _read_granted(_FakeRequest({COOKIE_NAME: value})) == granted
 
 
 def test_cookie_roundtrip_multiple_ids():
-    ids = {str(uuid4()) for _ in range(3)}
-    value = _sign_granted(ids)
-    assert _read_granted(_FakeRequest({COOKIE_NAME: value})) == ids
+    granted = {str(uuid4()): _Entry(user_basis(uuid4()), _later(i + 1)) for i in range(3)}
+    value = _sign_granted(granted)
+    assert _read_granted(_FakeRequest({COOKIE_NAME: value})) == granted
+
+
+def test_cookie_drops_expired_entries():
+    live, dead = str(uuid4()), str(uuid4())
+    value = _sign_granted({live: _Entry("u:x", _later()), dead: _Entry("u:x", _later(-1))})
+    assert set(_read_granted(_FakeRequest({COOKIE_NAME: value}))) == {live}
+
+
+def test_cookie_of_the_old_format_grants_nothing():
+    """Entries without their own expiry (before it existed) are dropped."""
+    value = tokens.issue("html_access_cookie", str(uuid4()))
+    assert _read_granted(_FakeRequest({COOKIE_NAME: value})) == {}
 
 
 def test_cookie_missing_returns_empty():
-    assert _read_granted(_FakeRequest({})) == set()
+    assert _read_granted(_FakeRequest({})) == {}
 
 
 def test_cookie_tampered_returns_empty():
-    aid = str(uuid4())
-    value = _sign_granted({aid})
+    value = _sign_granted({str(uuid4()): _Entry("u:x", _later())})
     # flip a byte in the middle of the signature
     tampered = value[:-3] + ("AA" if value[-3:] != "AAA" else "BBB")
-    assert _read_granted(_FakeRequest({COOKIE_NAME: tampered})) == set()
+    assert _read_granted(_FakeRequest({COOKIE_NAME: tampered})) == {}
 
 
 def test_cookie_signed_with_wrong_purpose_rejected():
     """A token signed under another purpose must not unlock html access."""
-    misuse = tokens.issue("reset", str(uuid4()))
-    assert _read_granted(_FakeRequest({COOKIE_NAME: misuse})) == set()
+    misuse = tokens.issue("reset", f"{uuid4()}~u:x~{_later()}")
+    assert _read_granted(_FakeRequest({COOKIE_NAME: misuse})) == {}
 
 
 # ---------- /_/grant integration ----------
@@ -94,7 +111,7 @@ async def test_grant_with_invalid_token_returns_400(client):
 @pytest.mark.asyncio
 async def test_grant_for_nonexistent_asset_returns_404(client):
     # Token signed correctly but for a nonexistent UUID.
-    token = tokens.issue("html_grant", "11111111-2222-3333-4444-555555555555")
+    token = tokens.issue("html_grant", f"11111111-2222-3333-4444-555555555555||u:{uuid4()}")
     r = await client.get(f"/html/_/grant?t={token}", follow_redirects=False)
     assert r.status_code == 404
 
@@ -107,7 +124,7 @@ async def test_grant_rejects_md_asset_token(client, session):
     user = await mk_user(session)
     asset = await mk_asset(session, user, kind="md_single")
     await session.commit()
-    token = issue_grant(asset.id)
+    token = issue_grant(asset.id, basis=user_basis(user.id))
 
     r = await client.get(f"/html/_/grant?t={token}", follow_redirects=False)
     assert r.status_code == 404
@@ -120,7 +137,7 @@ async def test_grant_for_html_bundle_redirects_and_sets_cookie(client, session):
     user = await mk_user(session)
     asset = await mk_asset(session, user, kind="html_bundle", entry_path="index.html")
     await session.commit()
-    token = issue_grant(asset.id)
+    token = issue_grant(asset.id, basis=user_basis(user.id))
 
     r = await client.get(f"/html/_/grant?t={token}", follow_redirects=False)
     assert r.status_code == 302
@@ -181,16 +198,18 @@ async def _bundle_with_two_versions(session):
 
 
 async def _grant_cookie(client, asset, version=None):
-    token = issue_grant(asset.id, version=version)
+    token = issue_grant(asset.id, version=version, basis=user_basis(asset.owner_id))
     r = await client.get(f"/html/_/grant?t={token}", follow_redirects=False)
     return r
 
 
 def test_grant_token_carries_version():
-    aid = uuid4()
-    assert tokens.verify("html_grant", issue_grant(aid, version=3)) == f"{aid}:3"
-    # The current version stays a bare UUID, matching the shape of old tokens.
-    assert tokens.verify("html_grant", issue_grant(aid)) == str(aid)
+    aid, uid = uuid4(), uuid4()
+    basis = user_basis(uid)
+    assert tokens.verify("html_grant", issue_grant(aid, version=3, basis=basis)) == (
+        f"{aid}:3||u:{uid}"
+    )
+    assert tokens.verify("html_grant", issue_grant(aid, basis=basis)) == f"{aid}||u:{uid}"
 
 
 @pytest.mark.asyncio
@@ -205,7 +224,7 @@ async def test_grant_with_version_redirects_to_versioned_prefix(client, session,
 @pytest.mark.asyncio
 async def test_grant_rejects_version_out_of_range(client, session, fs_storage):
     asset = await _bundle_with_two_versions(session)
-    token = issue_grant(asset.id, version=99)
+    token = issue_grant(asset.id, version=99, basis=user_basis(asset.owner_id))
 
     r = await client.get(f"/html/_/grant?t={token}", follow_redirects=False)
     assert r.status_code == 404
