@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from fastapi import Depends, Form, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -32,8 +32,13 @@ from ._router import _enforce_ip_limit, router
 def _redirect_to_login(settings: Settings, request: Request) -> RedirectResponse:
     """Shared redirect for an unauthenticated session on GET /authorize.
     Without a sid, or with a revoked one, send the user to the frontend
-    `/?login=1&next=...` so they return to the same auth URL after login."""
-    return RedirectResponse(f"{settings.base_url}/?login=1&next={quote(str(request.url), safe='')}")
+    `/#login?next=...` so they return to the same auth URL after login."""
+    # Keep only the path and original query: forwarded Host values must never
+    # become a post-login destination, and the SPA only accepts relative paths.
+    next_path = request.url.path
+    if request.url.query:
+        next_path += f"?{request.url.query}"
+    return RedirectResponse(f"{settings.base_url}/#login?next={quote(next_path, safe='')}")
 
 
 @router.get("/authorize", response_model=None)
@@ -159,10 +164,10 @@ async def authorize_post(
     sep = "&" if "?" in redirect else "?"
 
     if decision != "allow":
-        target = f"{redirect}{sep}error=access_denied"
-        if upstream_state:
-            target += f"&state={upstream_state}"
-        return RedirectResponse(target, status_code=302)
+        params = {"error": "access_denied"}
+        if upstream_state is not None:
+            params["state"] = upstream_state
+        return RedirectResponse(f"{redirect}{sep}{urlencode(params)}", status_code=302)
 
     from app.slug import generate_token
 
@@ -190,7 +195,7 @@ async def authorize_post(
         payload={"scopes": payload["scopes"], "resource": payload["resource"]},
     )
     await session.commit()
-    target = f"{redirect}{sep}code={raw_code}"
-    if upstream_state:
-        target += f"&state={upstream_state}"
-    return RedirectResponse(target, status_code=302)
+    params = {"code": raw_code}
+    if upstream_state is not None:
+        params["state"] = upstream_state
+    return RedirectResponse(f"{redirect}{sep}{urlencode(params)}", status_code=302)

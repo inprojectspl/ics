@@ -248,16 +248,9 @@ function Router() {
   const me: Me | null | "unknown" = session.data ?? (session.isError ? null : "unknown");
   const { refetch } = session;
 
-  // Honour `#login?next=/v/<slug>`: the resolver sent here someone who gains
-  // access to the document once logged in, so login must not drop them on
-  // the home page.
   const onLogged = useCallback(async () => {
     await refetch();
-    const next = route.name === "login" ? route.next : undefined;
-    if (!next) return;
-    window.history.replaceState({}, "", next);
-    setRoute(parseRoute());
-  }, [refetch, route]);
+  }, [refetch]);
 
   // Public-by-default routes. The reader resolves the session itself (link
   // visitors land there too) and fills the query cache, so the shell turns
@@ -308,7 +301,7 @@ function Router() {
     return <NotificationsUnsubscribe token={route.token} />;
 
   if (me === "unknown") return <LoadingFallback />;
-  if (me === null) return <Login onLogged={onLogged} />;
+  if (me === null) return <Login onLogged={onLogged} next={route.name === "login" ? route.next : undefined} />;
   // Every signed-in page renders inside the same shell element, so React
   // keeps it (and the sidebar state) mounted across route changes; a lazy
   // page suspends inside it, never above it.

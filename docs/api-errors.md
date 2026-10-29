@@ -79,6 +79,7 @@ route, wrong method) and exceptions from third-party code.
 | `token_expired` | 400 | E-mail token (verify, invite, reset) has expired. |
 | `token_invalid` | 400 | E-mail token is malformed or points at nothing. |
 | `google_oidc_disabled` | 503 | Google login is not configured. |
+| `invalid_return_path` | 400 | The post-login destination is not a safe path on the ICS origin. |
 | `google_rejected` | 400 | Google refused the authorization request. |
 | `google_email_missing` | 400 | Google returned no e-mail address. |
 | `google_email_unverified` | 403 | Google has not verified the e-mail address. |

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
 from app.config import Settings, get_settings
@@ -12,6 +12,8 @@ from app.oauth import keys as keys_mod
 from app.oauth import scopes as scopes_mod
 
 from ._router import _issuer, router
+
+discovery_router = APIRouter(tags=["oauth"])
 
 
 def _as_metadata_dict(settings: Settings) -> dict:
@@ -32,6 +34,7 @@ def _as_metadata_dict(settings: Settings) -> dict:
     }
 
 
+@discovery_router.get("/.well-known/oauth-authorization-server")
 @router.get("/.well-known/oauth-authorization-server")
 async def authorization_server_metadata(
     settings: Annotated[Settings, Depends(get_settings)],
@@ -39,6 +42,7 @@ async def authorization_server_metadata(
     return JSONResponse(_as_metadata_dict(settings))
 
 
+@discovery_router.get("/.well-known/openid-configuration")
 @router.get("/.well-known/openid-configuration")
 async def oidc_metadata(
     settings: Annotated[Settings, Depends(get_settings)],
