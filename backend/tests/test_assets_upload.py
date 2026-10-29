@@ -542,6 +542,31 @@ async def test_html_json_creates_bundle_from_text(client, session, fs_storage):
     assert row_prefix == f"assets/{slug}/v1"
 
 
+@pytest.mark.asyncio
+async def test_html_json_over_total_quota_leaves_no_files(client, session, fs_storage):
+    """The JSON route used by MCP counts against the same total quota as the
+    multipart upload, not only against the per-bundle cap."""
+    import pathlib
+
+    user = await mk_user(session)
+    user.storage_quota_bytes = 3
+    await session.commit()
+    await _login(client, user)
+
+    r = await client.post(
+        "/api/assets/html-json",
+        json={
+            "title": "Over quota",
+            "entry_path": "index.html",
+            "files": [{"path": "index.html", "content_text": "<!doctype html><p>hi</p>"}],
+        },
+    )
+    assert r.status_code == 413
+    assert r.json()["code"] == "storage_quota_exceeded"
+    assets_dir = pathlib.Path(fs_storage) / "assets"
+    assert not any(p.is_file() for p in assets_dir.rglob("*"))
+
+
 # The base64 decoder is covered by
 # `test_mcp_assets_endpoints.test_html_json_rejects_invalid_base64`.
 

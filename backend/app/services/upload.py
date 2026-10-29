@@ -7,6 +7,7 @@ the whole prefix if anything fails.
 from __future__ import annotations
 
 import asyncio
+import io
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from typing import Protocol
@@ -32,6 +33,17 @@ class ReadableFile(Protocol):
     satisfies it, and so does any test double with an async `read`."""
 
     async def read(self, size: int = -1) -> bytes: ...
+
+
+class BytesFile:
+    """`ReadableFile` over bytes already in memory, such as content decoded
+    from a JSON request."""
+
+    def __init__(self, data: bytes) -> None:
+        self._buf = io.BytesIO(data)
+
+    async def read(self, size: int = -1) -> bytes:
+        return self._buf.read(size)
 
 
 class ByteBudget:

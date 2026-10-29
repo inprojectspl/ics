@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- An HTML bundle created through `POST /api/assets/html-json`, as MCP does, counts against the
+  owner's total storage quota like every other upload.
 - An OAuth token, as used by MCP clients, never carries administrator rights, like a personal
   access token: an admin's agent sees what an ordinary user would and `/api/admin/*` refuses it.
   Administration stays in the browser.
