@@ -4,17 +4,20 @@ import { api, AuthConfig } from "../api";
 import { CardHeading, CenteredCard, Field, PrimaryButton } from "../components/Form";
 import { buttonClass } from "../components/ui/Button";
 import { t } from "../lib/i18n";
+import { safeNextPath } from "../lib/nextPath";
 
-type Props = { onLogged: () => void };
+type Props = { onLogged: () => void; next?: string };
 
 const CONFIG_RETRIES = 5;
 
-export function Login({ onLogged }: Props) {
+export function Login({ onLogged, next }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [cfg, setCfg] = useState<AuthConfig | null>(null);
+  const nextPath = safeNextPath(next);
+  const googleHref = `/api/auth/google/login${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`;
 
   // Retried with backoff (about 30 s in all): an answer lost while the
   // server restarts would otherwise hide Google sign-in until a reload.
@@ -44,7 +47,10 @@ export function Login({ onLogged }: Props) {
     setBusy(true);
     try {
       await api.login(email, password);
-      onLogged();
+      // An OAuth consent URL is a backend route: updating SPA history would
+      // render Home instead of continuing the authorization request.
+      if (nextPath) window.location.assign(nextPath);
+      else onLogged();
     } catch {
       setError(t("login.invalidCredentials"));
     } finally {
@@ -58,7 +64,7 @@ export function Login({ onLogged }: Props) {
 
       {cfg?.google_oidc_enabled && (
         <>
-          <a href="/api/auth/google/login" className={clsx(buttonClass("secondary", "lg"), "w-full")}>
+          <a href={googleHref} className={clsx(buttonClass("secondary", "lg"), "w-full")}>
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
               <path fill="#EA4335" d="M12 5c1.6 0 3 .5 4.2 1.5l3-3A11.5 11.5 0 0 0 .8 7.7l3.6 2.8C5.3 7.3 8.4 5 12 5z" />
               <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.5-.2-2.3H12v4.5h6.4c-.3 1.5-1.1 2.7-2.4 3.6l3.6 2.8c2.1-2 3.4-4.9 3.4-8.6z" />

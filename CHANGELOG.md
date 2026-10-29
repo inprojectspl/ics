@@ -29,6 +29,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- OAuth clients can discover the authorization server at the issuer's root; the existing
+  discovery URLs under `/api/auth/oauth/` remain supported. Deployments must also forward the
+  root discovery paths through their reverse proxy.
+- Connecting an MCP client from a signed-out browser resumes the original consent request
+  after Google or password sign-in. Google return paths are validated and bound to a single
+  OIDC transaction.
+- OAuth consent responses preserve the exact client `state`, including reserved characters,
+  after either allowing or denying access.
 - The agent context pack no longer fails with a server error on a `supersedes` chain of three
   or more documents; the whole chain collapses into its newest visible document.
 - Restoring version 1 on S3 or R2 storage no longer copies the files of versions 10 to 19.

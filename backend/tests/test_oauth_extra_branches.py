@@ -13,6 +13,7 @@ exchange' path:
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from sqlalchemy import select
@@ -307,8 +308,10 @@ async def test_authorize_redirects_anonymous_to_login(client):
         follow_redirects=False,
     )
     assert r.status_code in (302, 307)
-    assert "login=1" in r.headers["location"]
-    assert "next=" in r.headers["location"]
+    route, _, query = urlsplit(r.headers["location"]).fragment.partition("?")
+    assert route == "login"
+    original = urlsplit(str(r.request.url))
+    assert parse_qs(query) == {"next": [f"{original.path}?{original.query}"]}
 
 
 @pytest.mark.asyncio

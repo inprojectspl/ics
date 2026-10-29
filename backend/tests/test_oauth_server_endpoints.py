@@ -19,8 +19,9 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_authorization_server_metadata_rfc_8414(client):
-    r = await client.get("/api/auth/oauth/.well-known/oauth-authorization-server")
+@pytest.mark.parametrize("prefix", ["", "/api/auth/oauth"])
+async def test_authorization_server_metadata_rfc_8414(client, prefix):
+    r = await client.get(f"{prefix}/.well-known/oauth-authorization-server")
     assert r.status_code == 200
     meta = r.json()
     # Required fields from RFC 8414 Section 2.
@@ -41,14 +42,30 @@ async def test_authorization_server_metadata_rfc_8414(client):
 
 
 @pytest.mark.asyncio
-async def test_oidc_discovery_extends_oauth_metadata(client):
-    r = await client.get("/api/auth/oauth/.well-known/openid-configuration")
+@pytest.mark.parametrize("prefix", ["", "/api/auth/oauth"])
+async def test_oidc_discovery_extends_oauth_metadata(client, prefix):
+    r = await client.get(f"{prefix}/.well-known/openid-configuration")
     assert r.status_code == 200
     meta = r.json()
     # All RFC 8414 fields + ID-token specific ones.
     assert meta["subject_types_supported"] == ["public"]
     assert "RS256" in meta["id_token_signing_alg_values_supported"]
     assert meta["userinfo_endpoint"].endswith("/api/auth/oauth/me")
+
+
+@pytest.mark.asyncio
+async def test_resource_discovery_reaches_metadata_at_the_advertised_issuer(client):
+    from app.config import get_settings
+
+    resource = (await client.get("/.well-known/oauth-protected-resource")).json()
+    issuer = resource["authorization_servers"][0]
+    assert issuer == (get_settings().oauth_issuer or get_settings().base_url).rstrip("/")
+    metadata = await client.get(f"{issuer}/.well-known/oauth-authorization-server")
+    legacy = await client.get("/api/auth/oauth/.well-known/oauth-authorization-server")
+    assert metadata.status_code == 200
+    assert metadata.headers["content-type"].startswith("application/json")
+    assert metadata.json() == legacy.json()
+    assert metadata.json()["issuer"] == issuer
 
 
 @pytest.mark.asyncio

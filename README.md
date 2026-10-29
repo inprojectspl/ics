@@ -342,13 +342,16 @@ Claude Code and Codex CLI.
 | | Endpoint |
 |---|---|
 | Protected resource metadata (RFC 9728) | `/.well-known/oauth-protected-resource` |
-| Authorization server metadata (RFC 8414) | `/api/auth/oauth/.well-known/oauth-authorization-server` |
+| Authorization server metadata (RFC 8414) | `/.well-known/oauth-authorization-server` |
+| OpenID discovery | `/.well-known/openid-configuration` |
 | OAuth endpoints | `/api/auth/oauth/{authorize,token,revoke,register,jwks.json}` |
 | Agent API | `/api/assets/index`, `search-mcp`, `by-slug/{slug}/meta`, `outline`, `files-mcp`, `file-mcp` |
 | Task context pack | `GET /api/context`, see [ADR-0019](./docs/decisions/0019-agent-context-pack.md) |
 
 Set `ICS_OAUTH_PRIVATE_KEY_PEM` and `ICS_MCP_RESOURCE_URI` to enable it. Owners and editors
 can open `/v/<slug>/agent` in the web app to see exactly what an agent reads for a document.
+The reverse proxy must forward all three root discovery paths to the backend, not the SPA.
+The older discovery URLs under `/api/auth/oauth/.well-known/` remain supported.
 
 ## Development
 

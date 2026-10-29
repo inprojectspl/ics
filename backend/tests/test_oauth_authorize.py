@@ -9,8 +9,12 @@ from tests.conftest import mk_user
 
 
 @pytest.mark.asyncio
-async def test_post_authorize_allow_returns_code_in_redirect_url(client, session):
-    """POST consent with allow + state -> 302 to redirect_uri with `code` and `state`."""
+@pytest.mark.parametrize("decision", ["allow", "deny"])
+@pytest.mark.parametrize("upstream_state", ["csrf-XYZ", "a+b&x=y#fragment%20?=ąć", ""])
+async def test_post_authorize_preserves_state_in_decision_redirect(
+    client, session, decision, upstream_state
+):
+    """Both consent decisions must return the exact state as one query parameter."""
     from urllib.parse import parse_qs, urlparse
 
     from tests.conftest import (
@@ -36,7 +40,7 @@ async def test_post_authorize_allow_returns_code_in_redirect_url(client, session
             "code_challenge": code_challenge,
             "code_challenge_method": "S256",
             "resource": resource_uri(),
-            "state": "csrf-XYZ",
+            "state": upstream_state,
         },
     )
     assert auth_r.status_code == 200
@@ -44,13 +48,19 @@ async def test_post_authorize_allow_returns_code_in_redirect_url(client, session
 
     post_r = await client.post(
         "/api/auth/oauth/authorize",
-        data={"state_token": state_token, "decision": "allow"},
+        data={"state_token": state_token, "decision": decision},
         follow_redirects=False,
     )
     assert post_r.status_code == 302
-    qs = parse_qs(urlparse(post_r.headers["location"]).query)
-    assert "code" in qs
-    assert qs["state"] == ["csrf-XYZ"]
+    location = urlparse(post_r.headers["location"])
+    assert location._replace(query="").geturl() == "http://localhost:9000/callback"
+    qs = parse_qs(location.query, keep_blank_values=True)
+    assert qs["state"] == [upstream_state]
+    if decision == "allow":
+        assert set(qs) == {"code", "state"}
+        assert qs["code"][0]
+    else:
+        assert qs == {"error": ["access_denied"], "state": [upstream_state]}
 
 
 @pytest.mark.asyncio

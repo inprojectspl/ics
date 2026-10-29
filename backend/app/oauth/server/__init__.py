@@ -10,5 +10,6 @@ from __future__ import annotations
 
 from . import authorize, me, metadata, register, revoke, token  # noqa: F401
 from ._router import _verify_pkce, router
+from .metadata import discovery_router
 
-__all__ = ["_verify_pkce", "router"]
+__all__ = ["_verify_pkce", "discovery_router", "router"]

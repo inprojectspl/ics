@@ -17,6 +17,8 @@ Uses the httpx ASGI client from conftest.py; the session persists in the cookie 
 
 from __future__ import annotations
 
+from urllib.parse import parse_qs, urlsplit
+
 import pytest
 from sqlalchemy import select
 
@@ -276,9 +278,10 @@ async def test_session_revocation_via_logout_blocks_all_endpoints(client, sessio
     assert r2.status_code in (302, 303, 307), (
         f"OAuth /authorize ignores revocation: {r2.status_code}"
     )
-    assert "login=1" in r2.headers.get("location", ""), (
-        "redirect without login=1 suggests the session was accepted"
-    )
+    route, _, query = urlsplit(r2.headers["location"]).fragment.partition("?")
+    assert route == "login", "redirect without the login route suggests session acceptance"
+    original = urlsplit(str(r2.request.url))
+    assert parse_qs(query) == {"next": [f"{original.path}?{original.query}"]}
 
 
 # ---------- /password-reset ----------

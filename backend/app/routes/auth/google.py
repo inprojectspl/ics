@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import secrets
 from typing import Annotated
+from urllib.parse import urljoin, urlsplit
 
-from fastapi import Depends, Request, status
+from fastapi import Depends, Query, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +24,28 @@ from app.util import ip_hash as compute_ip_hash
 from app.util import now as utc_now
 
 from ._router import router
+
+_RETURN_TTL = 600
+
+
+def _return_url(settings: Settings, path: str | None) -> str | None:
+    if path is None:
+        return None
+    # Browsers interpret backslashes as slashes and ignore some control
+    # characters. Reject them before resolving a user-supplied destination.
+    if (
+        not path.startswith("/")
+        or path.startswith("//")
+        or "\\" in path
+        or any(ord(char) < 32 or ord(char) == 127 for char in path)
+    ):
+        raise ApiError(status.HTTP_400_BAD_REQUEST, "invalid_return_path", "invalid return path")
+    base = urlsplit(settings.base_url)
+    target = urljoin(f"{settings.base_url.rstrip('/')}/", path)
+    resolved = urlsplit(target)
+    if (resolved.scheme, resolved.netloc) != (base.scheme, base.netloc):
+        raise ApiError(status.HTTP_400_BAD_REQUEST, "invalid_return_path", "invalid return path")
+    return target
 
 
 async def require_google_oidc(
@@ -44,9 +68,16 @@ async def require_google_oidc(
 async def google_login(
     request: Request,
     settings: Annotated[Settings, Depends(require_google_oidc)],
+    next_path: Annotated[str | None, Query(alias="next", max_length=4096)] = None,
 ) -> RedirectResponse:
+    target = _return_url(settings, next_path)
+    state = secrets.token_urlsafe(32)
+    if target is not None:
+        # Keep each return under its OIDC state so a different login request
+        # cannot overwrite the destination later consumed by this callback.
+        await get_redis().setex(f"google_login_return:{state}", _RETURN_TTL, target)
     redirect_uri = f"{settings.base_url}/api/auth/google/callback"
-    return await get_oauth().google.authorize_redirect(request, redirect_uri)
+    return await get_oauth().google.authorize_redirect(request, redirect_uri, state=state)
 
 
 @router.get("/google/callback")
@@ -146,4 +177,8 @@ async def google_callback(
     )
     await session.commit()
     await session_store.bind_session(request, get_redis(), str(user.id))
-    return RedirectResponse(url=settings.base_url, status_code=status.HTTP_302_FOUND)
+    # Authlib has already validated the provider state against this browser's
+    # session. The one-shot return expires independently of the login cookie.
+    state = request.query_params.get("state")
+    target = await get_redis().getdel(f"google_login_return:{state}") if state else None
+    return RedirectResponse(url=target or settings.base_url, status_code=status.HTTP_302_FOUND)

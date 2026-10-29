@@ -168,11 +168,25 @@ app and remove `ICS_BOOTSTRAP_ADMIN_PASSWORD` from the configuration.
 
 Set `ICS_OAUTH_PRIVATE_KEY_PEM` (or `ICS_OAUTH_PRIVATE_KEY_PEM_PATH`; generate
 with `openssl genrsa -out priv.pem 2048`) and `ICS_MCP_RESOURCE_URI`.
-MCP clients discover the server through
-`/.well-known/oauth-protected-resource` at the root of `ICS_BASE_URL`, so the
-proxy must forward that path to the backend. The example nginx config
-(`docs/deploy/nginx.example.conf`) already does; with your own proxy, forward
-`/.well-known/oauth-protected-resource` next to `/api/`.
+Set `ICS_OAUTH_ISSUER` to the externally reachable ICS origin (for example
+`https://ics.example.com`) and use the same MCP resource URI in ICS and `ics-mcp`.
+The reverse proxy must forward `/api/` and these exact root paths to the backend:
+
+- `/.well-known/oauth-protected-resource`
+- `/.well-known/oauth-authorization-server`
+- `/.well-known/openid-configuration`
+
+The example nginx config (`docs/deploy/nginx.example.conf`) includes all three.
+After updating the backend, update and reload the edge config too. Check that each
+path returns JSON, not the SPA's HTML with a misleading `200` status. The older
+discovery URLs under `/api/auth/oauth/.well-known/` remain available.
+
+An MCP connection can start without an existing ICS session. Sign in with Google
+or a password, then return to the original OAuth consent request. Google sign-in
+uses the callback from Step 5; a ChatGPT callback belongs to the MCP OAuth client,
+not the Google Cloud client. ICS supports dynamic client registration, so the
+connector can register its own callback without changing the built-in Claude client.
+Test both a fresh browser session and a previously signed-in session before rollout.
 
 ## Step 7: notifications
 

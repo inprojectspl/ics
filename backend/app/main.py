@@ -17,6 +17,7 @@ from app.domain_errors import DomainError
 from app.errors import domain_error_handler, http_error_handler, validation_error_handler
 from app.json_response import ORJSONResponse
 from app.oauth.clients import ensure_builtin_clients
+from app.oauth.server import discovery_router as oauth_discovery_router
 from app.oauth.server import router as oauth_router
 from app.routes import (
     admin,
@@ -131,6 +132,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(auth.router)
+    app.include_router(oauth_discovery_router)
     app.include_router(oauth_router)
     # Order matters: first match wins, and static /api/assets paths (mcp_assets,
     # relations, view) must precede crud's `/{asset_id}`, which would 422 on them.

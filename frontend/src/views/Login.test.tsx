@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { setLocale } from "../lib/i18n";
@@ -6,6 +6,8 @@ import { Login } from "./Login";
 
 const authConfig = vi.fn();
 const login = vi.fn();
+const assign = vi.fn();
+const originalLocation = window.location;
 
 vi.mock("../api", () => ({
   api: {
@@ -21,11 +23,20 @@ function fill() {
 }
 
 beforeEach(() => {
+  assign.mockReset();
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: { ...originalLocation, assign },
+  });
   authConfig.mockReset().mockResolvedValue({
     google_oidc_enabled: false,
     self_register_enabled: false,
   });
   login.mockReset();
+});
+
+afterEach(() => {
+  Object.defineProperty(window, "location", { configurable: true, value: originalLocation });
 });
 
 describe("Login", () => {
@@ -55,6 +66,36 @@ describe("Login", () => {
     const google = await screen.findByRole("link", { name: /Sign in with Google/ });
     expect(google).toHaveAttribute("href", "/api/auth/google/login");
     expect(screen.getByRole("link", { name: "Create an account" })).toBeInTheDocument();
+  });
+
+  it("navigates to the backend consent endpoint after a successful password login", async () => {
+    login.mockResolvedValue({ ok: true });
+    const onLogged = vi.fn();
+    const next = "/api/auth/oauth/authorize?client_id=chatgpt&state=a%2Bb&scope=ics";
+    render(<Login onLogged={onLogged} next={next} />);
+    fill();
+    await waitFor(() => expect(assign).toHaveBeenCalledWith(next));
+    expect(onLogged).not.toHaveBeenCalled();
+  });
+
+  it("passes the full return path to the Google flow", async () => {
+    authConfig.mockResolvedValue({ google_oidc_enabled: true });
+    const next = "/api/auth/oauth/authorize?state=a%2Bb&resource=https%3A%2F%2Fmcp.example";
+    render(<Login onLogged={vi.fn()} next={next} />);
+    const google = await screen.findByRole("link", { name: /Sign in with Google/ });
+    expect(google).toHaveAttribute("href", `/api/auth/google/login?next=${encodeURIComponent(next)}`);
+  });
+
+  it("ignores an external return for both login methods", async () => {
+    authConfig.mockResolvedValue({ google_oidc_enabled: true });
+    login.mockResolvedValue({ ok: true });
+    const onLogged = vi.fn();
+    render(<Login onLogged={onLogged} next="https://evil.example/" />);
+    const google = await screen.findByRole("link", { name: /Sign in with Google/ });
+    expect(google).toHaveAttribute("href", "/api/auth/google/login");
+    fill();
+    await waitFor(() => expect(onLogged).toHaveBeenCalled());
+    expect(assign).not.toHaveBeenCalled();
   });
 
   it("falls back to the plain form when the config request fails", async () => {
