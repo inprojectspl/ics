@@ -222,6 +222,163 @@ without configuration; the rest needs:
   # `--appendonly yes` to the redis command in your compose override
   ```
 
+## Micro-applications (optional)
+
+Small apps with their own data (`micro_application` assets), run by a shared
+broker and two runner supervisors from the `microapp-runtime` image. Every
+app gets its own origin `https://a-<asset id hex>-prod.<suffix>`. Off unless
+`compose.microapps.yaml` is part of the deployment (`ICS_MICROAPPS_ENABLED`
+defaults to false). A lighter ICS leaves the overlay out and needs none of
+this section: no broker or runners, no `ics_apps` database, no second domain;
+the micro-application API, an app's version history and app links answer
+`microapps_disabled`, publications wait, and the UI shows no micro-application
+settings. Existing app assets stay listed (title and summary); opening one
+says that micro-applications are off.
+
+### A domain of their own
+
+Apps run code that people and agents write, so they live on a separate
+registrable domain, not under the ICS domain: `example.net` for an ICS on
+`ics.example.com`. Under the ICS domain an app would be the same site as
+ICS: its script could set cookies for ICS hosts, and same-site requests to
+ICS would carry the visitor's cookies. GitHub and Google keep user content
+on separate domains for the same reason. `ICS_MICROAPPS_APP_HOST_SUFFIX` is
+that domain; an app host is one label under it (`a-<32 hex>-prod.example.net`).
+
+### DNS and certificates with Cloudflare
+
+The simplest setup, and no certbot with a DNS challenge:
+
+1. Add the apps domain as a zone in Cloudflare (the Free plan is enough).
+2. DNS: a proxied (orange cloud) record `*` to the address of the proxy.
+3. Browser certificate: Universal SSL for `*.example.net`, issued and
+   renewed by Cloudflare. It covers one level, which is all an app host has.
+4. Origin certificate for nginx: a Cloudflare Origin CA certificate for
+   `*.example.net` (made once in the dashboard, valid up to 15 years);
+   SSL/TLS mode **Full (strict)**.
+5. Optional: Authenticated Origin Pulls, so the apps server block accepts
+   only Cloudflare (`ssl_verify_client`), and `real_ip_header
+   CF-Connecting-IP` for real client addresses in the logs (both in the
+   nginx example).
+
+In the zone, turn off what rewrites pages: Rocket Loader, Email Obfuscation
+and automatic Web Analytics injection (the apps' CSP allows only their own
+scripts), and keep bot challenges off for it (an API call would get a
+challenge page instead of JSON). Apps send `no-store` for HTML and API
+answers and `private` for their files, so Cloudflare caches none of them;
+do not add a "cache everything" rule. Cloudflare terminates TLS and sees
+the apps' traffic: check that this fits your data policy.
+
+Without Cloudflare: a wildcard DNS record and a wildcard certificate for
+`*.example.net` from any CA (Let's Encrypt needs a DNS-01 challenge for a
+wildcard).
+
+### Proxy
+
+Add the apps server blocks and the `ics_broker`
+upstream from [`deploy/nginx.example.conf`](deploy/nginx.example.conf), and
+check the two changes in the main `ics.example.com` block:
+
+- `location ^~ /api/internal/ { return 404; }`: the broker's API to ICS must
+  stay on the private network;
+- `proxy_set_header X-ICS-Service-Token "";` in `/api/`: a client must not be
+  able to send the broker's credential.
+
+The broker sees the app from the `Host` header, so pass it unchanged. The
+broker's admin port 8081 is never routed. `nginx -t && nginx -s reload`.
+
+### PostgreSQL
+
+Apps keep their data in a separate database, `ics_apps`, one schema and one
+runtime role per app. ICS creates them through a provisioner role that can
+create roles but owns nothing in the ICS database. As `postgres` on the host:
+
+```sql
+CREATE ROLE ics_apps_provisioner LOGIN CREATEROLE PASSWORD '<ICS_APPS_PROVISIONER_PASSWORD>';
+-- Ends the sessions of an app's runtime role before dropping it, when the app
+-- is deleted for good (its owner or the asset row removed; the trash keeps it).
+GRANT pg_signal_backend TO ics_apps_provisioner;
+CREATE DATABASE ics_apps OWNER ics_apps_provisioner TEMPLATE template0;
+REVOKE ALL ON DATABASE ics_apps FROM PUBLIC;
+\c ics_apps
+REVOKE ALL ON SCHEMA public FROM PUBLIC;
+ALTER SCHEMA public OWNER TO ics_apps_provisioner;
+```
+
+`pg_hba.conf`, above the line for `ics` (order matters: the `reject` keeps
+app roles out of every other database):
+
+```
+host    ics_apps    /^ma_[0-9a-f]{32}(_pv)?_run$    172.16.0.0/12    scram-sha-256
+host    all         /^ma_                           all              reject
+host    ics_apps    ics_apps_provisioner            172.16.0.0/12    scram-sha-256
+```
+
+Optionally, a read-only login for database tools (DBeast, DBeaver, psql)
+and reports. ICS grants it `SELECT` on every app's tables, also on tables
+later releases add, and the publication check fails if it can write:
+
+```sql
+CREATE ROLE ics_apps_reader LOGIN NOINHERIT PASSWORD '<password>';
+GRANT CONNECT ON DATABASE ics_apps TO ics_apps_reader;
+```
+
+```
+host    ics_apps    ics_apps_reader    <your admin network>    scram-sha-256
+```
+
+Set `ICS_MICROAPPS_READER_ROLE=ics_apps_reader` and, once, for apps that
+already exist: `docker compose exec backend python -m app.cli
+microapps-grant-reader`. The role sees every record of every app,
+regardless of the apps' roles and row scopes: give it to administrators
+only.
+
+`max_connections` must leave room for the broker's pool
+(`ICS_MICROAPPS_DB_MAX_CONNECTIONS`, default 24) on top of ICS. Reload
+(`sudo systemctl reload postgresql`) and include `ics_apps` in the backups.
+
+### Image
+
+Build `microapp-runtime/` and push it next to the backend image, with the
+same tag:
+
+```bash
+docker build -t "$ICS_IMAGE_REGISTRY/microapp-runtime:$IMAGE_TAG" microapp-runtime
+docker push "$ICS_IMAGE_REGISTRY/microapp-runtime:$IMAGE_TAG"
+```
+
+### Configuration
+
+In `.env` (see `.env.example`):
+
+| Variable | Value |
+|---|---|
+| `ICS_MICROAPPS_APP_HOST_SUFFIX` | the apps domain, e.g. `example.net` |
+| `ICS_APPS_PROVISIONER_PASSWORD` | the provisioner password above (`openssl rand -base64 24`) |
+| `ICS_MICROAPPS_SERVICE_TOKEN` | `openssl rand -hex 32` |
+| `ICS_MICROAPPS_SESSION_SECRET` | `openssl rand -hex 32`, different from the token |
+
+Keep the three secrets with the others in the CI secret store.
+
+### Deploy and check
+
+```bash
+docker compose -p ics -f compose.yaml -f compose.prod.yaml -f compose.microapps.yaml up -d --pull always
+docker compose -p ics -f compose.yaml -f compose.prod.yaml -f compose.microapps.yaml ps
+# broker, runner-1, runner-2: Up
+```
+
+The migrations run with the backend as usual. Then publish the template app
+through MCP (`ics_microapp_contract(section="template")`, `ics_microapp_plan`,
+`ics_microapp_apply`), give yourself a role with `ics_microapp_access_set`
+and open its `app_url`. Each user's total app data is limited
+(`users.microapp_data_max_bytes`, 100 MiB by default, changed in the admin
+panel).
+
+To turn the feature off again, deploy without the overlay: the app API
+answers `microapps_disabled`, their data stays in `ics_apps`, and a rollback
+or a later deploy must keep `-f compose.microapps.yaml` to keep them on.
+
 ## Backups
 
 PostgreSQL runs on the host, so database backups are the host's job
@@ -245,12 +402,18 @@ does not pass it through, so add it there first.
 
 ## Rollback
 
-Redeploy the previous image tag:
+Redeploy the previous image tag with the same files as the deployment (add
+`-f compose.microapps.yaml` when micro-applications are on, or the rollback
+turns them off):
 
 ```bash
 IMAGE_TAG=<previous-tag> ICS_IMAGE_REGISTRY=registry.example.com/ics \
   docker compose -p ics -f compose.yaml -f compose.prod.yaml up -d --pull always
 ```
+
+With micro-applications, `ics` and `ics_apps` restore together from backups
+of the same moment: an app's schema version is recorded in `ics`, its tables
+and migration log in `ics_apps`.
 
 If the newer version ran a migration you need to undo, restore the database
 backup and deploy the version from before the migration. Treat migrations as
