@@ -18,10 +18,11 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import undefer
 
-from app import audit, permissions
+from app import audit, microapp_guard, permissions
 from app.bundle_scan import link_hrefs
 from app.collections_io import list_version_files, read_text_at_version
 from app.config import Settings, get_settings
+from app.constants import MICRO_APPLICATION
 from app.models import Asset, AssetRelation, ShareLink, User
 from app.relation_extract import Ref, extract_refs
 from app.services import documents
@@ -243,7 +244,11 @@ async def rescan(
     returned and audited cover only targets `actor` can see, so a rescan
     never tells whether a linked document it cannot open exists. Does not
     commit."""
-    await permissions.get_asset_with_role(session, user=actor, min_role="editor", asset_id=asset_id)
+    target, _ = await permissions.get_asset_with_role(
+        session, user=actor, min_role="editor", asset_id=asset_id
+    )
+    # After the role check: the kind of an asset is not told to strangers.
+    microapp_guard.refuse_addressing(target)
     asset = await _locked_for_rescan(session, asset_id)
     assert asset is not None  # the role check above found it
     result = await extract_from_content(session, asset, settings, actor.id)
@@ -277,7 +282,11 @@ async def rescan_all(
 ) -> RescanTotals:
     """`rescan` of every live asset for the operator backfill, committing
     per asset; an asset whose content cannot be read is logged and skipped."""
-    stmt = select(Asset.id).where(Asset.deleted_at.is_(None)).order_by(Asset.created_at)
+    stmt = (
+        select(Asset.id)
+        .where(Asset.deleted_at.is_(None), Asset.kind != MICRO_APPLICATION)
+        .order_by(Asset.created_at)
+    )
     if kinds:
         stmt = stmt.where(Asset.kind.in_(kinds))
     totals = RescanTotals()

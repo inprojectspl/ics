@@ -16,6 +16,9 @@ class CreateShareIn(BaseModel):
     allowed_emails: list[EmailStr] | None = None
     expires_at: datetime | None = None
     max_views: int | None = Field(default=None, ge=1)
+    # Micro-applications only: the app roles and permissions the link grants.
+    app_roles: list[str] | None = Field(default=None, max_length=20)
+    app_permissions: list[str] | None = Field(default=None, max_length=20)
 
 
 class ShareOut(BaseModel):
@@ -30,6 +33,8 @@ class ShareOut(BaseModel):
     created_at: datetime
     allowed_emails: list[str] | None
     requires_password: bool
+    app_roles: list[str] | None = None
+    app_permissions: list[str] | None = None
 
 
 class PasswordChallengeIn(BaseModel):

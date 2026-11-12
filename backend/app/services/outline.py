@@ -63,6 +63,9 @@ async def build_outline_payload(asset: Asset, settings: Settings) -> dict:
     elif asset.kind == "html_bundle":
         bundle_files = await _read_bundle_files(storage, prefix)
         outline = build_html_bundle(asset.entry_path, bundle_files, asset.title)
+    elif asset.kind == "micro_application":
+        # Package files (handlers, author notes) never become an outline.
+        outline = {"kind": asset.kind, "truncated": False}
     elif documents.is_document(asset.kind):
         meta = await documents.load_meta(asset, asset.version, settings)
         md = await documents.markdown(asset, asset.version, settings)

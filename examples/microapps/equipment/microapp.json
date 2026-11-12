@@ -1,0 +1,549 @@
+{
+  "apiVersion": "ics.microapp/v1alpha1",
+  "kind": "micro_application",
+  "metadata": {
+    "title": "Rezerwacje sprzętu",
+    "description": "Katalog sprzętu i rezerwacje; rezerwacja i anulowanie zmieniają dwie tabele w jednej transakcji."
+  },
+  "frontend": {
+    "entry": "public/index.html"
+  },
+  "runtime": {
+    "profile": "js-capabilities-v1",
+    "sdkVersion": "1.0",
+    "idleSeconds": 600
+  },
+  "database": {
+    "collections": {
+      "equipment": {
+        "fields": {
+          "name": {
+            "type": "string",
+            "required": true,
+            "maxLength": 120
+          },
+          "category": {
+            "type": "enum",
+            "values": [
+              "laptop",
+              "projector",
+              "camera",
+              "other"
+            ],
+            "default": "other"
+          },
+          "quantity": {
+            "type": "integer",
+            "required": true,
+            "minimum": 0,
+            "maximum": 1000
+          },
+          "available": {
+            "type": "integer",
+            "required": true,
+            "minimum": 0,
+            "maximum": 1000
+          },
+          "active": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "crud": {
+          "create": {
+            "permission": "equipment.manage",
+            "rowScope": "all",
+            "writeFields": [
+              "name",
+              "category",
+              "quantity",
+              "available",
+              "active"
+            ]
+          },
+          "list": {
+            "permission": "equipment.read",
+            "rowScope": "all"
+          },
+          "get": {
+            "permission": "equipment.read",
+            "rowScope": "all"
+          },
+          "update": {
+            "permission": "equipment.manage",
+            "rowScope": "all",
+            "writeFields": [
+              "name",
+              "category",
+              "active"
+            ]
+          },
+          "delete": {
+            "permission": "equipment.manage",
+            "rowScope": "all"
+          }
+        },
+        "indexes": [
+          {
+            "fields": [
+              "active",
+              "name",
+              "id"
+            ]
+          }
+        ]
+      },
+      "reservations": {
+        "fields": {
+          "equipment_id": {
+            "type": "uuid",
+            "required": true,
+            "references": {
+              "collection": "equipment"
+            }
+          },
+          "starts_on": {
+            "type": "date",
+            "required": true
+          },
+          "ends_on": {
+            "type": "date",
+            "required": true
+          },
+          "quantity": {
+            "type": "integer",
+            "required": true,
+            "minimum": 1,
+            "maximum": 50
+          },
+          "status": {
+            "type": "enum",
+            "values": [
+              "active",
+              "cancelled"
+            ],
+            "default": "active"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 300,
+            "default": ""
+          }
+        },
+        "crud": {
+          "list": {
+            "permission": "reservations.read",
+            "rowScope": "own"
+          },
+          "get": {
+            "permission": "reservations.read",
+            "rowScope": "own"
+          }
+        },
+        "indexes": [
+          {
+            "fields": [
+              "created_by",
+              "created_at",
+              "id"
+            ]
+          },
+          {
+            "fields": [
+              "equipment_id",
+              "status"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "capabilities": {
+    "equipment.for_booking": {
+      "collection": "equipment",
+      "operation": "get",
+      "permission": "reservations.book",
+      "rowScope": "all",
+      "readFields": [
+        "id",
+        "name",
+        "available",
+        "active",
+        "revision"
+      ]
+    },
+    "equipment.take_stock": {
+      "collection": "equipment",
+      "operation": "update",
+      "permission": "reservations.book",
+      "rowScope": "all",
+      "writeFields": [
+        "available"
+      ],
+      "returnFields": [
+        "id",
+        "available",
+        "revision"
+      ],
+      "conditions": {
+        "active": true
+      }
+    },
+    "equipment.return_stock": {
+      "collection": "equipment",
+      "operation": "update",
+      "permission": "reservations.book",
+      "rowScope": "all",
+      "writeFields": [
+        "available"
+      ],
+      "returnFields": [
+        "id",
+        "available",
+        "revision"
+      ]
+    },
+    "reservations.create_own": {
+      "collection": "reservations",
+      "operation": "insert",
+      "permission": "reservations.book",
+      "rowScope": "own",
+      "writeFields": [
+        "equipment_id",
+        "starts_on",
+        "ends_on",
+        "quantity",
+        "note"
+      ],
+      "returnFields": [
+        "id",
+        "equipment_id",
+        "starts_on",
+        "ends_on",
+        "quantity",
+        "status",
+        "revision"
+      ]
+    },
+    "reservations.read_own": {
+      "collection": "reservations",
+      "operation": "get",
+      "permission": "reservations.book",
+      "rowScope": "own",
+      "readFields": [
+        "id",
+        "equipment_id",
+        "quantity",
+        "status",
+        "revision"
+      ]
+    },
+    "reservations.cancel_own": {
+      "collection": "reservations",
+      "operation": "update",
+      "permission": "reservations.book",
+      "rowScope": "own",
+      "writeFields": [
+        "status"
+      ],
+      "allowedValues": {
+        "status": [
+          "cancelled"
+        ]
+      },
+      "returnFields": [
+        "id",
+        "status",
+        "revision"
+      ],
+      "conditions": {
+        "status": "active"
+      }
+    },
+    "equipment.catalog": {
+      "collection": "equipment",
+      "operation": "list",
+      "permission": "equipment.read",
+      "rowScope": "all",
+      "readFields": [
+        "id",
+        "name",
+        "category",
+        "quantity",
+        "available",
+        "active"
+      ]
+    },
+    "reservations.mine": {
+      "collection": "reservations",
+      "operation": "list",
+      "permission": "reservations.read",
+      "rowScope": "own",
+      "readFields": [
+        "id",
+        "equipment_id",
+        "starts_on",
+        "ends_on",
+        "quantity",
+        "status"
+      ]
+    }
+  },
+  "endpoints": [
+    {
+      "name": "reserve",
+      "method": "POST",
+      "path": "/v1/custom/reservations",
+      "handler": "handlers/reserve.mjs#default",
+      "permission": "reservations.book",
+      "transaction": "required",
+      "ifMatch": "none",
+      "idempotency": "required",
+      "capabilities": [
+        "equipment.for_booking",
+        "equipment.take_stock",
+        "reservations.create_own"
+      ],
+      "input": {
+        "body": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "equipmentId",
+            "startsOn",
+            "endsOn",
+            "quantity"
+          ],
+          "properties": {
+            "equipmentId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "startsOn": {
+              "type": "string",
+              "format": "date"
+            },
+            "endsOn": {
+              "type": "string",
+              "format": "date"
+            },
+            "quantity": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            },
+            "note": {
+              "type": "string",
+              "maxLength": 400
+            }
+          }
+        }
+      },
+      "output": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reservation",
+          "available"
+        ],
+        "properties": {
+          "reservation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "equipment_id",
+              "starts_on",
+              "ends_on",
+              "quantity",
+              "status",
+              "revision"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "equipment_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "starts_on": {
+                "type": "string",
+                "format": "date"
+              },
+              "ends_on": {
+                "type": "string",
+                "format": "date"
+              },
+              "quantity": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "active"
+                ]
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "available": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "cancel",
+      "method": "POST",
+      "path": "/v1/custom/reservations/:id/cancel",
+      "handler": "handlers/cancel.mjs#default",
+      "permission": "reservations.book",
+      "transaction": "required",
+      "ifMatch": "required",
+      "idempotency": "required",
+      "capabilities": [
+        "reservations.read_own",
+        "reservations.cancel_own",
+        "equipment.for_booking",
+        "equipment.return_stock"
+      ],
+      "input": {
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "body": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        }
+      },
+      "output": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "status",
+          "revision",
+          "available"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "cancelled"
+            ]
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "available": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "document",
+      "method": "GET",
+      "path": "/v1/custom/document",
+      "handler": "handlers/document.mjs#default",
+      "permission": "equipment.read",
+      "transaction": "read_only",
+      "ifMatch": "none",
+      "idempotency": "none",
+      "capabilities": [
+        "equipment.catalog",
+        "reservations.mine"
+      ],
+      "input": {
+        "query": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        }
+      },
+      "output": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "markdown"
+        ],
+        "properties": {
+          "markdown": {
+            "type": "string",
+            "maxLength": 200000
+          }
+        }
+      }
+    }
+  ],
+  "document": {
+    "endpoint": "document"
+  },
+  "permissions": {
+    "equipment.read": {
+      "label": "Przeglądanie katalogu"
+    },
+    "equipment.manage": {
+      "label": "Zarządzanie katalogiem"
+    },
+    "reservations.read": {
+      "label": "Podgląd rezerwacji"
+    },
+    "reservations.book": {
+      "label": "Rezerwowanie i anulowanie"
+    }
+  },
+  "roles": {
+    "borrower": {
+      "label": "Wypożyczający",
+      "description": "Rezerwuje sprzęt dla siebie.",
+      "permissions": [
+        "equipment.read",
+        "reservations.read",
+        "reservations.book"
+      ]
+    },
+    "keeper": {
+      "label": "Opiekun sprzętu",
+      "description": "Prowadzi katalog i widzi rezerwacje.",
+      "permissions": [
+        "equipment.read",
+        "equipment.manage",
+        "reservations.read"
+      ]
+    }
+  },
+  "compatibility": {
+    "schemaMin": 1,
+    "schemaMax": 1
+  },
+  "limitsRequested": {
+    "wallMs": 5000,
+    "maxDbCalls": 20,
+    "maxResponseBytes": 262144
+  }
+}

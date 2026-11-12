@@ -1,0 +1,4 @@
+/* `hidden` must win over any display rule below. */
+[hidden] { display: none !important; }
+body { font: 15px/1.5 system-ui, sans-serif; margin: 2rem auto; max-width: 40rem; padding: 0 1rem; }
+li { display: flex; gap: .5rem; align-items: center; }

@@ -308,3 +308,47 @@ Codes follow the RFC 6749, RFC 7591 and RFC 8707 error names.
 | `push_endpoint_not_allowed` | 400 | The push endpoint is not a known browser push service. |
 | `push_subscription_not_found` | 404 | The device is not registered for the caller. |
 | `invalid_unsubscribe_token` | 400 | The e-mail opt-out link is invalid or expired. |
+
+## Micro-applications
+
+Management API under `/api/micro-applications` (PoC). Plan and apply errors
+about the package carry `field` (a JSON Pointer into `microapp.json`), `file`
+and a `diagnostics` list of `{code, message, file, pointer, severity}`.
+
+| Code | Status | Meaning |
+| --- | --- | --- |
+| `microapps_disabled` | 404 | Micro-applications are not enabled on this server. |
+| `programmatic_auth_required` | 403 | Plan and apply need a bearer token (ICS-MCP) or a personal access token, not a browser session. |
+| `precondition_required` | 428 | An idempotency key is required (body `idempotency_key` or `Idempotency-Key` header). |
+| `idempotency_key_mismatch` | 400 | The body and the header carry different idempotency keys. |
+| `idempotency_key_reused` | 409 | The key was already used by the same user for a different request. |
+| `invalid_argument` | 422 | Unknown contract section; `allowed` lists the sections. |
+| `files_required` | 400 | The plan has no files. |
+| `path_invalid` | 400 | A file has no path (`field` names it). |
+| `content_required` | 400 | A file needs exactly one of `content_text` or `content_base64`. |
+| `base64_invalid` | 400 | `content_base64` is not valid base64. |
+| `package_too_many_files` | 413 | More files than the contract allows. |
+| `package_too_large` | 413 | The package exceeds the contract's byte limit. |
+| `manifest_invalid` | 400 | The package or `microapp.json` breaks the contract; see `diagnostics`. |
+| `destructive_change` | 400 | The new data model removes or changes existing tables or fields (v1 is additive only). |
+| `schema_incompatible` | 400 | The release does not support the target schema version, or a transitional release is needed first. |
+| `runtime_unavailable` | 409 | The runtime could not check the handlers; `retryable` is true. |
+| `plan_not_found` | 404 | No such plan for the caller. |
+| `plan_expired` | 409 | The plan is older than its time to live; plan again. |
+| `digest_mismatch` | 409 | `digest` is not the plan's release digest. |
+| `generation_conflict` | 409 | The application changed since the plan or the status read; `current_generation` may be given. |
+| `plan_already_applied` | 409 | Another request already applied this plan. |
+| `publish_permission_required` | 403 | `app.publish` is needed (apply, package sources). |
+| `control_permission_required` | 403 | `app.control` is needed (control, logs). |
+| `manage_permission_required` | 403 | `app.access.manage` is needed (giving access). |
+| `operation_not_found` | 404 | No such operation visible to the caller. |
+| `invalid_action` | 400 | Unknown control action; `allowed` lists them. |
+| `permission_unknown` | 400 | The application does not declare this permission; `allowed` lists them. |
+| `role_unknown` | 400 | The application's active release defines no such role; `allowed` lists its roles. |
+| `principal_required` | 400 | A grant needs exactly one of `user_email` or `project_id`. |
+| `launch_invalid` | 400 | The app sign-in code is missing, expired or belongs to another browser start. |
+| `bad_report` | 400 | Internal broker report is not a JSON object. |
+| `microapp_requires_agent_api` | 409 | A generic upload or edit route refused a micro-application (or a package with `microapp.json`); use plan/apply. |
+| `app_permissions_invalid` | 400 | A micro-application share link must name roles the active release defines or permissions it declares; `allowed` and `allowed_roles` list them. |
+| `app_permissions_not_applicable` | 400 | `app_roles` or `app_permissions` were sent for a document share link. |
+| `microapp_source_restricted` | 403 | A generic read route refused a micro-application's package; publishers use `/api/micro-applications/{id}/package`. |

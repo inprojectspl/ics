@@ -77,7 +77,8 @@ def entry_time(entry_id: str) -> datetime:
 
 def link_of(payload: dict[str, Any]) -> str | None:
     """App-relative URL the entry opens. Several new versions open the diff
-    from the last version the reader knew to the newest."""
+    from the last version the reader knew to the newest; a new release of a
+    micro-application opens the app (its comparison is for publishers)."""
     code = payload.get("c")
     slug = payload.get("sl")
     if code == "channel.chat_disabled":
@@ -89,6 +90,7 @@ def link_of(payload: dict[str, Any]) -> str | None:
     version, first = payload.get("v"), payload.get("fv")
     if (
         code == "asset.updated"
+        and payload.get("k") != "micro_application"
         and isinstance(version, int)
         and isinstance(first, int)
         and 1 < first <= version

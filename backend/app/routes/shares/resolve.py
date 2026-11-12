@@ -12,7 +12,7 @@ from typing import Annotated
 from fastapi import Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import audit, permissions
+from app import audit, microapp_guard, permissions
 from app.agent_markdown import markdown_converter
 from app.auth import CurrentUser, require_mcp_rate_limit
 from app.collections_io import (
@@ -57,6 +57,7 @@ async def share_resolve(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> ShareResolveOut:
     share, asset = await _resolve_share(token, session)
+    microapp_guard.refuse_source(asset)
 
     # A role on the asset skips the mode gate (they can read it anyway), but
     # lifecycle gates (410 in `_resolve_share`) apply to everyone.

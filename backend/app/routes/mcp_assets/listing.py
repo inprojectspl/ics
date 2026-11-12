@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import permissions
+from app import microapp_guard, permissions
 from app.auth import CurrentUser
 from app.collections_io import list_version_files_with_sizes
 from app.config import get_settings
@@ -31,6 +31,7 @@ async def files_mcp(
     asset, _ = await permissions.get_asset_with_role(
         session, user=user, min_role="viewer", slug=slug
     )
+    microapp_guard.refuse_source(asset)
     ensure_mcp_file_kind(asset, "files-mcp")
     settings = get_settings()
     v = resolve_version_or_404(asset, version)

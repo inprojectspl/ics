@@ -29,6 +29,7 @@ from app.routes import (
     health,
     html_viewer,
     mcp_assets,
+    micro_applications,
     notifications,
     projects,
     relations,
@@ -156,6 +157,8 @@ def create_app() -> FastAPI:
     app.include_router(notifications.watches_router)
     app.include_router(shared.router)
     app.include_router(html_viewer.router)
+    app.include_router(micro_applications.router)
+    app.include_router(micro_applications.internal_router)
     return app
 
 

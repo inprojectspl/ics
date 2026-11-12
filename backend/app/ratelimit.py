@@ -43,6 +43,10 @@ PAT_API = RateLimit("pat_api", limit=600, window_seconds=60)
 # Agent context pack (ADR-0019): an agent loop has no reason to ask more often.
 CONTEXT_PACK = RateLimit("context_pack", limit=120, window_seconds=60)
 
+# Micro-application plans, per user: each one stores a package and has the
+# broker compile its handlers; an agent fixing diagnostics stays well below.
+MICROAPP_PLAN = RateLimit("microapp_plan", limit=60, window_seconds=10 * 60)
+
 # Notification settings (ADR-0023): the Chat test posts to Google, and the
 # e-mail opt-out endpoint takes no login.
 NOTIFY_CHAT_TEST = RateLimit("notify_chat_test", limit=5, window_seconds=60)

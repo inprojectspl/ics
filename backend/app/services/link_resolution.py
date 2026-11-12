@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import domain_of
 from app.config import Settings
-from app.constants import ShareMode
+from app.constants import MICRO_APPLICATION, ShareMode
 from app.models import Asset, ShareLink, User
 from app.permissions import EffectiveRole
 from app.services.sharing import build_asset_url, build_share_url
@@ -181,7 +181,11 @@ async def pick_canonical_share(session: AsyncSession, asset_id: UUID) -> ShareLi
 
 async def canonical_url(session: AsyncSession, settings: Settings, asset: Asset) -> str:
     """The address to show for `asset`. Falls back to `/v/<slug>`, which
-    is always correct for whoever can already see the document."""
+    is always correct for whoever can already see the document. A
+    micro-application keeps `/v/<slug>`: its share link opens the app
+    itself, not the asset page, so the page's tabs must not live under it."""
+    if asset.kind == MICRO_APPLICATION:
+        return build_asset_url(settings, asset.slug)
     share = await pick_canonical_share(session, asset.id)
     if share is None:
         return build_asset_url(settings, asset.slug)

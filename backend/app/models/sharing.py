@@ -37,6 +37,8 @@ class ShareLink(Base):
         TIMESTAMP(timezone=True), server_default=func.now()
     )
     revoked_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    # Micro-applications only: app permissions the link's holders get.
+    app_permissions: Mapped[list[str] | None] = mapped_column(ARRAY(String))
 
     asset: Mapped[Asset] = relationship(back_populates="share_links")
 

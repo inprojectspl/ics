@@ -115,6 +115,13 @@ async def render_derived_text(asset: Asset, version: int, text: str) -> str:
     )
 
 
+async def render_live_text(text: str) -> str:
+    """Rendered HTML of Markdown built from live data at read time (a
+    micro-application's records for one reader). Never cached: it changes on
+    every read, and deleted records must not outlive their source here."""
+    return await render_markdown_async(text)
+
+
 async def _render_cached(
     key: str,
     load: Callable[[], Awaitable[str]],

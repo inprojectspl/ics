@@ -157,6 +157,42 @@ class Settings(BaseSettings):
     vapid_private_key: str = ""
     vapid_subject: str = ""
 
+    # Micro-applications (PoC). The shared Node.js broker serves every app on
+    # its own origin `<scheme>://a-<asset hex>-<env>.<app_host_suffix>`.
+    microapps_enabled: bool = False
+    # Trusted provisioner of per-asset schemas and roles in the separate
+    # `ics_apps` database; used by the worker only, never by request code.
+    microapps_apps_database_url: str = ""
+    # Optional existing role that may read (never write) every app's data in
+    # `ics_apps`, for database tools and reports. Empty: no such grants.
+    microapps_reader_role: str = ""
+    # Host and port the broker uses to reach `ics_apps` with runtime roles.
+    microapps_runtime_db_host: str = "postgres"
+    microapps_runtime_db_port: int = 5432
+    microapps_app_host_suffix: str = "ics-apps.localhost"
+    microapps_app_scheme: str = "https"
+    # Shared secret of the private broker <-> ICS API (header X-ICS-Service-Token).
+    microapps_service_token: str = ""
+    microapps_broker_admin_url: str = "http://broker:8081"
+    # Public aliases of app origins, e.g. a tunnel to the local profile:
+    # "public.host=<asset hex>,...". The alias replaces the derived app URL.
+    microapps_public_aliases: str = ""
+    # Base of share-link URLs when they must point elsewhere than base_url
+    # (e.g. a tunnel to the local profile). Empty: base_url.
+    share_base_url: str = ""
+    # Test-only publication fault hooks (local profile); off everywhere else.
+    microapps_fault_injection: bool = False
+
+    @property
+    def microapps_alias_map(self) -> dict[str, str]:
+        """Public alias host -> asset hex."""
+        out: dict[str, str] = {}
+        for item in self.microapps_public_aliases.split(","):
+            host, _, hex_ = item.strip().lower().partition("=")
+            if host and len(hex_) == 32:
+                out[host] = hex_
+        return out
+
     @property
     def allowed_domain_list(self) -> list[str]:
         return [d.strip().lower() for d in self.allowed_domains.split(",") if d.strip()]

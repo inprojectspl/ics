@@ -1,0 +1,12 @@
+/* `hidden` must win over any display rule below. */
+[hidden] { display: none !important; }
+:root { color-scheme: light dark; --line: #8884; }
+body { font: 15px/1.5 system-ui, sans-serif; margin: 0 auto; max-width: 48rem; padding: 1.5rem 1rem; }
+h1 { margin: 0; font-size: 1.5rem; }
+.muted { opacity: .7; margin: .25rem 0 1rem; }
+.grid { display: grid; gap: .5rem; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); align-items: end; }
+label { display: grid; gap: .25rem; }
+input, select, button { font: inherit; padding: .4rem .6rem; }
+.list { list-style: none; padding: 0; display: grid; gap: .5rem; }
+.list li { border: 1px solid var(--line); border-radius: .5rem; padding: .6rem .8rem; display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+.list li strong { flex: 1 1 12rem; }

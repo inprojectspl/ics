@@ -10,6 +10,11 @@ from arq import cron
 from app.config import get_settings
 from app.jobs.queue import worker_redis_settings
 from app.jobs.tasks.cleanup import cleanup_oauth_artifacts, cleanup_old_email_outbox
+from app.jobs.tasks.micro_applications import (
+    microapp_control_retry,
+    microapp_process_operation,
+    microapp_sweeper,
+)
 from app.jobs.tasks.notify import notifications_sweeper, notify_asset_event
 from app.jobs.tasks.ocr import ocr_sweeper
 from app.jobs.tasks.outline import outline_stale_sweeper, rebuild_outline
@@ -26,6 +31,9 @@ class WorkerSettings:
         ocr_sweeper,
         notify_asset_event,
         notifications_sweeper,
+        microapp_process_operation,
+        microapp_control_retry,
+        microapp_sweeper,
     ]
     cron_jobs: ClassVar[list] = [
         cron(outline_stale_sweeper, minute=set(range(0, 60))),  # every minute
@@ -35,6 +43,8 @@ class WorkerSettings:
         cron(ocr_sweeper, minute=set(range(0, 60))),
         # Debounced version events and e-mail / Chat batches (ADR-0023).
         cron(notifications_sweeper, second=set(range(0, 60, 5)), timeout=60),
+        # Micro-application operations, drains, cleanup and measurements.
+        cron(microapp_sweeper, second={15, 45}, timeout=55),
     ]
     max_jobs = get_settings().arq_max_jobs
     job_timeout = get_settings().arq_job_timeout

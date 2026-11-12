@@ -7,6 +7,17 @@ from app.models.audit import AuditLog
 from app.models.doc_types import DocType
 from app.models.external_refs import AssetExternalRef, ProjectExternalRef, ProjectKeyDocument
 from app.models.integrations import CdnAllowlist, GitLabBinding
+from app.models.micro_applications import (
+    MicroAppCleanupOrder,
+    MicroAppEnvironment,
+    MicroAppGrant,
+    MicroAppLog,
+    MicroAppOperation,
+    MicroAppPlan,
+    MicroAppRelease,
+    MicroAppSchemaBinding,
+    MicroAppStats,
+)
 from app.models.notifications import NotificationPreference, PushSubscription, Watch
 from app.models.oauth import OAuthAuthCode, OAuthClient, OAuthJTIBlacklist, OAuthRefreshToken
 from app.models.ocr import DocumentOcr
@@ -32,6 +43,15 @@ __all__ = [
     "DuplicateDismissal",
     "EmailOutbox",
     "GitLabBinding",
+    "MicroAppCleanupOrder",
+    "MicroAppEnvironment",
+    "MicroAppGrant",
+    "MicroAppLog",
+    "MicroAppOperation",
+    "MicroAppPlan",
+    "MicroAppRelease",
+    "MicroAppSchemaBinding",
+    "MicroAppStats",
     "NotificationPreference",
     "OAuthAuthCode",
     "OAuthClient",

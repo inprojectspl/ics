@@ -11,10 +11,11 @@ from fastapi import APIRouter, Depends, Form, Query, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import permissions
+from app import microapp_guard, permissions
 from app.auth import CurrentUser
 from app.collections_io import normalize_collection_path, upload_basename
 from app.config import Settings, get_settings
+from app.constants import MICRO_APPLICATION
 from app.db import get_session
 from app.errors import ApiError
 from app.html_bundle import (
@@ -22,9 +23,13 @@ from app.html_bundle import (
     is_allowed_path,
     normalize_bundle_path,
 )
-from app.models import AssetVersion
+from app.models import Asset, AssetVersion, User
 from app.routes._version_param import resolve_version_or_404
+from app.routes.micro_applications import require_enabled
 from app.services import asset_versions, documents, version_diff
+from app.services.micro_applications import access as app_access
+from app.services.micro_applications import status as app_status
+from app.services.micro_applications.changes import between_versions
 from app.services.versions import version_rows
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
@@ -39,11 +44,11 @@ async def list_versions(
     """Version history, viewer level; `storage_prefix` and the author's full
     e-mail stay editor+ only."""
     asset, role = await permissions.get_viewable_asset_by_id(session, asset_id, user)
-    return await version_rows(
-        session,
-        asset,
-        privileged=not permissions.is_read_only(role),
-    )
+    await _sources_readable(session, user, asset, role)
+    rows = await version_rows(session, asset, privileged=not permissions.is_read_only(role))
+    if asset.kind == MICRO_APPLICATION:
+        rows = await app_status.with_release_states(session, asset, rows)
+    return rows
 
 
 @router.get("/{asset_id}/versions/{from_v}/diff/{to_v}")
@@ -63,6 +68,7 @@ async def diff_versions(
     in `file-mcp`.
     """
     asset, role = await permissions.get_viewable_asset_by_id(session, asset_id, user)
+    await _sources_readable(session, user, asset, role)
     if from_v == to_v:
         raise ApiError(status.HTTP_400_BAD_REQUEST, "same_version", "versions must differ")
     for v in (from_v, to_v):
@@ -94,7 +100,7 @@ async def diff_versions(
     )
     meta = {r["version"]: r for r in rows if r["version"] in (from_v, to_v)}
 
-    return {
+    out = {
         "kind": asset.kind,
         "from_version": from_v,
         "to_version": to_v,
@@ -102,6 +108,25 @@ async def diff_versions(
         "to_meta": meta.get(to_v),
         "files": version_diff.as_payload(changes),
     }
+    if asset.kind == MICRO_APPLICATION:
+        # After the gather: the same session.
+        rows = await app_status.with_release_states(session, asset, rows)
+        app_changes = await between_versions(session, asset.id, from_v, to_v)
+        if app_changes is not None:
+            out["app_changes"] = app_changes
+    return out
+
+
+async def _sources_readable(
+    session: AsyncSession, user: User, asset: Asset, role: permissions.EffectiveRole
+) -> None:
+    """`history_readable`, or the source-restricted answer an app's users get.
+    With micro-applications off an app's history is as unavailable as its
+    package."""
+    if asset.kind == MICRO_APPLICATION:
+        require_enabled(get_settings())
+    if not await app_access.history_readable(session, user, asset, role):
+        microapp_guard.refuse_source(asset)
 
 
 @router.post("/{asset_id}/versions", status_code=status.HTTP_201_CREATED)
@@ -127,6 +152,7 @@ async def create_version(
     if paths is None:
         paths = []
     asset = await permissions.get_owned_asset_by_id(session, asset_id, user)
+    microapp_guard.refuse_write(asset)
     if len(files) > settings.max_files_per_bundle:
         raise ApiError(status.HTTP_413_CONTENT_TOO_LARGE, "bundle_too_many_files", "too many files")
     if len(files) == 0:
@@ -183,6 +209,7 @@ async def create_version(
                 status.HTTP_400_BAD_REQUEST, "unsupported_kind", f"unsupported kind: {asset.kind}"
             )
 
+    microapp_guard.refuse_manifest_upload(p for _, p in pairs)
     entry = _requested_entry(asset.kind, entry_path, [p for _, p in pairs])
     result = await asset_versions.commit_new_version(
         session,
@@ -243,6 +270,7 @@ async def restore_version(
     version N+1. Keeps the history monotonic (no "version going backwards"
     in audit trail) and makes the rollback itself rollback-able."""
     asset = await permissions.get_owned_asset_by_id(session, asset_id, user)
+    microapp_guard.refuse_write(asset)
     if n == asset.version:
         raise ApiError(
             status.HTTP_400_BAD_REQUEST, "version_is_current", "this version is already current"

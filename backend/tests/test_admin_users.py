@@ -219,6 +219,29 @@ async def test_patch_bundle_limit_audited(session):
 
 
 @pytest.mark.asyncio
+async def test_patch_microapp_data_limit_audited(session):
+    from sqlalchemy import select
+
+    from app.models import AuditLog
+
+    admin = await _mk_user(session, role="admin")
+    user = await _mk_user(session)
+    await session.commit()
+
+    out = await patch_user(
+        user.id, PatchUserIn(microapp_data_max_bytes=7 * 1024**2), admin, session
+    )
+    assert out["microapp_data_max_bytes"] == 7 * 1024**2
+    row = await session.scalar(
+        select(AuditLog).where(
+            AuditLog.action == "user_microapp_data_limit_changed",
+            AuditLog.target == f"user:{user.id}",
+        )
+    )
+    assert row is not None and row.payload["to_bytes"] == 7 * 1024**2
+
+
+@pytest.mark.asyncio
 async def test_patch_html_autobypass_audited(session):
     admin = await _mk_user(session, role="admin")
     user = await _mk_user(session)

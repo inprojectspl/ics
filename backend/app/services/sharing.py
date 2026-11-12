@@ -31,7 +31,11 @@ def build_asset_url(settings: Settings, slug: str) -> str:
 def build_share_url(settings: Settings, token: str, *, magic: str | None = None) -> str:
     """Canonical ShareLink URL. The `magic` parameter is for magic-email
     links (one-shot token in the query string)."""
-    base = build_app_url(settings, f"/s/{token}")
+    base = (
+        f"{settings.share_base_url.rstrip('/')}/s/{token}"
+        if settings.share_base_url
+        else build_app_url(settings, f"/s/{token}")
+    )
     return f"{base}?m={magic}" if magic else base
 
 

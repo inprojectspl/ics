@@ -24,11 +24,25 @@ ROLE_REGEX = f"^({'|'.join(ROLES)})$"
 # Enforced by `quota.assert_bundle_fits`.
 DEFAULT_BUNDLE_MAX_BYTES = 5 * 1024 * 1024
 
+# Default per-user cap on the data (tables, indexes, audit) of all the
+# micro-applications a user owns (`users.microapp_data_max_bytes`).
+DEFAULT_MICROAPP_DATA_MAX_BYTES = 100 * 1024 * 1024
+
 # Assets
 
 AssetKind = Literal[
-    "md_single", "md_collection", "html_bundle", "pdf_doc", "office_doc", "gitlab_binding"
+    "md_single",
+    "md_collection",
+    "html_bundle",
+    "pdf_doc",
+    "office_doc",
+    "gitlab_binding",
+    "micro_application",
 ]
+
+# Created and changed only through the micro-application plan/apply API
+# (`services.micro_applications`); every generic content route refuses it.
+MICRO_APPLICATION: Literal["micro_application"] = "micro_application"
 
 # Kinds stored as one uploaded document converted to Markdown at write time
 # (`services.documents`): the extensions each accepts and the error code for
@@ -122,6 +136,7 @@ AuditAction = Literal[
     "user_role_changed",
     "user_quota_changed",
     "user_bundle_limit_changed",
+    "user_microapp_data_limit_changed",
     "user_autobypass_changed",
     "user_display_name_changed",
     "user_locked_by_admin",
@@ -176,5 +191,13 @@ AuditAction = Literal[
     "external_refs_rekeyed",
     "project_external_ref_set",
     "project_key_documents_set",
+    # micro-applications
+    "microapp_planned",
+    "microapp_apply_accepted",
+    "microapp_published",
+    "microapp_publish_failed",
+    "microapp_controlled",
+    "microapp_grant_added",
+    "microapp_grant_removed",
 ]
 AUDIT_ACTIONS: tuple[AuditAction, ...] = get_args(AuditAction)
