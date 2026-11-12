@@ -64,6 +64,15 @@ export function isOfficeFileName(name: string): boolean {
   return OFFICE_EXTENSIONS.some((ext) => lower.endsWith(ext));
 }
 
+/** A folder with a micro-application manifest at its root (or under the one
+ * folder a directory drop keeps). Never uploaded as HTML from the browser. */
+export function isMicroAppDrop(walked: WalkedFile[]): boolean {
+  return walked.some((w) => {
+    const parts = w.path.replace(/^\/+/, "").split("/");
+    return parts[parts.length - 1] === "microapp.json" && parts.length <= 2;
+  });
+}
+
 export function isHtmlBundleDrop(walked: WalkedFile[]): boolean {
   // Has at least one .html file. If both .md and .html are present, the
   // .html signal wins - typical "AI-generated demo with a README.md

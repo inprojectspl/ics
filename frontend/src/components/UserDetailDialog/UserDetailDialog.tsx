@@ -23,6 +23,8 @@ interface Props {
   onClose: () => void;
   onChanged: () => void | Promise<void>;
   onDeleted: () => void | Promise<void>;
+  /** Off on an ICS without micro-applications: no data limit to set. */
+  microappsEnabled?: boolean;
 }
 
 /**
@@ -30,7 +32,7 @@ interface Props {
  * Actions are grouped by impact (low to high): reset/reinvite, role,
  * limits (storage, bundle), lock, delete. Delete last and confirmation gated.
  */
-export function UserDetailDialog({ user, onClose, onChanged, onDeleted }: Props) {
+export function UserDetailDialog({ user, onClose, onChanged, onDeleted, microappsEnabled = false }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -172,6 +174,22 @@ export function UserDetailDialog({ user, onClose, onChanged, onDeleted }: Props)
               })
             }
           />
+
+          {microappsEnabled && (
+          <LimitEditor
+            title={t("userDetail.microappDataTitle")}
+            desc={t("userDetail.microappDataDesc")}
+            unit="MB"
+            value={user.microapp_data_max_bytes}
+            busy={busy === "microappData"}
+            onChange={(b) =>
+              run("microappData", async () => {
+                await api.adminUserPatch(user.id, { microapp_data_max_bytes: b });
+                await onChanged();
+              })
+            }
+          />
+          )}
 
           <ToggleRow
             title={t("userDetail.autobypassTitle")}

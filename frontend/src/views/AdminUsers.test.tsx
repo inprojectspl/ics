@@ -13,6 +13,7 @@ vi.mock("../api", () => ({
   api: {
     adminUsersList: (...a: unknown[]) => adminUsersList(...a),
     adminUserGet: (...a: unknown[]) => adminUserGet(...a),
+    authConfig: () => Promise.resolve({ microapps_enabled: false }),
   },
 }));
 // Both dialogs have their own logic and API calls; the view only owns
@@ -59,6 +60,7 @@ function user(over: Partial<AdminUser> = {}): AdminUser {
     locked: false,
     storage_quota_bytes: 1000,
     bundle_max_bytes: 100,
+    microapp_data_max_bytes: 1000,
     html_autobypass: false,
     asset_count: 1,
     asset_bytes: 500,

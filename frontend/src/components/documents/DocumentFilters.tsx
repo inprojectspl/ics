@@ -45,6 +45,7 @@ const FIXED: Partial<Record<FilterKind, ReadonlyArray<{ value: AssetFilter; labe
     { value: "type:html_bundle", label: "sidebarNav.bundles" },
     { value: "type:pdf_doc", label: "sidebarNav.pdfs" },
     { value: "type:office_doc", label: "sidebarNav.documents" },
+    { value: "type:micro_application", label: "sidebarNav.microApps" },
   ],
   state: [
     { value: "state:public", label: "sidebarNav.public" },

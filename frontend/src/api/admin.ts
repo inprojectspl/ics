@@ -53,6 +53,7 @@ export const adminUserPatch = (
     role?: "user" | "external" | "admin";
     storage_quota_bytes?: number;
     bundle_max_bytes?: number;
+    microapp_data_max_bytes?: number;
     html_autobypass?: boolean;
   },
 ) =>

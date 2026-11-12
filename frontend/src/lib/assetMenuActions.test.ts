@@ -45,6 +45,24 @@ describe("buildAssetMenuActions", () => {
     ]);
   });
 
+  it("gives a micro-application its record actions and, to those who work on it, its version history", () => {
+    expect(keys(mkAsset({ kind: "micro_application", version: 4 }))).toEqual([
+      "rename",
+      "versions",
+      "diff",
+      "project",
+      "share",
+      "delete",
+    ]);
+    // A user of the app has no right to its package history.
+    expect(keys(mkAsset({ kind: "micro_application", version: 4, my_role: "viewer" }))).toEqual([]);
+    // An editor sees it only as a publisher, which the viewer knows.
+    const editorApp = { kind: "micro_application" as const, version: 4, my_role: "editor" as const };
+    expect(keys(mkAsset(editorApp))).not.toContain("versions");
+    expect(keys(mkAsset({ ...editorApp, history_readable: true }))).toContain("versions");
+    expect(keys(mkAsset({ ...editorApp, my_role: "viewer", history_readable: true }))).toContain("diff");
+  });
+
   it("withholds owner-only actions from an editor", () => {
     const k = keys(mkAsset({ my_role: "editor" }));
     expect(k).toContain("rename");

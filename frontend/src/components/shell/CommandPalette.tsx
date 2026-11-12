@@ -9,12 +9,12 @@ import {
   FileText,
   FolderKanban,
   FolderPlus,
+  type LucideIcon,
   Moon,
   Search,
   Settings,
   ShieldCheck,
   Sun,
-  type LucideIcon,
 } from "lucide-react";
 import { type AssetSummary, type Me, type ProjectSummary } from "../../api";
 import { t, type MessageKey } from "../../lib/i18n";

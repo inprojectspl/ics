@@ -10,6 +10,25 @@ import { ShareDialog } from "../ShareDialog";
 import { ToastProvider } from "../Toast";
 import { NewLinkForm } from "./NewLinkForm";
 
+const setMicroAppAccess = vi.fn(async () => ({}));
+
+vi.mock("../../api/microApplications", async (original) => ({
+  ...(await original<typeof import("../../api/microApplications")>()),
+  setMicroAppAccess: (...a: unknown[]) => setMicroAppAccess(...(a as [])),
+  getMicroAppAccess: vi.fn(async () => ({
+    asset_id: "a1",
+    title: "App",
+    app_url: "https://a-x-prod.apps.example/",
+    roles: [{ role: "reviewer", label: "Recenzent", description: null, permissions: ["requests.approve"] }],
+    permissions: [
+      { permission: "requests.approve", label: "Zatwierdzanie", description: null, platform: false, allows: [] },
+      { permission: "app.control", label: null, description: null, platform: true, allows: [] },
+    ],
+    people: [],
+    projects: [],
+  })),
+}));
+
 const esc = (s: string) => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
 
 const asset: AssetSummary = {
@@ -82,11 +101,11 @@ describe("NewLinkForm", () => {
   });
 });
 
-function renderDialog() {
+function renderDialog(target: AssetSummary = asset) {
   return renderWithClient(
     <ToastProvider>
       <ConfirmProvider>
-        <ShareDialog asset={asset} onClose={vi.fn()} />
+        <ShareDialog asset={target} onClose={vi.fn()} />
       </ConfirmProvider>
     </ToastProvider>,
   );
@@ -130,6 +149,43 @@ describe("ShareDialog", () => {
     fireEvent.change(screen.getByRole("combobox", { name: t("common.role") }), { target: { value: "editor" } });
     fireEvent.click(screen.getByRole("button", { name: t("common.add") }));
     await waitFor(() => expect(add).toHaveBeenCalledWith("s1", "c@x.pl", "editor"));
+  });
+
+  it("a micro-application link gives a chosen role and says so in the list", async () => {
+    vi.spyOn(api, "listShares").mockResolvedValue([link({ app_roles: ["reviewer"], app_permissions: [] })]);
+    vi.spyOn(api, "listAssetShares").mockResolvedValue([]);
+    vi.spyOn(api, "listProjectShares").mockResolvedValue([]);
+    vi.spyOn(api, "listProjects").mockResolvedValue({ items: [], total: 0, page: 1, page_size: 200 } as Awaited<ReturnType<typeof api.listProjects>>);
+    const create = vi.spyOn(api, "createShare").mockResolvedValue(link() as never);
+    renderDialog({ ...asset, kind: "micro_application" });
+    const list = await screen.findByRole("list", { name: t("shareDialog.activeLinks") });
+    expect(await within(list).findByText(t("shareDialog.linkGives", { what: "Recenzent" }))).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: t("shareDialog.newLink") }));
+    fireEvent.click(screen.getByRole("radio", { name: esc(t("shareDialog.modePublic")) }));
+    // Nothing is given by default, and the platform permissions are not offered.
+    fireEvent.click(screen.getByRole("button", { name: t("shareDialog.createLink") }));
+    expect(await screen.findByText(t("shareDialog.appPermissionsRequired"))).toBeInTheDocument();
+    expect(screen.queryByText("app.control")).toBeNull();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Recenzent" }));
+    fireEvent.click(screen.getByRole("button", { name: t("shareDialog.createLink") }));
+    await waitFor(() => expect(create).toHaveBeenCalled());
+    expect(create.mock.calls[0]?.[1]).toMatchObject({ app_roles: ["reviewer"], app_permissions: [] });
+  });
+
+  it("a person added to a micro-application also gets the chosen app role", async () => {
+    vi.spyOn(api, "listShares").mockResolvedValue([]);
+    vi.spyOn(api, "listAssetShares").mockResolvedValue([]);
+    vi.spyOn(api, "listProjectShares").mockResolvedValue([]);
+    vi.spyOn(api, "listProjects").mockResolvedValue({ items: [], total: 0, page: 1, page_size: 200 } as Awaited<ReturnType<typeof api.listProjects>>);
+    vi.spyOn(api, "createAssetShare").mockResolvedValue({ email: "c@x.pl", new_account: false } as Awaited<ReturnType<typeof api.createAssetShare>>);
+    renderDialog({ ...asset, kind: "micro_application" });
+    fireEvent.click(await screen.findByRole("tab", { name: /Osoby|People/ }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Recenzent" }));
+    fireEvent.change(screen.getByRole("textbox", { name: t("shareDialog.emailLabel") }), { target: { value: "c@x.pl" } });
+    fireEvent.click(screen.getByRole("button", { name: t("common.add") }));
+    await waitFor(() =>
+      expect(setMicroAppAccess).toHaveBeenCalledWith("a1", { user_email: "c@x.pl", roles: ["reviewer"], permissions: [] }),
+    );
   });
 
   it("with no rights at all it says so once", async () => {

@@ -19,6 +19,7 @@ export function kindLabel(kind: AssetKind): string {
     case "html_bundle": return t("kind.htmlBundle");
     case "pdf_doc": return t("kind.pdfDoc");
     case "office_doc": return t("kind.officeDoc");
+    case "micro_application": return t("kind.microApplication");
   }
 }
 

@@ -10,6 +10,7 @@ import { VaultModeToggle, VaultReaderBody, type VaultMode } from "../components/
 import { AssetWatchToggle } from "../components/WatchToggle";
 import { ErrorBlock, Loading, NoAccessBlock, WithheldBlock } from "../components/ViewerStates";
 import { KindIcon } from "../components/documents/kindIcon";
+import { MicroAppPage } from "../components/microapps/MicroAppPage";
 import { CollectionFiles } from "../components/reader/CollectionFiles";
 import { DocumentOutline } from "../components/reader/DocumentOutline";
 import { readOutline, type OutlineEntry } from "../components/reader/outline";
@@ -133,12 +134,14 @@ export function Viewer({ slug, path, version, basePath, tab }: Props) {
   });
   useDocumentTitle(doc ? displayTitle(activePath, doc.title, doc.entry_path) || doc.slug : null);
 
+  // A micro-application's package is not downloadable from the panel.
+  const isApp = doc?.kind === "micro_application";
   const reader = useReaderActions({
     slug,
     role: doc?.my_role,
     previewVersion,
     reload,
-    downloadHref,
+    downloadHref: isApp ? undefined : downloadHref,
     relationsHref: tab === "relations" ? undefined : `${base}?tab=relations`,
   });
   const onRendered = useCallback((root: HTMLElement) => setOutline(readOutline(root)), []);
@@ -233,6 +236,36 @@ export function Viewer({ slug, path, version, basePath, tab }: Props) {
     securityReport: doc.security_report,
     securityBypass: doc.security_bypass,
   };
+
+  if (isApp) {
+    return (
+      <>
+        {context([{ label: title }])}
+        <ReaderLayout
+          toolbar={
+            <ReaderToolbar
+              start={facts}
+              menu={reader.menu}
+              menuLabel={menuLabel}
+              onShare={reader.share ?? undefined}
+              // Details and relations are editor+; without them there is no
+              // inspector to open.
+              inspector={details || relations ? inspectorToggle : undefined}
+              graphHref={graph}
+            />
+          }
+          banner={staleNotice}
+          inspector={inspector}
+          // No preview history: releases are published through ICS-MCP; their
+          // history and comparison are in the menu (Versions), as for any asset.
+          panels={{ details, relations }}
+        >
+          <MicroAppPage assetId={doc.id} title={title} base={base} />
+        </ReaderLayout>
+        {reader.dialogs}
+      </>
+    );
+  }
 
   if (doc.kind === "html_bundle" || doc.kind === "pdf_doc" || doc.kind === "office_doc") {
     let body: ReactNode;

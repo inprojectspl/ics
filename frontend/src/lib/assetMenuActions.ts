@@ -46,11 +46,15 @@ export function buildAssetMenuActions(
   const canMgr = canManage(a);
   const canEd = canEdit(a);
   const shareBlocked = a.security_status === "critical" && !a.security_bypass;
+  // A micro-application's package is published and versioned through
+  // ICS-MCP only; the API refuses content, version and binding operations
+  // on it (`microapp_requires_agent_api`, `microapp_source_restricted`).
+  const content = a.kind !== "micro_application";
   const out: MenuAction[] = [];
 
   if (canEd)
     out.push({ key: "rename", label: t("assetMenu.rename"), icon: Pencil, onClick: onRename });
-  if (canEd && allowContentEdits)
+  if (canEd && allowContentEdits && content)
     out.push({
       key: "update",
       label: t("assetMenu.update"),
@@ -59,15 +63,17 @@ export function buildAssetMenuActions(
     });
   // History, read-only preview and comparison are for everyone with access to
   // the asset, not just editors. The restore mutation is gated inside the
-  // dialog.
-  if (a.version > 1)
+  // dialog. A micro-application's history is its package's, so it is for its
+  // publishers: the viewer knows (`history_readable`), a list row knows the owners.
+  const history = a.version > 1 && (a.history_readable ?? (content || canMgr));
+  if (history)
     out.push({
       key: "versions",
       label: t("assetMenu.versions", { count: a.version }),
       icon: History,
       onClick: () => actions.onVersions(a),
     });
-  if (a.version > 1)
+  if (history)
     out.push({
       key: "diff",
       label: t("assetMenu.diff"),
@@ -76,7 +82,7 @@ export function buildAssetMenuActions(
     });
   // What an MCP agent reads from the asset: a tool for whoever maintains
   // the content, so editor+ like the endpoint behind it.
-  if (canEd)
+  if (canEd && content)
     out.push({
       key: "agentView",
       label: t("assetMenu.agentView"),
@@ -92,7 +98,7 @@ export function buildAssetMenuActions(
       icon: FolderInput,
       onClick: () => actions.onProject(a),
     });
-  if (canMgr)
+  if (canMgr && content)
     out.push({
       key: "binding",
       label: t("assetMenu.binding"),

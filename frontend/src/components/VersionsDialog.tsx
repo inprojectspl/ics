@@ -8,6 +8,7 @@ import { useConfirm } from "./ConfirmDialog";
 import { Dialog } from "./ui/Dialog";
 import { VersionDiffSummary } from "./VersionDiffSummary";
 import { VersionHistoryList } from "./VersionHistoryList";
+import { AppChanges } from "./microapps/AppChanges";
 import { VersionPicker } from "./VersionPicker";
 
 interface Props {
@@ -61,10 +62,18 @@ export function VersionsDialog({ asset, onClose, onRestored }: Props) {
     onClose();
     navigate(`/v/${asset.slug}?ver=${n}`);
   };
+  // What a release changed: its package against the one before.
+  const compareWithPrevious = (n: number) => {
+    onClose();
+    navigate(`/v/${asset.slug}/diff?from=${n - 1}&to=${n}`);
+  };
 
   // Restoring requires editor or higher. History and preview are viewer-level,
   // so without this a read-only collaborator would see a restore button that 404s.
-  const canRestore = asset.my_role !== "viewer";
+  // A micro-application is neither previewed nor restored here: its releases
+  // go through ICS-MCP, so its history is for reading and comparing.
+  const app = asset.kind === "micro_application";
+  const canRestore = asset.my_role !== "viewer" && !app;
 
   // HTML bundles are comparable too (text files get a full diff, binary files
   // an entry without content).
@@ -89,12 +98,23 @@ export function VersionsDialog({ asset, onClose, onRestored }: Props) {
             versions={versions}
             renderActions={(v) => (
               <>
-                <button
-                  onClick={() => preview(v.version)}
-                  className="text-ui text-text-secondary hover:text-accent hover:underline"
-                >
-                  {v.is_current ? t("common.open") : t("common.view")}
-                </button>
+                {app ? (
+                  v.version > 1 && (
+                    <button
+                      onClick={() => compareWithPrevious(v.version)}
+                      className="text-ui text-text-secondary hover:text-accent hover:underline"
+                    >
+                      {t("versionsDialog.compareWithPrevious")}
+                    </button>
+                  )
+                ) : (
+                  <button
+                    onClick={() => preview(v.version)}
+                    className="text-ui text-text-secondary hover:text-accent hover:underline"
+                  >
+                    {v.is_current ? t("common.open") : t("common.view")}
+                  </button>
+                )}
                 {!v.is_current && canRestore && (
                   <button
                     onClick={() => restore(v.version)}
@@ -225,6 +245,7 @@ function CompareView({
         <>
           {/* The modal is a summary with just the list of changes. File contents
               expand on the comparison screen, which has room for them. */}
+          {summary.app_changes && <AppChanges changes={summary.app_changes} />}
           <VersionDiffSummary files={summary.files} />
           <p className="text-meta text-text-tertiary">
             {t("versionsDialog.fullScreenHint")}

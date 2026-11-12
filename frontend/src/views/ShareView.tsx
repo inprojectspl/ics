@@ -96,6 +96,14 @@ export function ShareView({ token, version, path }: Props) {
 
   if (!info) return <Loading />;
 
+  // A micro-application runs on its own origin: once the link admits the
+  // visitor, the visit continues there (the app gets a one-time code).
+  // Without access the page below asks for the gate or ends the visit, so
+  // the app can never bounce the browser back here in a loop.
+  if (info.kind === "micro_application" && info.app_launch_url && info.has_access) {
+    return <AppRedirect url={info.app_launch_url} title={info.title} />;
+  }
+
   if (info.requires_password) {
     return <PasswordGate token={token} title={info.title} onPass={loadInfo} />;
   }
@@ -393,3 +401,16 @@ function PasswordGate({
     </CenteredCard>
   );
 }
+
+function AppRedirect({ url, title }: { url: string; title: string | null }) {
+  useEffect(() => {
+    window.location.replace(url);
+  }, [url]);
+  return (
+    <CenteredCard bare>
+      <h1 className="mb-2 text-center text-title font-semibold text-text-primary [overflow-wrap:anywhere]">{title ?? t("kind.microApplication")}</h1>
+      <p className="text-center text-text-secondary">{t("shareView.openingApp")}</p>
+    </CenteredCard>
+  );
+}
+

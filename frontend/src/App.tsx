@@ -175,6 +175,11 @@ function parseRoute(): Route {
   const project = path.match(/^\/projects\/([a-z0-9]+)\/?$/i);
   if (project?.[1]) return { name: "project", slug: project[1] };
   if (path === "/projects" || path === "/projects/") return { name: "projects" };
+  if (path === "/microapps" || path === "/microapps/") {
+    // Legacy route: micro-applications are listed with the other documents.
+    window.history.replaceState({}, "", "/?f=type%3Amicro_application");
+    return { name: "home" };
+  }
   if (path === "/graph" || path === "/graph/") return { name: "graph", doc: params.get("doc") || undefined };
   if (path === "/shared" || path === "/shared/") {
     // Legacy route: redirect to the consolidated Home with the

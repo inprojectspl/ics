@@ -155,6 +155,30 @@ describe("VersionDiff", () => {
     expect(caption()).toHaveTextContent("Jane");
   });
 
+  it("shows what changed in a micro-application above its files", async () => {
+    diffVersions.mockResolvedValue(
+      summary([file("microapp.json", "modified")], {
+        kind: "micro_application",
+        app_changes: [
+          { area: "role", name: "reviewer", change: "changed", detail: "+requests.export" },
+          { area: "permission", name: "requests.export", change: "added", detail: "" },
+        ],
+      }),
+    );
+    render(<VersionDiff slug="doc" />);
+    const section = await screen.findByRole("region", { name: "Changes in the app" });
+    expect(section).toHaveTextContent("role");
+    expect(section).toHaveTextContent("reviewer");
+    expect(section).toHaveTextContent("+requests.export");
+    expect(section).toHaveTextContent("permission");
+  });
+
+  it("says when a micro-application's roles and data did not change", async () => {
+    diffVersions.mockResolvedValue(summary([file("public/app.js", "modified")], { kind: "micro_application", app_changes: [] }));
+    render(<VersionDiff slug="doc" />);
+    expect(await screen.findByText(/same in both versions/)).toBeInTheDocument();
+  });
+
   it("shows a progress line until the summary arrives", async () => {
     diffVersions.mockReturnValue(new Promise(() => {}));
     render(<VersionDiff slug="doc" />);

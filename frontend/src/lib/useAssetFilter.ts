@@ -24,7 +24,7 @@ const SCOPES: readonly AssetScope[] = [
  * working when the labels change.
  */
 export type AssetFilter =
-  | `type:${"md_single" | "md_collection" | "html_bundle" | "pdf_doc" | "office_doc"}`
+  | `type:${"md_single" | "md_collection" | "html_bundle" | "pdf_doc" | "office_doc" | "micro_application"}`
   | `state:${"public" | "password" | "unshared"}`
   | `source:${"gitlab" | "manual"}`
   | `project:${string}`

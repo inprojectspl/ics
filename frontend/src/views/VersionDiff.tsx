@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Columns2, Rows3 } from "lucide-react";
 import { api, DiffFileChange, DiffSummary, VersionRow } from "../api";
 import { DiffFileBlock } from "../components/DiffFileBlock";
+import { AppChanges } from "../components/microapps/AppChanges";
 import { FileTree } from "../components/FileTree";
 import { SegmentedToggle } from "../components/SegmentedToggle";
 import { VersionPicker } from "../components/VersionPicker";
@@ -208,6 +209,7 @@ export function VersionDiff({ slug, from, to }: Props) {
           {error && <p className="text-ui text-danger">{error}</p>}
           {versions && versions.length < 2 && !error && <p className="text-text-secondary">{t("versionDiff.singleVersion")}</p>}
           {!summary && !error && comparable && <p className="text-meta text-text-secondary">{t("versionDiff.computing")}</p>}
+          {summary?.app_changes && <AppChanges changes={summary.app_changes} />}
           {summary && files.length === 0 && <p className="text-meta text-text-secondary">{t("versionDiff.noChanges")}</p>}
           {files.map((f) => (
             <DiffFileBlock key={f.path} file={f} mode={mode} load={loadFileDiff} active={activePath === f.path} anchorId={anchorId(f.path)} />

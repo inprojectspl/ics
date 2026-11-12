@@ -22,6 +22,7 @@ const KIND_HINT: Record<AssetKind, MessageKey> = {
   html_bundle: "updateAsset.hintHtmlBundle",
   pdf_doc: "updateAsset.hintPdfDoc",
   office_doc: "updateAsset.hintOfficeDoc",
+  micro_application: "updateAsset.hintMicroApplication",
 };
 
 const hasExtension = (ext: string) => (name: string) => name.toLowerCase().endsWith(ext);

@@ -25,6 +25,7 @@ const user: AdminUser = {
   locked: false,
   storage_quota_bytes: 1000,
   bundle_max_bytes: 100,
+  microapp_data_max_bytes: 1000,
   html_autobypass: false,
   asset_count: 0,
   asset_bytes: 0,
@@ -84,5 +85,15 @@ describe("UserDetailDialog role", () => {
     fireEvent.change(select, { target: { value: "external" } });
     expect(screen.getByText(t("userDetail.roleDescExternal"))).toBeInTheDocument();
     expect(apply).toBeEnabled();
+  });
+});
+
+describe("UserDetailDialog micro-application limit", () => {
+  it("is offered only where micro-applications are on", () => {
+    const { unmount } = render(<UserDetailDialog user={user} onClose={vi.fn()} onChanged={vi.fn()} onDeleted={vi.fn()} />);
+    expect(screen.queryByText(t("userDetail.microappDataTitle"))).toBeNull();
+    unmount();
+    render(<UserDetailDialog user={user} onClose={vi.fn()} onChanged={vi.fn()} onDeleted={vi.fn()} microappsEnabled />);
+    expect(screen.getAllByText(t("userDetail.microappDataTitle")).length).toBeGreaterThan(0);
   });
 });

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, req } from "./_core";
+import { ApiError, postJson, req } from "./_core";
 
 function respond(status: number, body: string, statusText = "") {
   return vi.fn().mockResolvedValue(new Response(status === 204 ? null : body, { status, statusText }));
@@ -48,5 +48,17 @@ describe("req", () => {
   it("still parses JSON bodies", async () => {
     vi.stubGlobal("fetch", respond(200, JSON.stringify({ deleted: true })));
     await expect(req<{ deleted: boolean }>("/api/x")).resolves.toEqual({ deleted: true });
+  });
+});
+
+describe("postJson", () => {
+  it("keeps caller headers such as Idempotency-Key", async () => {
+    const fetchMock = respond(200, "{}");
+    vi.stubGlobal("fetch", fetchMock);
+    await postJson("/api/x", { a: 1 }, { headers: { "Idempotency-Key": "k-12345678" } });
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    const headers = (init?.headers ?? {}) as Record<string, string>;
+    expect(headers["idempotency-key"] ?? headers["Idempotency-Key"]).toBe("k-12345678");
+    expect(headers["Content-Type"]).toBe("application/json");
   });
 });

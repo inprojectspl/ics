@@ -2,7 +2,16 @@ import type { ReactNode } from "react";
 import { clsx } from "clsx";
 import type { VersionRow } from "../api";
 import { formatBytes, formatDateTime } from "../lib/format";
-import { t } from "../lib/i18n";
+import { t, type MessageKey } from "../lib/i18n";
+import { Badge, type BadgeTone } from "./ui/Badge";
+
+// A micro-application's package versions are releases: the one that runs is
+// marked current, the others say what they became.
+const RELEASE_TONE: Record<Exclude<NonNullable<VersionRow["release_status"]>, "active">, BadgeTone> = {
+  failed: "danger",
+  superseded: "neutral",
+  candidate: "neutral",
+};
 
 interface Props {
   versions: VersionRow[] | null;
@@ -36,6 +45,11 @@ export function VersionHistoryList({ versions, renderActions }: Props) {
                 <span className="text-meta text-accent font-medium">
                   {t("versionHistory.current")}
                 </span>
+              )}
+              {v.release_status && v.release_status !== "active" && (
+                <Badge tone={RELEASE_TONE[v.release_status]}>
+                  {t(`versionHistory.release.${v.release_status}` as MessageKey)}
+                </Badge>
               )}
             </div>
             <div className="text-meta text-text-tertiary truncate">

@@ -141,6 +141,23 @@ describe("ShareView", () => {
     expect(screen.queryByText("Loading…")).toBeNull();
   });
 
+  it("opens a micro-application only when the link admits the visitor", async () => {
+    const replace = vi.fn();
+    vi.stubGlobal("location", { ...window.location, replace });
+    const app = { kind: "micro_application", app_launch_url: "https://app.test/__ics/share?token=tok" } as const;
+    getShareInfo.mockResolvedValue(info({ ...app, has_access: false }));
+    const { unmount } = render(<ShareView token="tok" />);
+    // No access (org_sso, foreign domain): going to the app would bounce
+    // the browser back here through the sign-in page, forever.
+    expect(await screen.findByText("No access")).toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
+    unmount();
+    getShareInfo.mockResolvedValue(info({ ...app, has_access: true }));
+    render(<ShareView token="tok" />);
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(app.app_launch_url));
+    vi.unstubAllGlobals();
+  });
+
   it("still challenges a password link", async () => {
     getShareInfo.mockResolvedValue(
       info({ mode: "password", requires_password: true, has_access: false }),

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   isCollectionDrop,
   isHtmlBundleDrop,
+  isMicroAppDrop,
   walkDataTransfer,
   type WalkedFile,
 } from "./directoryWalker";
@@ -138,5 +139,13 @@ describe("isHtmlBundleDrop", () => {
     expect(
       isHtmlBundleDrop([file("readme.md"), file("notes.md")]),
     ).toBe(false);
+  });
+});
+
+describe("isMicroAppDrop", () => {
+  it("spots a manifest at the root or in the dropped folder only", () => {
+    expect(isMicroAppDrop([file("app/microapp.json"), file("app/public/index.html")])).toBe(true);
+    expect(isMicroAppDrop([file("microapp.json")])).toBe(true);
+    expect(isMicroAppDrop([file("a/b/microapp.json"), file("a/index.html")])).toBe(false);
   });
 });
