@@ -88,8 +88,6 @@ $RECYCLE.BIN/
 # Compose uses named volumes; these catch bind mounts pointed into the repo by mistake.
 data/
 storage/
-caddy_data/
-caddy_config/
 pg_data/
 redis_data/
 
@@ -129,3 +127,6 @@ __snapshots__/__diff_output__/
 /sandbox/
 *.scratch.*
 site/
+
+# ---------- Local micro-application profile (scripts/microapps-local.sh) ----------
+/.microapps-local/
