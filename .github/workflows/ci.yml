@@ -60,6 +60,27 @@ jobs:
           uvx pip-audit --strict --no-deps --disable-pip -r requirements.txt
       # Tests run in parallel (pytest-xdist); each worker gets its own database.
       - run: uv run pytest -q --cov=app --cov-report=term --cov-fail-under=90
+        env:
+          # Micro-application provisioning tests create a scratch apps database and roles.
+          ICS_MICROAPPS_TEST_PROVISIONER_URL: postgresql://ics:ics@localhost:5432/postgres
+
+  microapp-runtime:
+    name: Micro-application runtime (Node tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: microapp-runtime
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: microapp-runtime/package-lock.json
+      - run: npm ci --no-audit --ignore-scripts
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm test
 
   frontend:
     name: Frontend (lint, types, tests, bundle)
