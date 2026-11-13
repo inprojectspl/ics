@@ -35,6 +35,7 @@ from app.routes import (
     shared,
     shares,
 )
+from app.session_store import session_cookie_name
 
 
 class SecurityHeadersMiddleware:
@@ -102,6 +103,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.secret_key,
+        session_cookie=session_cookie_name(settings.debug),
         https_only=not settings.debug,
         same_site="lax",
     )

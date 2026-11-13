@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- The session cookie is `__Host-ics-session` (plain-HTTP debug setups: `ics-session`). The
+  prefix stops a sibling subdomain, such as an HTML bundle on the viewer host, from setting a
+  session of its own for ICS (cookie tossing) and signing the visitor into another account.
+  Everyone signs in again once after the upgrade.
 - KaTeX 0.18.11 and mermaid 12.2.0 replace versions with a published advisory (prototype pollution
   bypassing KaTeX trust restrictions); both share one copy of KaTeX.
 - Locking an account and an admin's **Revoke all tokens** also sign out the person's AI assistants
