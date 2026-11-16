@@ -218,14 +218,13 @@ def edit_files(
     *,
     put: Mapping[str, bytes] | None = None,
     delete: Collection[str] = (),
-    size_delta: int | None = None,
     entry_path: str | None = None,
     carry_over: bool = True,
 ) -> Stage:
     """Per-file edit: carry the current tree over, then delete and write the
-    given paths. The new size is `current + size_delta` (`None` keeps it), so
-    the tree is not re-listed. `carry_over=False` skips the copy when the write
-    replaces the whole tree."""
+    given paths. Measure the staged tree while the version lock is held;
+    caller-side deltas may describe a version another writer has replaced.
+    `carry_over=False` skips the copy when the write replaces the whole tree."""
 
     async def _stage(draft: VersionDraft) -> StagedTree:
         if carry_over:
@@ -234,9 +233,7 @@ def edit_files(
             await draft.storage.delete(f"{draft.prefix}/{rel}")
         for rel, data in (put or {}).items():
             await draft.storage.put(f"{draft.prefix}/{rel}", one_chunk(data))
-        size = None
-        if size_delta is not None:
-            size = max(0, (draft.asset.size_bytes or 0) + size_delta)
+        size = sum(n for _, n in await draft.storage.list_prefix_stats(f"{draft.prefix}/"))
         return StagedTree(size_bytes=size, entry_path=entry_path)
 
     return _stage

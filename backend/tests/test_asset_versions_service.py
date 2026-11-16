@@ -66,7 +66,7 @@ async def test_edit_bumps_version_and_carries_untouched_files(session):
         session,
         asset,
         owner,
-        asset_versions.edit_files(put={"index.md": b"# edited"}, size_delta=5),
+        asset_versions.edit_files(put={"index.md": b"# edited"}),
     )
 
     assert result.version == 2
@@ -92,7 +92,7 @@ async def test_delete_and_entry_change(session):
         session,
         asset,
         owner,
-        asset_versions.edit_files(delete=["index.md"], size_delta=-1, entry_path="other.md"),
+        asset_versions.edit_files(delete=["index.md"], entry_path="other.md"),
     )
 
     assert result.entry_path == "other.md"
@@ -112,7 +112,7 @@ async def test_quota_refusal_leaves_the_current_version_intact(session):
             session,
             asset,
             owner,
-            asset_versions.edit_files(put={"big.md": b"x" * 10}, size_delta=10),
+            asset_versions.edit_files(put={"big.md": b"x" * 10}),
         )
     await session.rollback()
 
@@ -162,9 +162,7 @@ async def test_shrinking_is_allowed_over_quota(session):
     owner.storage_quota_bytes = 5  # an admin lowered the quota below usage
     await session.commit()
 
-    result = await _commit(
-        session, asset, owner, asset_versions.edit_files(delete=["big.md"], size_delta=-20)
-    )
+    result = await _commit(session, asset, owner, asset_versions.edit_files(delete=["big.md"]))
 
     assert result.version == 2
     assert asset.size_bytes == 1
@@ -185,7 +183,7 @@ async def test_growth_is_charged_to_the_owner_not_the_editor(session):
             session,
             asset,
             editor,
-            asset_versions.edit_files(put={"more.md": b"xyz"}, size_delta=3),
+            asset_versions.edit_files(put={"more.md": b"xyz"}),
         )
     await session.rollback()
 
@@ -197,7 +195,7 @@ async def test_growth_is_charged_to_the_owner_not_the_editor(session):
         session,
         asset,
         editor,
-        asset_versions.edit_files(put={"more.md": b"xyz"}, size_delta=3),
+        asset_versions.edit_files(put={"more.md": b"xyz"}),
     )
     assert result.version == 2
 

@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import permissions
 from app.auth import CurrentUser
 from app.collections_io import (
-    list_md_paths,
     list_version_files,
     normalize_collection_path,
     pick_entry,
@@ -68,14 +67,8 @@ async def edit_content(
             "documents do not support inline editing; upload a new version",
         )
 
-    if asset.kind == "md_single":
-        rel = body.path or entry_or_404(asset)
-        if rel != asset.entry_path:
-            raise ApiError(
-                status.HTTP_400_BAD_REQUEST, "md_single_one_file", "md_single has only one file"
-            )
-        old_content: str | None = None
-    else:  # md_collection
+    # Path syntax is independent of the version; existence and content are not.
+    if asset.kind == "md_collection":
         if not body.path:
             raise ApiError(
                 status.HTTP_400_BAD_REQUEST,
@@ -87,35 +80,41 @@ async def edit_content(
             raise ApiError(
                 status.HTTP_400_BAD_REQUEST, "md_file_required", "only .md files can be edited"
             )
-        # The read doubles as the existence check; the previous content is
-        # needed a few lines below anyway.
+    else:
+        rel = body.path or ""
+    new_bytes = body.content.encode("utf-8")
+    old_bytes_count = 0
+
+    async def stage(draft: asset_versions.VersionDraft) -> asset_versions.StagedTree:
+        nonlocal rel, old_bytes_count
+        if draft.asset.kind == "md_single":
+            rel = body.path or entry_or_404(draft.asset)
+            if rel != draft.asset.entry_path:
+                raise ApiError(
+                    status.HTTP_400_BAD_REQUEST,
+                    "md_single_one_file",
+                    "md_single has only one file",
+                )
         try:
-            old_content = await read_text(asset, rel, settings)
+            old_content = await read_text(draft.asset, rel, settings)
         except FileNotFoundError:
             raise ApiError(
                 status.HTTP_404_NOT_FOUND,
                 "file_not_found",
                 f"file {rel} does not exist in the current version",
             ) from None
+        if old_content == body.content:
+            raise ApiError(status.HTTP_400_BAD_REQUEST, "no_changes", "content has not changed")
+        old_bytes_count = len(old_content.encode("utf-8"))
+        return await asset_versions.edit_files(
+            put={rel: new_bytes}, carry_over=draft.asset.kind == "md_collection"
+        )(draft)
 
-    new_content = body.content
-    if old_content is None:
-        old_content = await read_text(asset, rel, settings)
-    if old_content == new_content:
-        raise ApiError(status.HTTP_400_BAD_REQUEST, "no_changes", "content has not changed")
-
-    new_bytes = new_content.encode("utf-8")
-    old_bytes_count = len(old_content.encode("utf-8"))
     result = await asset_versions.commit_new_version(
         session,
         asset,
         settings,
-        stage=asset_versions.edit_files(
-            put={rel: new_bytes},
-            size_delta=len(new_bytes) - old_bytes_count,
-            # md_single is this one file, so there is nothing to carry over.
-            carry_over=asset.kind == "md_collection",
-        ),
+        stage=stage,
         actor=user,
         audit_action="asset_edited",
         audit_payload=lambda nv: {
@@ -156,35 +155,32 @@ async def delete_file_in_collection(
     rel = normalize_collection_path(path)
     if not rel.lower().endswith(".md"):
         raise ApiError(status.HTTP_400_BAD_REQUEST, "md_file_required", "only .md files")
-    # The read doubles as the existence check and gives the size delta.
-    try:
-        old_text = await read_text(asset, rel, settings)
-    except FileNotFoundError:
-        raise ApiError(
-            status.HTTP_404_NOT_FOUND,
-            "file_not_found",
-            f"file {rel} does not exist in the current version",
-        ) from None
-    removed_bytes = len(old_text.encode("utf-8"))
 
-    current_md = await list_md_paths(asset, settings)
-    if len(current_md) <= 1:
-        raise ApiError(
-            status.HTTP_400_BAD_REQUEST,
-            "last_file",
-            "cannot delete the last file of a vault; delete the whole document instead",
-        )
+    async def stage(draft: asset_versions.VersionDraft) -> asset_versions.StagedTree:
+        current_files = await list_version_files(draft.asset, draft.asset.version, settings)
+        current_md = [p for p in current_files if p.lower().endswith(".md")]
+        if rel not in current_md:
+            raise ApiError(
+                status.HTTP_404_NOT_FOUND,
+                "file_not_found",
+                f"file {rel} does not exist in the current version",
+            )
+        if len(current_md) <= 1:
+            raise ApiError(
+                status.HTTP_400_BAD_REQUEST,
+                "last_file",
+                "cannot delete the last file of a vault; delete the whole document instead",
+            )
+        new_entry = None
+        if rel == draft.asset.entry_path:
+            new_entry = pick_entry([p for p in current_md if p != rel])
+        return await asset_versions.edit_files(delete=[rel], entry_path=new_entry)(draft)
 
-    new_entry = None
-    if rel == asset.entry_path:
-        new_entry = pick_entry([p for p in current_md if p != rel])
     result = await asset_versions.commit_new_version(
         session,
         asset,
         settings,
-        stage=asset_versions.edit_files(
-            delete=[rel], size_delta=-removed_bytes, entry_path=new_entry
-        ),
+        stage=stage,
         actor=user,
         audit_action="vault_file_deleted",
         audit_payload=lambda nv: {
@@ -229,14 +225,6 @@ async def add_file_to_collection(
     if not rel.lower().endswith(".md"):
         raise ApiError(status.HTTP_400_BAD_REQUEST, "md_file_required", "only .md files")
 
-    current_files = await list_version_files(asset, asset.version, settings)
-    if rel in current_files:
-        raise ApiError(
-            status.HTTP_409_CONFLICT,
-            "file_exists",
-            f"file {rel} already exists; edit it instead of adding",
-        )
-
     content = await file.read()
     if len(content) > 10_000_000:
         raise ApiError(
@@ -249,7 +237,7 @@ async def add_file_to_collection(
         session,
         asset,
         settings,
-        stage=asset_versions.edit_files(put={rel: content}, size_delta=len(content)),
+        stage=_add_file_stage(rel, content, settings),
         actor=user,
         audit_action="vault_file_added",
         audit_payload=lambda nv: {"version": nv.version, "path": rel, "bytes": len(content)},
@@ -280,19 +268,11 @@ async def create_empty_file_in_collection(
     if not rel.lower().endswith(".md"):
         raise ApiError(status.HTTP_400_BAD_REQUEST, "md_file_required", "only .md files")
 
-    current_files = await list_version_files(asset, asset.version, settings)
-    if rel in current_files:
-        raise ApiError(
-            status.HTTP_409_CONFLICT,
-            "file_exists",
-            f"file {rel} already exists; edit it instead of creating",
-        )
-
     result = await asset_versions.commit_new_version(
         session,
         asset,
         settings,
-        stage=asset_versions.edit_files(put={rel: b""}),
+        stage=_add_file_stage(rel, b"", settings),
         actor=user,
         audit_action="vault_file_added",
         audit_payload=lambda nv: {"version": nv.version, "path": rel, "bytes": 0, "empty": True},
@@ -304,3 +284,17 @@ async def create_empty_file_in_collection(
         "added_path": rel,
         "size_bytes": result.size_bytes,
     }
+
+
+def _add_file_stage(rel: str, data: bytes, settings: Settings) -> asset_versions.Stage:
+    async def stage(draft: asset_versions.VersionDraft) -> asset_versions.StagedTree:
+        current_files = await list_version_files(draft.asset, draft.asset.version, settings)
+        if rel in current_files:
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "file_exists",
+                f"file {rel} already exists; edit it instead of adding",
+            )
+        return await asset_versions.edit_files(put={rel: data})(draft)
+
+    return stage

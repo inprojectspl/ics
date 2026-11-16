@@ -84,4 +84,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Migration 0045 keeps existing links, turns empty scopes into null and leaves unknown legacy scopes
   unresolved; its downgrade refuses cross-project collisions instead of dropping links. OpenProject
   work packages keep their single-instance identity.
+- Concurrent Markdown edits use the locked version. Edit, add, delete and move recheck the files
+  under the version lock, and sizes and quota growth use the tree actually staged. A failed write
+  leaves the current version and its history intact.
 
