@@ -145,6 +145,8 @@ and decides, link by link, who may read them.
   QuickJS/WASM runners without network: adding an app adds no container.
 - Each app on its own origin under a domain of its own, with its own roles that owners give to
   people, projects and share links. Agents read an app as Markdown with the records filled in.
+- Not only forms: the examples in [`examples/microapps`](./examples/microapps) include a 3D race
+  built with Three.js, with a leaderboard kept in the app's data.
 
 </td>
 </tr>
