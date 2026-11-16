@@ -94,6 +94,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are sandboxed and cannot call the API with the visitor's session.
 - joserfc 1.7.6 replaces 1.7.5 (CVE-2026-119284); only the lockfile changes, authentication code is
   untouched.
+- dnspython 2.9.2 (CVE-2026-128089) and soupsieve 4.1.1 (CVE-2026-126190 to CVE-2026-126193) replace
+  versions with a published advisory.
 
 ### Fixed
 
