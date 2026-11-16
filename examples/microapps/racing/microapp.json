@@ -1,0 +1,383 @@
+{
+  "apiVersion": "ics.microapp/v1alpha1",
+  "kind": "micro_application",
+  "metadata": {
+    "title": "Race Track",
+    "description": "A 3D race on one closed track: three laps against the clock and a board of the ten fastest drivers."
+  },
+  "frontend": {
+    "entry": "public/index.html"
+  },
+  "runtime": {
+    "profile": "js-capabilities-v1",
+    "sdkVersion": "1.0",
+    "idleSeconds": 600
+  },
+  "database": {
+    "collections": {
+      "results": {
+        "fields": {
+          "player": {
+            "type": "string",
+            "required": true,
+            "minLength": 1,
+            "maxLength": 20
+          },
+          "total_ms": {
+            "type": "integer",
+            "required": true,
+            "minimum": 3000,
+            "maximum": 10800000
+          },
+          "lap1_ms": {
+            "type": "integer",
+            "required": true,
+            "minimum": 1000,
+            "maximum": 3600000
+          },
+          "lap2_ms": {
+            "type": "integer",
+            "required": true,
+            "minimum": 1000,
+            "maximum": 3600000
+          },
+          "lap3_ms": {
+            "type": "integer",
+            "required": true,
+            "minimum": 1000,
+            "maximum": 3600000
+          },
+          "best_lap_ms": {
+            "type": "integer",
+            "required": true,
+            "minimum": 1000,
+            "maximum": 3600000
+          }
+        },
+        "crud": {
+          "delete": {
+            "permission": "race.judge",
+            "rowScope": "all"
+          }
+        },
+        "indexes": [
+          {
+            "fields": [
+              "total_ms",
+              "id"
+            ]
+          },
+          {
+            "fields": [
+              "best_lap_ms",
+              "id"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "capabilities": {
+    "results.submit": {
+      "collection": "results",
+      "operation": "insert",
+      "permission": "race.drive",
+      "rowScope": "own",
+      "writeFields": [
+        "player",
+        "total_ms",
+        "lap1_ms",
+        "lap2_ms",
+        "lap3_ms",
+        "best_lap_ms"
+      ],
+      "returnFields": [
+        "id",
+        "player",
+        "total_ms",
+        "best_lap_ms",
+        "created_at"
+      ]
+    },
+    "results.rank": {
+      "collection": "results",
+      "operation": "count",
+      "permission": "race.drive",
+      "rowScope": "all",
+      "readFields": [
+        "total_ms"
+      ]
+    },
+    "results.board": {
+      "collection": "results",
+      "operation": "list",
+      "permission": "race.drive",
+      "rowScope": "all",
+      "readFields": [
+        "id",
+        "revision",
+        "player",
+        "total_ms",
+        "best_lap_ms",
+        "created_at"
+      ]
+    }
+  },
+  "endpoints": [
+    {
+      "name": "submitResult",
+      "method": "POST",
+      "path": "/v1/custom/results",
+      "handler": "handlers/submit.mjs#default",
+      "permission": "race.drive",
+      "transaction": "required",
+      "ifMatch": "none",
+      "idempotency": "required",
+      "capabilities": [
+        "results.submit",
+        "results.rank"
+      ],
+      "input": {
+        "body": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "player",
+            "laps"
+          ],
+          "properties": {
+            "player": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "laps": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 3600000
+              }
+            }
+          }
+        }
+      },
+      "output": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "player",
+          "total_ms",
+          "best_lap_ms",
+          "rank"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "player": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "total_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "best_lap_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "rank": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "top",
+      "method": "GET",
+      "path": "/v1/custom/top",
+      "handler": "handlers/top.mjs#default",
+      "permission": "race.drive",
+      "transaction": "read_only",
+      "ifMatch": "none",
+      "idempotency": "none",
+      "capabilities": [
+        "results.board"
+      ],
+      "input": {
+        "query": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        }
+      },
+      "output": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "revision",
+                "player",
+                "total_ms",
+                "best_lap_ms",
+                "at"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "revision": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "player": {
+                  "type": "string",
+                  "maxLength": 20
+                },
+                "total_ms": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "best_lap_ms": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            }
+          },
+          "best_lap": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "revision",
+              "player",
+              "total_ms",
+              "best_lap_ms",
+              "at"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "player": {
+                "type": "string",
+                "maxLength": 20
+              },
+              "total_ms": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "best_lap_ms": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "document",
+      "method": "GET",
+      "path": "/v1/custom/document",
+      "handler": "handlers/document.mjs#default",
+      "permission": "race.drive",
+      "transaction": "read_only",
+      "ifMatch": "none",
+      "idempotency": "none",
+      "capabilities": [
+        "results.board"
+      ],
+      "input": {
+        "query": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        }
+      },
+      "output": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "markdown"
+        ],
+        "properties": {
+          "markdown": {
+            "type": "string",
+            "maxLength": 200000
+          }
+        }
+      }
+    }
+  ],
+  "document": {
+    "endpoint": "document"
+  },
+  "permissions": {
+    "race.drive": {
+      "label": "Drive",
+      "description": "Race on the track and post the result to the board."
+    },
+    "race.judge": {
+      "label": "Judge",
+      "description": "Remove results from the board, for example after an unfair run."
+    }
+  },
+  "roles": {
+    "driver": {
+      "label": "Driver",
+      "description": "Races and gets on the board.",
+      "permissions": [
+        "race.drive"
+      ]
+    },
+    "judge": {
+      "label": "Judge",
+      "description": "Races and keeps the board fair: can remove results.",
+      "permissions": [
+        "race.drive",
+        "race.judge"
+      ]
+    }
+  },
+  "compatibility": {
+    "schemaMin": 1,
+    "schemaMax": 1
+  },
+  "limitsRequested": {
+    "wallMs": 3000,
+    "maxDbCalls": 5,
+    "maxResponseBytes": 32768
+  }
+}

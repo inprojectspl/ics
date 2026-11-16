@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#0e1320">
+  <title>Race Track</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <canvas id="scene" aria-label="3D race track"></canvas>
+
+  <div class="hud" aria-live="polite">
+    <div class="panel left">
+      <div class="big"><span>Lap</span><strong id="lap">1/3</strong></div>
+      <div class="row"><span>Time</span><strong id="time">0:00.000</strong></div>
+      <div class="row"><span>Last</span><strong id="last">-</strong></div>
+      <div class="row"><span>Best</span><strong id="best">-</strong></div>
+    </div>
+    <div class="panel right">
+      <div class="speed"><strong id="speed">0</strong><span>km/h</span></div>
+      <div id="offtrack" class="warn" hidden>Off track</div>
+    </div>
+    <canvas id="map" width="180" height="140" aria-label="Track map"></canvas>
+  </div>
+
+  <aside id="board" class="board">
+    <h2>Fastest drivers</h2>
+    <ol id="top"></ol>
+    <p id="fastest" class="muted"></p>
+  </aside>
+
+  <div class="touch" id="touch" hidden>
+    <div class="pad">
+      <button type="button" data-key="left" aria-label="Left">◀</button>
+      <button type="button" data-key="right" aria-label="Right">▶</button>
+    </div>
+    <div class="pad">
+      <button type="button" data-key="brake" aria-label="Brake">▼</button>
+      <button type="button" data-key="gas" aria-label="Throttle" class="gas">▲</button>
+    </div>
+  </div>
+
+  <div id="countdown" class="countdown" hidden></div>
+
+  <div id="overlay" class="overlay">
+    <div class="card">
+      <h1 id="ov-title">Race Track</h1>
+      <p id="ov-text">Three laps against the clock. Arrow keys or WASD to drive, space to brake. Off the tarmac the car slows down.</p>
+      <div id="result" hidden>
+        <table class="laps"><tbody id="laps"></tbody></table>
+        <form id="save" class="save">
+          <label for="player">Your name on the board</label>
+          <div class="inline">
+            <input id="player" name="player" maxlength="20" required autocomplete="nickname">
+            <button type="submit">Save result</button>
+          </div>
+        </form>
+        <p id="saved" class="muted"></p>
+      </div>
+      <button id="start" type="button" class="primary">Start</button>
+      <p id="who" class="muted"></p>
+    </div>
+  </div>
+
+  <script src="/__ics/sdk.js"></script>
+  <script type="module" src="game.js"></script>
+</body>
+</html>

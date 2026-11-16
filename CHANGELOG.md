@@ -52,6 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The user guide covers micro-applications (opening and running an app, its data, roles, sharing,
   versions and data limit, with screenshots) and safe retries for agents; `docs/microapps-api.md`
   describes the management and app APIs and ADR-0027 the design.
+- Race Track, a third example micro-application: a 3D race built with Three.js, with results checked
+  by a handler, a board of the fastest drivers, a judge role and a document view of the board.
 
 ### Changed
 
