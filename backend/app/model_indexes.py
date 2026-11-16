@@ -197,7 +197,20 @@ INDEXES = (
         AssetExternalRef.role,
         func.coalesce(AssetExternalRef.asset_path, "").label("asset_path_key"),
         unique=True,
+        postgresql_where=text("NOT (system = 'project_standard' AND entity = 'node')"),
     ),
+    Index(
+        "uq_asset_ps_node_ref",
+        AssetExternalRef.asset_id,
+        AssetExternalRef.external_id,
+        func.coalesce(AssetExternalRef.external_scope, "").label("external_scope_key"),
+        AssetExternalRef.role,
+        func.coalesce(AssetExternalRef.asset_path, "").label("asset_path_key"),
+        unique=True,
+        postgresql_where=text("system = 'project_standard' AND entity = 'node'"),
+    ),
+    # Partial unique indexes cannot serve an unfiltered asset's list or FK lookup.
+    Index("ix_asset_external_refs_asset", AssetExternalRef.asset_id),
     Index(
         "ix_asset_external_refs_lookup",
         AssetExternalRef.system,

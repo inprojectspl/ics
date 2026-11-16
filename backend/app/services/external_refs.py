@@ -10,6 +10,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import audit, permissions
@@ -154,16 +155,17 @@ async def add_ref(
     if pinned_version is not None and not 1 <= pinned_version <= asset.version:
         raise _invalid("the pinned version does not exist", "pinned_version")
 
-    existing = await session.scalar(
-        select(AssetExternalRef.id).where(
-            AssetExternalRef.asset_id == asset.id,
-            AssetExternalRef.system == system,
-            AssetExternalRef.entity == entity,
-            AssetExternalRef.external_id == external_id,
-            AssetExternalRef.role == role,
-            func.coalesce(AssetExternalRef.asset_path, "") == (asset_path or ""),
-        )
+    duplicate = select(AssetExternalRef.id).where(
+        AssetExternalRef.asset_id == asset.id,
+        AssetExternalRef.system == system,
+        AssetExternalRef.entity == entity,
+        AssetExternalRef.external_id == external_id,
+        AssetExternalRef.role == role,
+        func.coalesce(AssetExternalRef.asset_path, "") == (asset_path or ""),
     )
+    if system == "project_standard" and entity == "node":
+        duplicate = duplicate.where(AssetExternalRef.external_scope == external_scope)
+    existing = await session.scalar(duplicate)
     if existing is not None:
         raise ConflictError("external_ref_exists", "this link already exists")
     count = await session.scalar(select(func.count()).where(AssetExternalRef.asset_id == asset.id))
@@ -186,8 +188,22 @@ async def add_ref(
         origin=origin or origin_for_transport(transport),
         created_by=actor.id,
     )
-    session.add(ref)
-    await session.flush()
+    try:
+        # A concurrent retry can pass the duplicate SELECT before this insert.
+        # Keep that conflict local so the caller can still inspect the winner.
+        async with session.begin_nested():
+            session.add(ref)
+            await session.flush()
+    except IntegrityError as exc:
+        expected_index = (
+            "uq_asset_ps_node_ref"
+            if system == "project_standard" and entity == "node"
+            else "uq_asset_external_ref"
+        )
+        database_error = getattr(exc.orig, "__cause__", None)
+        if getattr(database_error, "constraint_name", None) != expected_index:
+            raise
+        raise ConflictError("external_ref_exists", "this link already exists") from exc
     await audit.record(
         session,
         actor=actor,

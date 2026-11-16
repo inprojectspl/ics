@@ -77,3 +77,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   over it: the order check is repeated under a lock on the binding.
 - The sign-in page retries loading its configuration, so Google sign-in no longer disappears
   until a reload when the page opened while the server was restarting.
+- PS node references include the project. The same document can link to the same local node ID in
+  two PS projects; context packs and rekey stay scoped to the selected project. Repeating a link
+  within one project still returns `409 external_ref_exists`, also with changed required or
+  pinned-version parameters, and two racing retries get that conflict instead of a server error.
+  Migration 0045 keeps existing links, turns empty scopes into null and leaves unknown legacy scopes
+  unresolved; its downgrade refuses cross-project collisions instead of dropping links. OpenProject
+  work packages keep their single-instance identity.
+
