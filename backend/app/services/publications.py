@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import permissions
 from app.domain_errors import ConflictError, NotFoundError
-from app.models import PublicationReceipt, User
+from app.models import Asset, PublicationReceipt, User
 
 SCHEMA_VERSION = 1
 
@@ -31,6 +31,14 @@ class PublicationScope:
     publication_id: str
 
 
+@dataclass(frozen=True)
+class VersionPublication:
+    scope: PublicationScope
+    # Digest of the normalized stage input; the central version writer adds
+    # the target, operation, expected version and normalized change note.
+    payload_hash: str
+
+
 async def find_receipt(session: AsyncSession, scope: PublicationScope) -> PublicationReceipt | None:
     return await session.scalar(select(PublicationReceipt).filter_by(**asdict(scope)))
 
@@ -42,6 +50,9 @@ async def authorize_receipt(session: AsyncSession, receipt: PublicationReceipt, 
         await permissions.assert_project_contributor(
             session, user, receipt.project_id, refresh=True
         )
+    # Version endpoints may have loaded the asset before the advisory wait.
+    # Do not authorize replay from an identity-map snapshot of its old ACL.
+    await session.get(Asset, receipt.asset_id, populate_existing=True)
     await permissions.get_viewable_asset_by_id(session, receipt.asset_id, user)
 
 

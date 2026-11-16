@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Version writes can reject stale edits. Asset write endpoints accept an optional
   `expected_version`; a mismatch returns `409 version_conflict` before any file is staged, and calls
   without it behave as before (docs/expected-version-api.md).
+- A version replacement accepts the same publication identity: its receipt is saved with the version
+  and a retry after a lost acknowledgement returns the original result. A keyed replacement requires
+  `expected_version`; a different payload under the same key is refused.
 
 ### Changed
 

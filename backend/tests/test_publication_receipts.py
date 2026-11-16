@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import json
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -13,9 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db import get_session
 from app.main import create_app
-from app.models import Asset, AssetVersion, AuditLog, Project, ProjectMember, ShareLink
+from app.models import Asset, AssetShare, AssetVersion, AuditLog, Project, ProjectMember, ShareLink
 from app.routes.mcp_assets import upload
-from app.services import publications
+from app.services import asset_versions, publications
 from tests.conftest import login_as, mk_user
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.usefixtures("fs_storage")]
@@ -400,3 +401,359 @@ async def test_new_publication_rechecks_project_after_waiting_for_scope_lock(
     assert response.status_code == (403 if revoke == "membership" else 404)
     assert await asset_count(session, user) == 0
     assert not [p for p in Path(fs_storage).rglob("*") if p.is_file()]
+
+
+async def replace_publication(http, asset_id, key, *, expected=1, body=b"<h1>Next</h1>", **options):
+    data = {"paths": "index.html", "publication": json.dumps(key), **options}
+    if expected is not None:
+        data["expected_version"] = str(expected)
+    return await http.post(
+        f"/api/assets/{asset_id}/versions",
+        data=data,
+        files={"files": ("index.html", body, "text/html")},
+    )
+
+
+async def versioned_asset(session, http, **options):
+    user = await sign_in(session, http)
+    created = await http.post("/api/assets/html-json", json=payload(None, **options))
+    assert created.status_code == 201
+    return user, UUID(created.json()["id"])
+
+
+async def test_version_publication_lost_commit_ack_replays_original_result_after_later_version(
+    session, http, monkeypatch
+):
+    _user, asset_id = await versioned_asset(session, http)
+    key = publication()
+    commit = AsyncSession.commit
+
+    async def lost_ack(current):
+        await commit(current)
+        raise OSError("synthetic lost acknowledgement after the real version commit")
+
+    with monkeypatch.context() as fault:
+        fault.setattr(AsyncSession, "commit", lost_ack)
+        first = await replace_publication(http, asset_id, key)
+    assert first.status_code == 500
+    found = await http.get(receipt_url(key), params=receipt_params(key))
+    assert found.status_code == 200
+    original = found.json()["result"]
+    assert found.json()["version"] == original["version"] == 2
+    repeated = await replace_publication(http, asset_id, key)
+    assert (repeated.status_code, repeated.json()) == (201, original)
+    newer = await replace_publication(
+        http, asset_id, publication(), expected=2, body=b"<h1>Third</h1>"
+    )
+    assert newer.status_code == 201
+    assert newer.json()["version"] == 3
+    repeated = await replace_publication(http, asset_id, key)
+    assert (repeated.status_code, repeated.json()) == (201, original)
+    assert await session.scalar(select(Asset.version).where(Asset.id == asset_id)) == 3
+    assert (
+        await session.scalar(
+            select(func.count())
+            .select_from(AuditLog)
+            .where(AuditLog.target == f"asset:{asset_id}", AuditLog.action == "asset_versioned")
+        )
+        == 2
+    )
+
+
+async def test_parallel_version_publication_waits_and_stages_once(session, http, monkeypatch):
+    _user, asset_id = await versioned_asset(session, http)
+    key = publication()
+    entered, release = asyncio.Event(), asyncio.Event()
+    write = asset_versions.write_uploads
+    staged = 0
+    holder_pids = []
+    lock = publications.lock_and_replay
+
+    async def observed_lock(current, *args, **kwargs):
+        holder_pids.append(await current.scalar(text("SELECT pg_backend_pid()")))
+        return await lock(current, *args, **kwargs)
+
+    monkeypatch.setattr(publications, "lock_and_replay", observed_lock)
+
+    def paused_uploads(*args, **kwargs):
+        stage = write(*args, **kwargs)
+
+        async def paused(draft):
+            nonlocal staged
+            staged += 1
+            entered.set()
+            await release.wait()
+            return await stage(draft)
+
+        return paused
+
+    monkeypatch.setattr(asset_versions, "write_uploads", paused_uploads)
+    first = asyncio.create_task(replace_publication(http, asset_id, key))
+    await asyncio.wait_for(entered.wait(), 5)
+    second = asyncio.create_task(replace_publication(http, asset_id, key))
+
+    async def waiter():
+        while not await session.scalar(
+            text(
+                "SELECT EXISTS (SELECT 1 FROM pg_locks waiting JOIN pg_locks held "
+                "USING (locktype, database, classid, objid, objsubid) "
+                "WHERE held.pid=:pid AND held.locktype='advisory' "
+                "AND held.granted AND NOT waiting.granted)"
+            ),
+            {"pid": holder_pids[0]},
+        ):
+            await asyncio.sleep(0.01)
+
+    try:
+        await asyncio.wait_for(waiter(), 5)
+    finally:
+        release.set()
+    a, b = await asyncio.wait_for(asyncio.gather(first, second), 10)
+    assert (a.status_code, b.status_code) == (201, 201)
+    assert a.json() == b.json()
+    assert staged == 1
+    assert await session.scalar(select(Asset.version).where(Asset.id == asset_id)) == 2
+
+
+@pytest.mark.parametrize("change", ["body", "expected", "change_note", "asset"])
+async def test_version_publication_rejects_changed_intent(session, http, change):
+    _user, asset_id = await versioned_asset(session, http)
+    key = publication()
+    first = await replace_publication(http, asset_id, key)
+    assert first.status_code == 201
+    options = {}
+    if change == "body":
+        options["body"] = b"<h1>Different</h1>"
+    elif change == "expected":
+        options["expected"] = 2
+    elif change == "change_note":
+        options["change_note"] = "A different publication"
+    else:
+        other = await http.post("/api/assets/html-json", json=payload(None))
+        assert other.status_code == 201
+        asset_id = UUID(other.json()["id"])
+    changed = await replace_publication(http, asset_id, key, **options)
+    assert changed.status_code == 409
+    assert changed.json()["code"] == "publication_conflict"
+
+
+async def test_new_publication_key_requires_current_expected_version(session, http):
+    _user, asset_id = await versioned_asset(session, http)
+    assert (await replace_publication(http, asset_id, publication())).status_code == 201
+    stale = await replace_publication(http, asset_id, publication())
+    assert stale.status_code == 409
+    assert stale.json()["code"] == "version_conflict"
+    missing = await replace_publication(http, asset_id, publication(), expected=None)
+    assert missing.status_code == 422
+    assert missing.json()["code"] == "validation_error"
+    assert await session.scalar(select(Asset.version).where(Asset.id == asset_id)) == 2
+
+
+@pytest.mark.parametrize("failure", ["stage", "before_commit"])
+async def test_version_receipt_and_version_are_absent_when_transaction_fails(
+    session, http, monkeypatch, failure
+):
+    _user, asset_id = await versioned_asset(session, http)
+    key = publication()
+    with monkeypatch.context() as fault:
+        if failure == "stage":
+            original = asset_versions.write_uploads
+
+            def partial(*args, **kwargs):
+                stage = original(*args, **kwargs)
+
+                async def write_then_fail(draft):
+                    await stage(draft)
+                    raise OSError("synthetic failure after writing the staged tree")
+
+                return write_then_fail
+
+            fault.setattr(asset_versions, "write_uploads", partial)
+        else:
+
+            async def fail_commit(current):
+                await current.flush()
+                raise OSError("synthetic failure before COMMIT")
+
+            fault.setattr(AsyncSession, "commit", fail_commit)
+        failed = await replace_publication(http, asset_id, key)
+    assert failed.status_code == 500
+    assert (await http.get(receipt_url(key), params=receipt_params(key))).status_code == 404
+    assert await session.scalar(select(Asset.version).where(Asset.id == asset_id)) == 1
+    assert (
+        await session.scalar(
+            select(func.count()).select_from(AssetVersion).where(AssetVersion.asset_id == asset_id)
+        )
+        == 1
+    )
+    retried = await replace_publication(http, asset_id, key)
+    assert retried.status_code == 201
+    assert retried.json()["version"] == 2
+    receipt = await http.get(receipt_url(key), params=receipt_params(key))
+    assert receipt.status_code == 200
+    assert receipt.json()["result"] == retried.json()
+
+
+@pytest.mark.parametrize("replay", [False, True])
+async def test_version_publication_rechecks_deleted_asset_after_advisory_wait(
+    session, http, replay
+):
+    user, asset_id = await versioned_asset(session, http)
+    key = publication()
+    if replay:
+        assert (await replace_publication(http, asset_id, key)).status_code == 201
+    scope = publications.PublicationScope(user.id, None, key["order_id"], key["role"], key["id"])
+    factory = async_sessionmaker(session.bind, expire_on_commit=False)
+    async with factory() as holder:
+        if not replay:
+            await publications.lock_and_replay(holder, scope, user, "not-used-for-lock")
+        else:
+            receipt = await publications.find_receipt(holder, scope)
+            assert receipt is not None
+            await publications.lock_and_replay(holder, scope, user, receipt.payload_hash)
+        pid = await holder.scalar(text("SELECT pg_backend_pid()"))
+        pending = asyncio.create_task(replace_publication(http, asset_id, key))
+
+        async def waiter():
+            while not await session.scalar(
+                text(
+                    "SELECT EXISTS (SELECT 1 FROM pg_locks waiting JOIN pg_locks held "
+                    "USING (locktype, database, classid, objid, objsubid) "
+                    "WHERE held.pid=:pid AND held.locktype='advisory' "
+                    "AND held.granted AND NOT waiting.granted)"
+                ),
+                {"pid": pid},
+            ):
+                await asyncio.sleep(0.01)
+
+        try:
+            await asyncio.wait_for(waiter(), 5)
+            asset = await session.get(Asset, asset_id)
+            asset.deleted_at = datetime.now(UTC)
+            await session.commit()
+        finally:
+            await holder.rollback()
+        response = await asyncio.wait_for(pending, 5)
+    assert response.status_code == 404
+    assert (await http.get(receipt_url(key), params=receipt_params(key))).status_code == 404
+    assert await session.scalar(select(Asset.version).where(Asset.id == asset_id)) == (
+        2 if replay else 1
+    )
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        {"id": "white space", "order_id": "o", "role": "r"},
+        {"id": "id", "order_id": "o", "role": "r", "unexpected": True},
+        "broken-json",
+    ],
+)
+async def test_version_publication_key_shape_is_validated(session, http, key):
+    _user, asset_id = await versioned_asset(session, http)
+    response = await replace_publication(http, asset_id, key)
+    assert response.status_code == 422
+    assert response.json()["code"] == "validation_error"
+    assert await session.scalar(select(Asset.version).where(Asset.id == asset_id)) == 1
+
+
+async def test_version_publication_hash_normalizes_files_and_effective_options(session, http):
+    _user, asset_id = await versioned_asset(session, http)
+    key = publication()
+    files = [("index.html", b"<h1>Index</h1>"), ("other.html", b"<h1>Other</h1>")]
+
+    async def publish(rows, **changes):
+        return await http.post(
+            f"/api/assets/{asset_id}/versions",
+            data={
+                "paths": [path for path, _ in rows],
+                "publication": json.dumps(key),
+                "expected_version": "1",
+                "change_note": "note",
+                **changes,
+            },
+            files=[("files", (path, body, "text/html")) for path, body in rows],
+        )
+
+    first = await publish(files, change_note="  note \n")
+    assert first.status_code == 201
+    equivalent = await publish(list(reversed(files)), entry_path="index.html")
+    assert (equivalent.status_code, equivalent.json()) == (201, first.json())
+    changed = await publish(files, entry_path="other.html")
+    assert changed.status_code == 409
+    assert changed.json()["code"] == "publication_conflict"
+
+
+async def test_version_publication_rejects_duplicate_normalized_paths(session, http):
+    _user, asset_id = await versioned_asset(session, http)
+    response = await http.post(
+        f"/api/assets/{asset_id}/versions",
+        data={
+            "paths": ["index.html", "index.html"],
+            "publication": json.dumps(publication()),
+            "expected_version": "1",
+        },
+        files=[("files", ("index.html", b"<h1>A</h1>")), ("files", ("index.html", b"<h1>B</h1>"))],
+    )
+    assert response.status_code == 400
+    assert response.json()["code"] == "duplicate_path"
+    assert await session.scalar(select(Asset.version).where(Asset.id == asset_id)) == 1
+
+
+async def test_creation_key_cannot_be_reused_for_next_version(session, http):
+    await sign_in(session, http)
+    key = publication()
+    created = await http.post("/api/assets/html-json", json=payload(key))
+    assert created.status_code == 201
+    response = await replace_publication(http, created.json()["id"], key)
+    assert response.status_code == 409
+    assert response.json()["code"] == "publication_conflict"
+
+
+@pytest.mark.parametrize("replay", [False, True])
+async def test_version_publication_rechecks_editor_downgrade_after_wait(session, http, replay):
+    _owner, asset_id = await versioned_asset(session, http)
+    editor = await mk_user(session)
+    share = AssetShare(asset_id=asset_id, user_id=editor.id, role="editor")
+    session.add(share)
+    await session.commit()
+    await login_as(http, editor)
+    key = publication()
+    if replay:
+        assert (await replace_publication(http, asset_id, key)).status_code == 201
+    scope = publications.PublicationScope(editor.id, None, key["order_id"], key["role"], key["id"])
+    factory = async_sessionmaker(session.bind, expire_on_commit=False)
+    async with factory() as holder:
+        existing = await publications.find_receipt(holder, scope)
+        await publications.lock_and_replay(
+            holder, scope, editor, existing.payload_hash if existing else "new"
+        )
+        pid = await holder.scalar(text("SELECT pg_backend_pid()"))
+        pending = asyncio.create_task(replace_publication(http, asset_id, key))
+
+        async def waiter():
+            while not await session.scalar(
+                text(
+                    "SELECT EXISTS (SELECT 1 FROM pg_locks waiting JOIN pg_locks held "
+                    "USING (locktype, database, classid, objid, objsubid) "
+                    "WHERE held.pid=:pid AND held.locktype='advisory' "
+                    "AND held.granted AND NOT waiting.granted)"
+                ),
+                {"pid": pid},
+            ):
+                await asyncio.sleep(0.01)
+
+        try:
+            await asyncio.wait_for(waiter(), 5)
+            share.role = "viewer"
+            await session.commit()
+        finally:
+            await holder.rollback()
+        response = await asyncio.wait_for(pending, 5)
+    assert response.status_code == 404
+    assert await session.scalar(select(Asset.version).where(Asset.id == asset_id)) == (
+        2 if replay else 1
+    )
+    # A viewer can still read an already committed receipt, but cannot mutate.
+    found = await http.get(receipt_url(key), params=receipt_params(key))
+    assert found.status_code == (200 if replay else 404)

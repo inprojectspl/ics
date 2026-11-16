@@ -18,7 +18,7 @@ from app.config import get_settings
 from app.domain_errors import ConflictError
 from app.models import Asset, AssetShare, AssetVersion, AuditLog, User
 from app.quota import QuotaExceededError
-from app.services import asset_versions
+from app.services import asset_versions, publications
 from tests.conftest import mk_asset, mk_user, put_blob
 
 pytestmark = pytest.mark.usefixtures("fs_storage")
@@ -336,3 +336,39 @@ async def test_expected_version_conflict_precedes_storage_cleanup(session):
         await session.scalars(select(AuditLog).where(AuditLog.target == f"asset:{asset.id}"))
     ).all()
     assert [audit.action for audit in audits] == ["test_versioned"]
+
+
+@pytest.mark.asyncio
+async def test_publication_replay_precedes_cas_and_does_not_stage_again(session):
+    owner = await mk_user(session)
+    asset = await _vault(session, owner, {"index.md": b"one"})
+    scope = publications.PublicationScope(owner.id, None, "order", "report", "version-retry")
+    intent = publications.VersionPublication(scope, publications.canonical_hash({"body": "two"}))
+    staged = 0
+
+    async def stage(draft):
+        nonlocal staged
+        staged += 1
+        return await asset_versions.edit_files(put={"index.md": b"two"})(draft)
+
+    async def publish():
+        return await asset_versions.commit_new_version(
+            session,
+            asset,
+            get_settings(),
+            stage=stage,
+            actor=owner,
+            audit_action="test_publication",
+            audit_payload=lambda nv: {"version": nv.version},
+            expected_version=1,
+            publication=intent,
+        )
+
+    first = await publish()
+    second = await publish()
+    assert first.version == second.version == 2
+    assert first.publication_result == second.publication_result
+    assert staged == 1
+    assert await _versions(session, asset) == [2]
+    assert await _tree(asset, 1) == {"index.md": b"one"}
+    assert await _tree(asset, 2) == {"index.md": b"two"}

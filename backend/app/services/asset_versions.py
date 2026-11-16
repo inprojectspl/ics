@@ -8,20 +8,27 @@ lock is still held, so the current version stays intact.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import audit, quota, search
+from app import audit, permissions, quota, search
 from app.bundle_extract import extract_to_storage
 from app.bundle_scan import prompt_injection
 from app.collections_io import derive_entry_path, read_markdown_files
 from app.config import Settings
 from app.domain_errors import ConflictError, InvalidInputError, NotFoundError
-from app.models import Asset, AssetVersion, User
-from app.services import asset_security, documents, ocr, read_size, relation_extraction
+from app.models import Asset, AssetVersion, PublicationReceipt, User
+from app.services import (
+    asset_security,
+    documents,
+    ocr,
+    publications,
+    read_size,
+    relation_extraction,
+)
 from app.services.notifications import events as notification_events
 from app.services.upload import ByteBudget, ReadableFile, one_chunk, put_all
 from app.storage import Storage, storage_from_url
@@ -69,6 +76,9 @@ class NewVersion:
     entry_path: str | None
     file_count: int | None
     security: dict | None
+    # Exact committed HTTP result. Replay does not rescan or read current asset
+    # metadata into this result; `security` is only the scan of this execution.
+    publication_result: dict | None = None
 
 
 Stage = Callable[[VersionDraft], Awaitable[StagedTree]]
@@ -87,6 +97,7 @@ async def commit_new_version(
     created_by: UUID | None = None,
     change_note: str | None = None,
     expected_version: int | None = None,
+    publication: publications.VersionPublication | None = None,
 ) -> NewVersion:
     """Write a new version of `asset` with `stage` and commit the session.
 
@@ -95,14 +106,53 @@ async def commit_new_version(
     `expected_version` compares against the locked row before touching storage;
     omitting it preserves the existing serialized-write behavior.
     """
+    user = actor if isinstance(actor, User) else None
+    payload_hash = None
+    if publication is not None:
+        if user is None or publication.scope.principal_id != user.id:
+            raise ConflictError(
+                "publication_conflict", "publication principal does not match actor"
+            )
+        payload_hash = publications.canonical_hash(
+            {
+                "schema_version": publications.SCHEMA_VERSION,
+                "operation": "new_version",
+                "asset_id": str(asset.id),
+                "expected_version": expected_version,
+                "change_note": (change_note or "").strip() or None,
+                "payload": publication.payload_hash,
+            }
+        )
+        receipt = await publications.lock_and_replay(session, publication.scope, user, payload_hash)
+        if receipt is not None:
+            await permissions.get_owned_asset_by_id(session, asset.id, user)
+            saved = receipt.result
+            return NewVersion(
+                version=receipt.version,
+                size_bytes=saved["size_bytes"],
+                entry_path=saved["entry_path"],
+                file_count=saved["file_count"],
+                security=None,
+                publication_result=saved,
+            )
     await session.refresh(asset, with_for_update=True)
+    if publication is not None:
+        if expected_version is None:
+            raise InvalidInputError("invalid_version", "publication requires expected_version")
+        if asset.project_id != publication.scope.project_id:
+            raise ConflictError("publication_conflict", "publication project changed while waiting")
+        assert user is not None
+        if asset.project_id is not None:
+            await permissions.assert_project_contributor(
+                session, user, asset.project_id, refresh=True
+            )
+        await permissions.get_owned_asset_by_id(session, asset.id, user)
     if expected_version is not None and expected_version != asset.version:
         raise ConflictError(
             "version_conflict",
             "the asset version changed; reload it before retrying the write",
             field="expected_version",
         )
-    user = actor if isinstance(actor, User) else None
     if created_by is None and user is not None:
         created_by = user.id
     draft = VersionDraft(asset=asset, storage=storage_from_url(settings.storage_url))
@@ -171,6 +221,18 @@ async def commit_new_version(
             entry_path=asset.entry_path,
             file_count=staged.file_count,
             security=security,
+            publication_result=(
+                {
+                    "id": str(asset.id),
+                    "version": version,
+                    "entry_path": asset.entry_path,
+                    "file_count": staged.file_count,
+                    "size_bytes": asset.size_bytes,
+                    "security_status": asset.security_status,
+                }
+                if publication is not None
+                else None
+            ),
         )
         await audit.record(
             session,
@@ -179,6 +241,18 @@ async def commit_new_version(
             target=f"asset:{asset.id}",
             payload=audit_payload(result),
         )
+        if publication is not None:
+            assert payload_hash is not None and result.publication_result is not None
+            session.add(
+                PublicationReceipt(
+                    **asdict(publication.scope),
+                    schema_version=publications.SCHEMA_VERSION,
+                    payload_hash=payload_hash,
+                    asset_id=asset.id,
+                    version=version,
+                    result=result.publication_result,
+                )
+            )
     except Exception:
         await draft.storage.delete_prefix(prefix)
         if documents.is_document(asset.kind):

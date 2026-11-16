@@ -6,8 +6,9 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, Field, field_validator
 
+from app.routes._publication import PublicationIn
 from app.services.ocr import OcrState
 
 from ._shared import _HTML_BUNDLE_MAX_FILES, _MAX_TAGS, _TAG_RE
@@ -117,13 +118,6 @@ class HtmlBundleFile(BaseModel):
         if v.startswith("/") or ".." in v.split("/"):
             raise ValueError("path: leading / or .. not allowed")
         return v
-
-
-class PublicationIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    id: str = Field(min_length=1, max_length=200, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
-    order_id: str = Field(min_length=1, max_length=200, pattern=r"^[^\x00-\x20\x7f]+$")
-    role: str = Field(min_length=1, max_length=100, pattern=r"^[^\x00-\x20\x7f]+$")
 
 
 class HtmlBundleCreate(BaseModel):

@@ -34,3 +34,9 @@ archive reads, numbering and failure cleanup are unchanged. The signed CI sync
 manifest keeps its existing contract. MCP tool propagation is tracked separately
 in OpenProject #2353; this backend change does not make the optional field
 mandatory for legacy callers.
+
+A replacement carrying a [publication identity](publication-receipts-api.md)
+requires `expected_version`. Its committed receipt is checked before CAS, so
+retrying the same operation returns its original result rather than conflicting
+with the version that operation already created. A different publication key
+still needs a matching precondition.
