@@ -118,7 +118,9 @@ async def between_versions(
                     MicroAppRelease.package_version.in_((from_v, to_v)),
                 )
             )
-        ).tuples().all()
+        )
+        .tuples()
+        .all()
     )
     if from_v not in rows or to_v not in rows:
         return None

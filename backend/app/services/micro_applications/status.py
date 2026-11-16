@@ -294,7 +294,9 @@ async def with_release_states(
                     MicroAppRelease.asset_id == asset.id
                 )
             )
-        ).tuples().all()
+        )
+        .tuples()
+        .all()
     )
     return [
         {
