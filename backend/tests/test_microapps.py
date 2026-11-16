@@ -1166,11 +1166,18 @@ async def test_plans_are_rate_limited_per_person(client, session, monkeypatch):
     assert again.headers["Retry-After"]
 
 
-async def test_expired_plans_and_their_packages_are_dropped(client, session):
+async def test_expired_plans_and_their_packages_are_dropped(client, session, monkeypatch):
     from datetime import UTC, datetime, timedelta
 
-    from app.jobs.tasks.micro_applications import _drop_expired_plans
+    from sqlalchemy.ext.asyncio import async_sessionmaker
 
+    from app.jobs.tasks import micro_applications as jobs
+
+    # The module-level SessionLocal may hold a connection of another test's
+    # event loop; bind the sweeper to this test's engine.
+    monkeypatch.setattr(
+        jobs, "SessionLocal", async_sessionmaker(session.bind, expire_on_commit=False)
+    )
     owner = await mk_user(session)
     await session.commit()
     r = await client.post(
@@ -1181,7 +1188,7 @@ async def test_expired_plans_and_their_packages_are_dropped(client, session):
     prefix = row.storage_prefix
     row.expires_at = datetime.now(UTC) - timedelta(days=2)
     await session.commit()
-    assert await _drop_expired_plans(get_settings()) >= 1
+    assert await jobs._drop_expired_plans(get_settings()) >= 1
     session.expire_all()
     assert await session.get(MicroAppPlan, plan_id) is None
     storage = storage_from_url(get_settings().storage_url)
