@@ -53,6 +53,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   name with directory segments cannot write into another document.
 - Bundle files served on the app origin (the legacy `/static/` links of documents and shares)
   are sandboxed and cannot call the API with the visitor's session.
+- joserfc 1.7.6 replaces 1.7.5 (CVE-2026-119284); only the lockfile changes, authentication code is
+  untouched.
 
 ### Fixed
 
