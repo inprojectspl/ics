@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A version replacement accepts the same publication identity: its receipt is saved with the version
   and a retry after a lost acknowledgement returns the original result. A keyed replacement requires
   `expected_version`; a different payload under the same key is refused.
+- GitLab bindings accept a signed `release_id` with `release_generation`. The result, the version
+  and the generation commit together, so retrying the same signed release after a lost response
+  returns the original result; an older generation under a new ID is refused with
+  `release_generation_conflict`, and once a binding has a release a manifest without one gets
+  `release_required` (migration 0047). `ics-sync` does not send these fields yet.
 
 ### Changed
 

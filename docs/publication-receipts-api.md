@@ -108,3 +108,45 @@ receipt or uses the existing staging cleanup before the next attempt.
 Legacy replacements without `publication` keep their existing behavior. Per-file
 edits, restore, signed CI binding synchronization and MCP client propagation do
 not gain publication identities through this change.
+
+## Signed releases from GitLab bindings
+
+Legacy sync manifests order pushes by increasing commit timestamp.
+
+The backend also accepts a signed `release_id` (1-200 characters, letters,
+digits, `.`, `_`, `:`, `-`) paired with `release_generation` (an integer from
+1 to 9223372036854775807). The ID starts with a letter or digit. Both fields
+belong inside the signed manifest, alongside `binding_id`, `commit_sha`,
+`commit_timestamp` and `bundle_sha256`. The CI release policy must authorize
+the commit and allocate the generation; a repository push alone does not
+assert production approval. Forwarding these fields from `ics-sync` is a
+separate client change.
+
+After the first release generation is accepted for a binding, an old signed
+manifest without the release pair is refused with
+`release_required`. New release IDs must increase the generation, even if
+their commit timestamp is newer. Different releases may share a commit
+timestamp, and a higher generation may publish an older commit. The existing
+time guard still rejects timestamps more than five minutes in the future;
+it does not impose a new maximum commit age. Naive timestamps retain their
+legacy UTC interpretation.
+
+A successful release returns the existing version fields plus `receipt`
+(`id`, `schema_version`, `binding_id`, `release_id`, `release_generation`,
+`payload_hash`, `asset_id`, `version`). That result, the version and the
+generation commit atomically in PostgreSQL. After a lost acknowledgement,
+retry the same signed manifest and bundle: HTTP 201 returns the original
+result without another version, audit or notification. Historical retries
+still return their own receipt after later generations and never rewind the
+current state. Receipt identity is scoped to the binding; the digest binds
+the asset, release ID, generation, commit, normalized timestamp and bundle
+hash. Reusing the ID for a different intent returns `publication_conflict`;
+reusing or decreasing the generation under a new ID returns
+`release_generation_conflict`.
+
+Replay still verifies the current signing key, binding identity, time and
+actual bundle hash. Key rotation or deletion revokes replay access as well
+as publication access. Receipts for binding credentials cannot be read as a
+user-scoped MCP publication. A failed or unavailable request is not evidence
+that the release was absent; keep its identity when retrying. Rolling back
+the schema to before binding receipts discards this recovery history.

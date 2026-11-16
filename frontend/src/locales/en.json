@@ -824,6 +824,8 @@
   "error.relation_target_anchor_not_found": "The current version of the target document has no such heading.",
   "error.relation_target_path_not_found": "The current version of the target document has no such file.",
   "error.relation_type_invalid": "Unknown relation type.",
+  "error.release_generation_conflict": "This release generation is not newer than the accepted release.",
+  "error.release_required": "This binding requires a signed release ID and generation.",
   "error.request_too_large": "The uploaded data is too large.",
   "error.same_path": "The source and target paths are the same.",
   "error.same_version": "Pick two different versions.",

@@ -870,6 +870,8 @@
   "error.relation_target_anchor_not_found": "W aktualnej wersji dokumentu docelowego nie ma takiego nagłówka.",
   "error.relation_target_path_not_found": "W aktualnej wersji dokumentu docelowego nie ma takiego pliku.",
   "error.relation_type_invalid": "Nieznany typ relacji.",
+  "error.release_generation_conflict": "Ta generacja wydania nie jest nowsza niż przyjęte wydanie.",
+  "error.release_required": "To powiązanie wymaga podpisanego identyfikatora i generacji wydania.",
   "error.request_too_large": "Przesyłane dane są za duże.",
   "error.same_path": "Ścieżka źródłowa i docelowa są identyczne.",
   "error.same_version": "Wybierz dwie różne wersje.",

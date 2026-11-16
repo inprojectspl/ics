@@ -294,6 +294,8 @@ Codes follow the RFC 6749, RFC 7591 and RFC 8707 error names.
 | `bundle_hash_mismatch` | 400 | Bundle SHA-256 differs from the manifest. |
 | `commit_from_future` | 400 | Commit timestamp is too far in the future. |
 | `replay_rejected` | 409 | Push is a replay or out of order. |
+| `release_required` | 409 | This binding already uses release generations; the signed manifest must include its release identity. |
+| `release_generation_conflict` | 409 | A new release ID must have a generation greater than the last accepted generation. |
 | `webhook_pair_incomplete` | 400 | `provider` and `webhook_url` must be set, cleared or patched together. |
 | `invalid_webhook` | 400 | Unknown notification provider or URL not valid for it. |
 

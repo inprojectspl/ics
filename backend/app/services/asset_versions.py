@@ -8,7 +8,7 @@ lock is still held, so the current version stays intact.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any
 from uuid import UUID
 
@@ -23,6 +23,7 @@ from app.domain_errors import ConflictError, InvalidInputError, NotFoundError
 from app.models import Asset, AssetVersion, PublicationReceipt, User
 from app.services import (
     asset_security,
+    binding_publications,
     documents,
     ocr,
     publications,
@@ -98,6 +99,7 @@ async def commit_new_version(
     change_note: str | None = None,
     expected_version: int | None = None,
     publication: publications.VersionPublication | None = None,
+    binding_publication: binding_publications.BindingPublication | None = None,
 ) -> NewVersion:
     """Write a new version of `asset` with `stage` and commit the session.
 
@@ -107,6 +109,10 @@ async def commit_new_version(
     omitting it preserves the existing serialized-write behavior.
     """
     user = actor if isinstance(actor, User) else None
+    if binding_publication is not None and (
+        publication is not None or actor != f"binding:{binding_publication.binding_id}"
+    ):
+        raise ConflictError("publication_conflict", "binding publication principal mismatch")
     payload_hash = None
     if publication is not None:
         if user is None or publication.scope.principal_id != user.id:
@@ -252,6 +258,13 @@ async def commit_new_version(
                     version=version,
                     result=result.publication_result,
                 )
+            )
+        if binding_publication is not None:
+            result = replace(
+                result,
+                publication_result=binding_publications.record_result(
+                    session, binding_publication, asset, result
+                ),
             )
     except Exception:
         await draft.storage.delete_prefix(prefix)
