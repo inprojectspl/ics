@@ -18,7 +18,7 @@ A micro-application is a small app with its own data that lives in ICS like any 
 
 Open the app's page from the document list, a project or a link, and click **Open**. The app opens in a new tab.
 
-![Request register opened by Priya Shah: her requests with Edit and Delete](images/micro-app-running.png)
+![Request register opened by Alex Morgan, a reviewer: their own request and the queue to approve](images/micro-app-running.png)
 
 What you see inside depends on the roles you have in the app. Without any role you can open it, but the app shows that you have no permissions yet; ask the person who manages the app's access (see [Give people roles](#give-people-roles)).
 
