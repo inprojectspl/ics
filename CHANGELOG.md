@@ -101,4 +101,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Concurrent Markdown edits use the locked version. Edit, add, delete and move recheck the files
   under the version lock, and sizes and quota growth use the tree actually staged. A failed write
   leaves the current version and its history intact.
+- The backend test runner waits for PostgreSQL over TCP, so the temporary Unix-socket-only server of
+  the image initialization no longer starts tests before the final database is ready.
 

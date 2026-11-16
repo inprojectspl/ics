@@ -20,7 +20,7 @@ ensure_container() {
 if [ -z "${ICS_DATABASE_URL:-}" ]; then
   ensure_container ics-test-pg postgres:18.3-alpine "$pg_port" 5432 \
     -e POSTGRES_USER=ics -e POSTGRES_PASSWORD=ics -e POSTGRES_DB=ics
-  until docker exec ics-test-pg pg_isready -U ics >/dev/null 2>&1; do sleep 1; done
+  until docker exec ics-test-pg pg_isready -h 127.0.0.1 -p 5432 -U ics >/dev/null 2>&1; do sleep 1; done
   export ICS_DATABASE_URL="postgresql+asyncpg://ics:ics@localhost:${pg_port}/ics"
 fi
 if [ -z "${ICS_REDIS_URL:-}" ]; then
