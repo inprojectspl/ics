@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import permissions
+from app import microapp_guard, permissions
 from app.auth import CurrentUser
 from app.collections_io import (
     list_md_paths,
@@ -61,6 +61,7 @@ async def collection_tree(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict:
     asset, _ = await permissions.get_viewable_asset_by_slug(session, slug, user)
+    microapp_guard.refuse_source(asset)
     if asset.kind != "md_collection":
         raise ApiError(
             status.HTTP_400_BAD_REQUEST, "collection_only", "tree only for md_collection"
@@ -82,6 +83,7 @@ async def asset_download(
     """Download of the source files, viewer level like the share-link
     download; a critical bundle is gated as for visitors."""
     asset, role = await permissions.get_viewable_asset_by_slug(session, slug, user)
+    microapp_guard.refuse_source(asset)
     _gate_bundle_for_read_only(role, asset)
     return await _stream_source(asset, settings)
 
@@ -96,6 +98,7 @@ async def collection_file(
     version: VersionParam = None,
 ) -> dict:
     asset, _ = await permissions.get_viewable_asset_by_slug(session, slug, user)
+    microapp_guard.refuse_source(asset)
     return await render_collection_file(asset, path, version, settings)
 
 
@@ -111,6 +114,7 @@ async def asset_static(
     """Sandboxed preview for legacy direct links; normal rendering goes
     through the isolated viewer via `/html-grant`."""
     asset, role = await permissions.get_viewable_asset_by_slug(session, slug, user)
+    microapp_guard.refuse_source(asset)
     _gate_bundle_for_read_only(role, asset)
     return await serve_bundle_file(
         asset, path, settings, session=session, request=request, app_origin=True
@@ -126,6 +130,7 @@ async def render_asset(
 ) -> HTMLResponse:
     """Raw sanitized HTML for legacy/embedding use. Frontend prefers /doc."""
     asset, _ = await permissions.get_viewable_asset_by_slug(session, slug, user)
+    microapp_guard.refuse_source(asset)
     return HTMLResponse(await _load_asset_html(asset, settings))
 
 
@@ -138,6 +143,7 @@ async def get_graph(
 ) -> dict:
     """Wikilink graph of an md_collection: .md files and `[[wikilinks]]`."""
     asset, _ = await permissions.get_viewable_asset_by_slug(session, slug, user)
+    microapp_guard.refuse_source(asset)
     if asset.kind != "md_collection":
         raise ApiError(
             status.HTTP_400_BAD_REQUEST,
@@ -159,6 +165,7 @@ async def get_source(
     """Raw Markdown source for inline edit. Viewer level on purpose: it
     carries the same information as `/download`. md_collection needs `path`."""
     asset, _ = await permissions.get_viewable_asset_by_slug(session, slug, user)
+    microapp_guard.refuse_source(asset)
     if asset.kind == "html_bundle":
         raise ApiError(
             status.HTTP_400_BAD_REQUEST,

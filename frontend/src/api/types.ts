@@ -5,6 +5,7 @@
 import type { AssetMetadata } from "./metadataTypes";
 import type { OcrState } from "./ocrTypes";
 
+export type * from "./diffTypes";
 export type * from "./metadataTypes";
 export type * from "./auditTypes";
 export type * from "./ocrTypes";
@@ -52,11 +53,19 @@ export type AuthConfig = {
   self_register_enabled: boolean;
   dev_stub_sso: boolean;
   sync_image: string;
+  /** Micro-applications (and their admin settings) exist only where the server enables them. */
+  microapps_enabled?: boolean;
 };
 
 export type UploadShareMode = "org_sso" | "public";
 
-export type AssetKind = "md_single" | "md_collection" | "html_bundle" | "pdf_doc" | "office_doc";
+export type AssetKind =
+  | "md_single"
+  | "md_collection"
+  | "html_bundle"
+  | "pdf_doc"
+  | "office_doc"
+  | "micro_application";
 
 export type SecurityStatus = "clean" | "warn" | "critical";
 
@@ -97,6 +106,9 @@ export type AssetSummary = Partial<AssetMetadata> & {
   /** In a project list: the asset's home is another project (ADR-0017). */
   shared_in?: boolean;
   my_role?: "owner" | "editor" | "viewer";
+  /** In the viewer: whether the caller may read the version history and
+   * comparisons (for a micro-application, only its publishers). */
+  history_readable?: boolean;
   access_source?: "owned" | "direct" | "project";
   owner?: { id: string; email: string; display_name: string | null } | null;
 };
@@ -174,6 +186,9 @@ export type ShareLink = {
   created_at: string;
   allowed_emails: string[] | null;
   requires_password: boolean;
+  /** Micro-applications: the app roles and single permissions the link grants. */
+  app_roles?: string[] | null;
+  app_permissions?: string[] | null;
 };
 
 export type ShareInfo = {
@@ -189,6 +204,9 @@ export type ShareInfo = {
   my_role?: EffectiveRole | null;
   /** Asset slug; the backend reveals it only to a role holder. */
   slug?: string | null;
+  kind?: AssetKind;
+  /** Micro-applications: where the visit starts (the app's own origin). */
+  app_launch_url?: string | null;
 };
 
 /** Response of the `/v/<slug>` resolver. A union rather than one `url` field
@@ -281,6 +299,8 @@ export type VersionRow = {
   storage_prefix?: string | null;
   /** What changed in this version, like a commit message; absent on older versions. */
   change_note?: string | null;
+  /** micro_application: the release this package version became. */
+  release_status?: "candidate" | "active" | "superseded" | "failed";
 };
 
 export type CollectionUploadResponse = {
@@ -320,38 +340,6 @@ export type BindingWithSecret = Binding & {
   private_key: string;
 };
 
-/** One entry of a version comparison, the same shape for md_single,
- * md_collection and html_bundle. `added_lines`/`removed_lines` are `null` for
- * binary files and for files above the byte threshold (the backend does not
- * diff a minified one-liner). */
-export type DiffFileChange = {
-  path: string;
-  change: "added" | "removed" | "modified";
-  binary: boolean;
-  added_lines: number | null;
-  removed_lines: number | null;
-  size_from: number | null;
-  size_to: number | null;
-};
-
-/** Comparison summary (without `?path=`): one shape for all kinds. A single
- * file's content is fetched separately via `?path=`. */
-export type DiffSummary = {
-  kind: AssetKind;
-  from_version: number;
-  to_version: number;
-  from_meta: VersionRow | null;
-  to_meta: VersionRow | null;
-  files: DiffFileChange[];
-};
-
-/** Response for `?path=`: unified diff of one file. */
-export type DiffFile = {
-  path: string;
-  change: "added" | "removed" | "modified";
-  diff: string;
-};
-
 export type AdminUser = {
   id: string;
   email: string;
@@ -364,6 +352,7 @@ export type AdminUser = {
   locked: boolean;
   storage_quota_bytes: number;
   bundle_max_bytes: number;
+  microapp_data_max_bytes: number;
   html_autobypass: boolean;
   asset_count: number;
   asset_bytes: number;

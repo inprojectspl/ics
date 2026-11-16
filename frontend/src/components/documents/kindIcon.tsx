@@ -1,5 +1,5 @@
 import { clsx } from "clsx";
-import { BookOpenText, FileCode2, FileText, FileType2, FolderTree, type LucideIcon, type LucideProps } from "lucide-react";
+import { AppWindow, BookOpenText, FileCode2, FileText, FileType2, FolderTree, type LucideIcon, type LucideProps } from "lucide-react";
 import type { AssetKind } from "../../api";
 import type { MessageKey } from "../../lib/i18n";
 
@@ -14,6 +14,7 @@ const KIND_ICON: Record<AssetKind, LucideIcon> = {
   html_bundle: FileCode2,
   pdf_doc: BookOpenText,
   office_doc: FileType2,
+  micro_application: AppWindow,
 };
 
 export const KIND_LABEL: Record<AssetKind, MessageKey> = {
@@ -22,6 +23,7 @@ export const KIND_LABEL: Record<AssetKind, MessageKey> = {
   html_bundle: "kind.htmlBundle",
   pdf_doc: "kind.pdfDoc",
   office_doc: "kind.officeDoc",
+  micro_application: "kind.microApplication",
 };
 
 export function kindIcon(kind: AssetKind): LucideIcon {

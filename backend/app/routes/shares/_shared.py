@@ -45,7 +45,18 @@ def _to_out(share: ShareLink, settings: Settings) -> ShareOut:
         created_at=share.created_at,
         allowed_emails=list(share.allowed_emails) if share.allowed_emails else None,
         requires_password=bool(share.password_hash),
+        **_app_grants(share),
     )
+
+
+def _app_grants(share: ShareLink) -> dict[str, list[str] | None]:
+    """A link stores roles as `role:<name>` beside plain permissions."""
+    if not share.app_permissions:
+        return {"app_roles": None, "app_permissions": None}
+    from app.services.micro_applications.access import split_grants
+
+    roles, perms = split_grants(share.app_permissions)
+    return {"app_roles": roles, "app_permissions": perms}
 
 
 #: 410 (code, message) per `link_resolution.link_lifecycle` reason.

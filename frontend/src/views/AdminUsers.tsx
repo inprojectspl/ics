@@ -34,6 +34,18 @@ type StatusFilter = "" | "locked" | "unverified" | "active30d" | "password" | "g
 type RoleFilter = "" | "user" | "admin" | "external";
 
 export function AdminUsers({ me }: Props) {
+  // Off on an ICS without micro-applications: the dialog hides their limit.
+  const [microappsEnabled, setMicroappsEnabled] = useState(false);
+  useEffect(() => {
+    let live = true;
+    api.authConfig().then(
+      (c) => live && setMicroappsEnabled(c.microapps_enabled === true),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
   const [data, setData] = useState<Awaited<ReturnType<typeof api.adminUsersList>> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -166,6 +178,7 @@ export function AdminUsers({ me }: Props) {
       {selectedUser && (
         <UserDetailDialog
           user={selectedUser}
+          microappsEnabled={microappsEnabled}
           onClose={closeUser}
           onChanged={async () => {
             await refresh();

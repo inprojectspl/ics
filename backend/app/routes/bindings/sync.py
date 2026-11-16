@@ -12,7 +12,7 @@ from fastapi import Depends, Request, UploadFile, status
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import audit, ratelimit, signing
+from app import audit, microapp_guard, ratelimit, signing
 from app.config import Settings, get_settings
 from app.db import get_session
 from app.errors import ApiError
@@ -129,6 +129,7 @@ async def sync_binding(
     asset = await session.get(Asset, binding.asset_id, with_for_update=True, populate_existing=True)
     if asset is None or asset.deleted_at is not None:
         raise ApiError(status.HTTP_404_NOT_FOUND, "asset_not_found", "asset not found")
+    microapp_guard.refuse_write(asset)
 
     publication = None
     if m.release_id is None:

@@ -7,6 +7,7 @@ import { t, tn } from "./i18n";
 import {
   isCollectionDrop,
   isHtmlBundleDrop,
+  isMicroAppDrop,
   isOfficeFileName,
   walkDataTransfer,
   WalkedFile,
@@ -62,6 +63,11 @@ export function useAssetUpload({
 
       setUploading(true);
       try {
+        if (isMicroAppDrop(walked)) {
+          // Micro-applications are created only through ICS-MCP plan/apply.
+          toast(t("assetUpload.microAppUseMcp"), "error");
+          return;
+        }
         if (walked.length === 0) {
           await uploadSingles(fallback);
         } else if (isHtmlBundleDrop(walked)) {

@@ -8,6 +8,7 @@ from fastapi import Depends, Request, Response, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import microapp_guard
 from app.config import Settings, get_settings
 from app.db import get_session
 from app.errors import ApiError
@@ -30,6 +31,7 @@ async def share_versions(
     `GET /api/assets/{id}/versions` but without author e-mail domains (a
     public link reaches the internet). Not counted as a view."""
     share, asset = await _resolve_share(token, session)
+    microapp_guard.refuse_source(asset)
     await _assert_share_view(request, share, asset, session, settings)
     return await version_rows(session, asset)
 
@@ -47,6 +49,7 @@ async def share_doc(
     from app.routes.assets import _doc_payload_for
 
     share, asset = await _resolve_share(token, session)
+    microapp_guard.refuse_source(asset)
     role = await _assert_share_view(request, share, asset, session, settings, need_role=True)
     if documents.renders_inline(asset.kind) and role is None:
         # The payload is the document's content (`html`): withheld from
@@ -94,6 +97,7 @@ async def share_download(
     from app.routes.assets import _stream_source, assert_bundle_renderable_for_visitors
 
     share, asset = await _resolve_share(token, session)
+    microapp_guard.refuse_source(asset)
     await _assert_share_view(request, share, asset, session, settings)
     assert_bundle_renderable_for_visitors(asset)
     return await _stream_source(asset, settings)
@@ -113,6 +117,7 @@ async def share_pdf(
     from app.routes.assets.documents import assert_pdf, pdf_response
 
     share, asset = await _resolve_share(token, session)
+    microapp_guard.refuse_source(asset)
     await _assert_share_view(request, share, asset, session, settings)
     assert_pdf(asset)
     assert_bundle_renderable_for_visitors(asset)
@@ -131,6 +136,7 @@ async def share_file(
     from app.routes.assets._helpers import render_collection_file
 
     share, asset = await _resolve_share(token, session)
+    microapp_guard.refuse_source(asset)
     await _assert_share_view(request, share, asset, session, settings)
     return await render_collection_file(asset, path, version, settings)
 
@@ -147,6 +153,7 @@ async def share_graph(
     from app.graph import build_graph
 
     share, asset = await _resolve_share(token, session)
+    microapp_guard.refuse_source(asset)
     await _assert_share_view(request, share, asset, session, settings)
     if asset.kind != "md_collection":
         raise ApiError(
@@ -175,6 +182,7 @@ async def share_html_grant(
     from app.routes.html_viewer import issue_grant, share_basis
 
     share, asset = await _resolve_share(token, session)
+    microapp_guard.refuse_source(asset)
     role = await _assert_share_view(request, share, asset, session, settings, need_role=True)
     if asset.kind != "html_bundle":
         raise ApiError(
@@ -216,6 +224,7 @@ async def share_static(
     from app.routes.assets import assert_bundle_renderable_for_visitors, serve_bundle_file
 
     share, asset = await _resolve_share(token, session)
+    microapp_guard.refuse_source(asset)
     await _assert_share_view(request, share, asset, session, settings)
     assert_bundle_renderable_for_visitors(asset)
     return await serve_bundle_file(

@@ -1,0 +1,302 @@
+# =============================================================================
+# ICS micro-application PoC: self-contained local profile.
+#
+# Start it only through scripts/microapps-local.sh, which checks the Docker
+# context, the environment inherited from the shell and the local env file
+# before Compose sees them. Standalone on purpose: it does not extend
+# compose.yaml (host Postgres, external edge network and static volume) or
+# compose.dev.yaml (inherited Redis/S3/OAuth/SMTP values).
+#
+# A fixed set of shared services: adding a micro-application never adds a
+# container. The two runners are long-lived Linux containers standing in for
+# the ics-runner@1/2 systemd units of the target host.
+# =============================================================================
+name: ics-microapps-local
+
+x-backend-env: &backend-env
+  ICS_DATABASE_URL: "postgresql+asyncpg://ics:${ICS_PG_PASSWORD:?}@postgres:5432/ics"
+  ICS_REDIS_URL: "redis://redis:6379/0"
+  ICS_STORAGE_URL: "fs:///data/storage"
+  ICS_S3_ENDPOINT_URL: ""
+  ICS_S3_ACCESS_KEY_ID: ""
+  ICS_S3_SECRET_ACCESS_KEY: ""
+  ICS_SECRET_KEY: "${ICS_SECRET_KEY:?}"
+  ICS_DEBUG: "false"
+  ICS_LOG_LEVEL: "info"
+  ICS_DEV_STUB_SSO: "false"
+  ICS_ALLOW_SELF_REGISTER: "false"
+  ICS_BASE_URL: "https://ics.localhost:8443"
+  ICS_HTML_VIEWER_BASE: "https://html.ics.localhost:8443"
+  # Tunnel origins, when shared: ",https://<ics tunnel host>" (empty otherwise).
+  ICS_CORS_ORIGINS: "https://ics.localhost:8443${ICS_PUBLIC_EXTRA_ORIGINS:-}"
+  ICS_ALLOWED_DOMAINS: "example.com"
+  ICS_GOOGLE_OIDC_CLIENT_ID: ""
+  ICS_GOOGLE_OIDC_CLIENT_SECRET: ""
+  ICS_OAUTH_ISSUER: "https://ics.localhost:8443"
+  ICS_OAUTH_PRIVATE_KEY_PEM_PATH: "/run/ics-local/oauth.pem"
+  ICS_OAUTH_KID: "ics-microapps-local"
+  ICS_MCP_RESOURCE_URI: "https://ics.localhost:8443/mcp"
+  ICS_OCR_ENABLED: "false"
+  ICS_SMTP_HOST: "mailpit"
+  ICS_SMTP_PORT: "1025"
+  ICS_SMTP_FROM: "ICS local <no-reply@ics.localhost>"
+  ICS_SMTP_USER: ""
+  ICS_SMTP_PASSWORD: ""
+  ICS_VAPID_PRIVATE_KEY: ""
+  ICS_BOOTSTRAP_ADMIN_EMAIL: "admin@example.com"
+  ICS_BOOTSTRAP_ADMIN_PASSWORD: "${ICS_BOOTSTRAP_ADMIN_PASSWORD:?}"
+  # Micro-applications.
+  ICS_MICROAPPS_ENABLED: "true"
+  ICS_MICROAPPS_APPS_DATABASE_URL: "postgresql://ics_apps_provisioner:${ICS_APPS_PROVISIONER_PASSWORD:?}@postgres:5432/ics_apps"
+  # Read-only login to every app's data, for database tools (DBeast, psql).
+  ICS_MICROAPPS_READER_ROLE: "ics_apps_reader"
+  ICS_MICROAPPS_RUNTIME_DB_HOST: "postgres"
+  ICS_MICROAPPS_RUNTIME_DB_PORT: "5432"
+  ICS_MICROAPPS_APP_HOST_SUFFIX: "ics-apps.localhost:8443"
+  ICS_MICROAPPS_APP_SCHEME: "https"
+  ICS_MICROAPPS_SERVICE_TOKEN: "${ICS_MICROAPPS_SERVICE_TOKEN:?}"
+  ICS_MICROAPPS_BROKER_ADMIN_URL: "http://broker:8081"
+  ICS_MICROAPPS_FAULT_INJECTION: "${ICS_MICROAPPS_FAULT_INJECTION:-false}"
+  ICS_MICROAPPS_PUBLIC_ALIASES: "${ICS_MICROAPPS_PUBLIC_ALIASES:-}"
+  # Base of share-link URLs, e.g. the panel tunnel (empty: ICS_BASE_URL).
+  ICS_SHARE_BASE_URL: "${ICS_SHARE_BASE_URL:-}"
+
+x-backend: &backend
+  build:
+    context: ./backend
+    target: dev
+  image: ics-microapps-local/backend:dev
+  environment:
+    <<: *backend-env
+  volumes:
+    - ./backend/app:/app/app:ro
+    - ./backend/alembic.ini:/app/alembic.ini:ro
+    - ./backend/migrations:/app/migrations:ro
+    - ./backend/tests:/app/tests:ro
+    - ./backend/pyproject.toml:/app/pyproject.toml:ro
+    - ./.microapps-local/oauth.pem:/run/ics-local/oauth.pem:ro
+    - asset_storage:/data/storage
+  networks:
+    - ics
+
+x-runner: &runner
+  build:
+    context: ./microapp-runtime
+  image: ics-microapps-local/microapp-runtime:dev
+  command: ["node", "src/runner/supervisor.js"]
+  # No network at all: the runner talks only to the broker, over a Unix
+  # socket in a volume the two share. No secrets in its environment.
+  network_mode: none
+  read_only: true
+  tmpfs:
+    - /tmp:size=16m
+  user: "10001:10010"
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+  mem_limit: 256m
+  memswap_limit: 256m
+  pids_limit: 64
+  cpus: 1.0
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:18.3-alpine
+    command:
+      - postgres
+      - -c
+      - hba_file=/etc/ics/pg_hba.conf
+      - -c
+      - ident_file=/etc/ics/pg_ident.conf
+      - -c
+      - max_connections=120
+    environment:
+      POSTGRES_USER: pgadmin
+      POSTGRES_PASSWORD: "${PGADMIN_PASSWORD:?}"
+      POSTGRES_DB: postgres
+      PGDATA: /var/lib/postgresql/18/docker
+      ICS_PG_PASSWORD: "${ICS_PG_PASSWORD:?}"
+      ICS_APPS_PROVISIONER_PASSWORD: "${ICS_APPS_PROVISIONER_PASSWORD:?}"
+      ICS_APPS_READER_PASSWORD: "${ICS_APPS_READER_PASSWORD:-}"
+    volumes:
+      - pg_data:/var/lib/postgresql
+      - ./local/microapps/postgres-init.sh:/docker-entrypoint-initdb.d/10-ics.sh:ro
+      - ./local/microapps/pg_hba.conf:/etc/ics/pg_hba.conf:ro
+      - ./local/microapps/pg_ident.conf:/etc/ics/pg_ident.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pgadmin -d postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks:
+      - ics
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks:
+      - ics
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    environment:
+      MP_MAX_MESSAGES: "2000"
+      MP_DATABASE: /data/mailpit.db
+    volumes:
+      - mailpit_data:/data
+    networks:
+      - ics
+
+  # Explicit one-shot migrator: the backend starts only after it succeeded,
+  # so a healthy backend never serves an older schema.
+  migrate:
+    <<: *backend
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  backend:
+    <<: *backend
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/app", "--timeout-graceful-shutdown", "3", "--proxy-headers", "--forwarded-allow-ips", "*"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=2).status==200 else 1)"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  arq-worker:
+    <<: *backend
+    command: ["arq", "--watch", "/app/app", "app.jobs.worker.WorkerSettings"]
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      target: dev
+    image: ics-microapps-local/frontend:dev
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+    environment:
+      ICS_API_PROXY_TARGET: "http://backend:8000"
+    volumes:
+      - ./frontend/src:/app/src:ro
+      - ./frontend/public:/app/public:ro
+      - ./frontend/index.html:/app/index.html:ro
+      - ./frontend/vite.config.ts:/app/vite.config.ts:ro
+      - ./frontend/vitest.config.ts:/app/vitest.config.ts:ro
+      - ./frontend/tsconfig.json:/app/tsconfig.json:ro
+      - ./frontend/tsconfig.node.json:/app/tsconfig.node.json:ro
+      - ./frontend/package.json:/app/package.json:ro
+    networks:
+      - ics
+    restart: unless-stopped
+
+  # Shared Node.js gateway and data broker of every micro-application. It holds
+  # no role able to create databases or roles and never sees SSO secrets.
+  broker:
+    build:
+      context: ./microapp-runtime
+    image: ics-microapps-local/microapp-runtime:dev
+    command: ["node", "src/broker/main.js"]
+    user: "10002:10010"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    environment:
+      ICS_INTERNAL_URL: "http://backend:8000"
+      ICS_PUBLIC_BASE_URL: "https://ics.localhost:8443"
+      ICS_MICROAPPS_SERVICE_TOKEN: "${ICS_MICROAPPS_SERVICE_TOKEN:?}"
+      ICS_MICROAPPS_SESSION_SECRET: "${ICS_MICROAPPS_SESSION_SECRET:?}"
+      ICS_MICROAPPS_APP_HOST_SUFFIX: "ics-apps.localhost:8443"
+      ICS_MICROAPPS_RUNNER_SOCKETS: "/run/ics-runners/1/runner.sock,/run/ics-runners/2/runner.sock"
+      ICS_MICROAPPS_DB_MAX_CONNECTIONS: "24"
+      ICS_MICROAPPS_IDLE_SECONDS: "600"
+      ICS_MICROAPPS_REDIS_URL: "redis://redis:6379/1"
+      ICS_MICROAPPS_PUBLIC_ALIASES: "${ICS_MICROAPPS_PUBLIC_ALIASES:-}"
+      ICS_MICROAPPS_PUBLIC_ICS_URL: "${ICS_MICROAPPS_PUBLIC_ICS_URL:-}"
+    volumes:
+      - runner1_sock:/run/ics-runners/1
+      - runner2_sock:/run/ics-runners/2
+    depends_on:
+      backend:
+        condition: service_healthy
+      runner-1:
+        condition: service_started
+      runner-2:
+        condition: service_started
+    networks:
+      - ics
+    restart: unless-stopped
+
+  runner-1:
+    <<: *runner
+    environment:
+      ICS_RUNNER_SOCKET: /run/ics-runner/runner.sock
+      ICS_RUNNER_ID: "1"
+    volumes:
+      - runner1_sock:/run/ics-runner
+
+  runner-2:
+    <<: *runner
+    environment:
+      ICS_RUNNER_SOCKET: /run/ics-runner/runner.sock
+      ICS_RUNNER_ID: "2"
+    volumes:
+      - runner2_sock:/run/ics-runner
+
+  proxy:
+    # nginx, as in production; rules in local/microapps/nginx, certificate
+    # from the profile's own CA (.microapps-local/tls, made by the script).
+    image: nginx:1.27-alpine
+    ports:
+      - "127.0.0.1:8443:8443"
+      - "[::1]:8443:8443"
+      # Plain HTTP for a local tunnel agent only (loopback).
+      - "127.0.0.1:8481:8481"
+      - "127.0.0.1:8482:8482"
+    volumes:
+      - ./local/microapps/nginx:/etc/nginx/conf.d:ro
+      # Only the server pair; the CA key never enters a container.
+      - ./.microapps-local/tls/server.crt:/etc/nginx/tls/server.crt:ro
+      - ./.microapps-local/tls/server.key:/etc/nginx/tls/server.key:ro
+    depends_on:
+      - backend
+      - frontend
+      - broker
+      - mailpit
+    networks:
+      - ics
+    restart: unless-stopped
+
+networks:
+  ics:
+    driver: bridge
+
+volumes:
+  pg_data:
+  redis_data:
+  mailpit_data:
+  asset_storage:
+  runner1_sock:
+  runner2_sock:

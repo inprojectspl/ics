@@ -1,0 +1,1144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ics:microapp:manifest:v1alpha1",
+  "title": "ICS micro_application manifest v1alpha1",
+  "description": "Manifest of an ICS micro-application (ics.microapp/v1alpha1). This schema checks structure; the semantic validator (backend/app/services/micro_applications/manifest.py) enforces the rules listed in $comment.",
+  "$comment": "Validation has two stages. This schema validates structure and a small author-schema language. A bounded semantic validator must additionally enforce reserved system field names; collection, field, permission (including roles; every permission in a role) and capability references; enum/default membership and field-default constraints; min/max order; decimal precision/scale and safe integer policy; schemaMin <= schemaMax; required/properties and path/params agreement; unique route/name and equivalent parameterized-route checks; GET requires transaction=read_only, and every read_only transaction may resolve only read capabilities; writeFields/returnFields/allowedValues/conditions consistency; immutable system fields; handler files and path normalization/symlinks; public-directory isolation; maxDepth, total nodes, serialized bytes and resource quotas; actual permissions and plan/apply authorization. Arrays require items and maxItems <= 200 at every level; these local bounds do not replace semantic maxDepth and cumulative-size checks. Use an explicit FormatChecker or equivalent for uuid/date/date-time defaults; JSON Schema format is otherwise only annotation in common validators. All $ref values in this document are local. Manifest-provided $ref/pattern/custom keywords are rejected in input/output schemas. Arbitrary composite defaults, SQL defaults and migrations are outside v1alpha1.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "ics.microapp/v1alpha1"
+    },
+    "kind": {
+      "const": "micro_application"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 5000
+        }
+      },
+      "required": [
+        "title"
+      ]
+    },
+    "frontend": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "entry": {
+          "type": "string",
+          "pattern": "^public/(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+\\.(?:html|htm)$"
+        }
+      },
+      "required": [
+        "entry"
+      ]
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "profile": {
+          "const": "js-capabilities-v1"
+        },
+        "sdkVersion": {
+          "const": "1.0"
+        },
+        "idleSeconds": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "profile",
+        "sdkVersion",
+        "idleSeconds"
+      ]
+    },
+    "database": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "collections": {
+          "type": "object",
+          "additionalProperties": false,
+          "patternProperties": {
+            "^[a-z][a-z0-9_]{0,47}$": {
+              "$ref": "#/$defs/collection"
+            }
+          },
+          "minProperties": 1
+        }
+      },
+      "required": [
+        "collections"
+      ]
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[a-z][a-z0-9_]{0,47}(?:\\.[a-z][a-z0-9_]{0,47})+$": {
+          "$ref": "#/$defs/capability"
+        }
+      },
+      "minProperties": 0
+    },
+    "endpoints": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/endpoint"
+      },
+      "minItems": 0,
+      "uniqueItems": true
+    },
+    "document": {
+      "description": "The app's document view: a GET, read_only endpoint without path parameters returning {\"markdown\": string}. ICS runs it as the reader when an agent or a person reads the app as a document; render the app's content with its records (e.g. each item with its comments).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "endpoint": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$"
+        }
+      },
+      "required": [
+        "endpoint"
+      ]
+    },
+    "permissions": {
+      "description": "Every business permission of the app with a name people understand. Rules, capabilities, endpoints and roles name these keys.",
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[a-z][a-z0-9_]{0,47}(?:\\.[a-z][a-z0-9_]{0,47})+$": {
+          "$ref": "#/$defs/permission"
+        }
+      },
+      "minProperties": 1,
+      "maxProperties": 50
+    },
+    "roles": {
+      "description": "The kinds of people who use the app (employee, reviewer, ...). Access is given by role; a role follows its definition in the active release. Every permission belongs to at least one role.",
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[a-z][a-z0-9_]{0,47}$": {
+          "$ref": "#/$defs/role"
+        }
+      },
+      "maxProperties": 20,
+      "minProperties": 1
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaMin": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "schemaMax": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "schemaMin",
+        "schemaMax"
+      ]
+    },
+    "limitsRequested": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "wallMs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxDbCalls": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxResponseBytes": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "wallMs",
+        "maxDbCalls",
+        "maxResponseBytes"
+      ]
+    }
+  },
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "frontend",
+    "runtime",
+    "database",
+    "capabilities",
+    "endpoints",
+    "permissions",
+    "roles",
+    "compatibility",
+    "limitsRequested"
+  ],
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,47}$"
+    },
+    "dottedIdentifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,47}(?:\\.[a-z][a-z0-9_]{0,47})+$"
+    },
+    "rowScope": {
+      "enum": [
+        "own",
+        "not_own",
+        "all"
+      ]
+    },
+    "scalarValue": {
+      "type": [
+        "string",
+        "number",
+        "boolean",
+        "null"
+      ]
+    },
+    "conditions": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[a-z][a-z0-9_]{0,47}$": {
+          "$ref": "#/$defs/scalarValue"
+        }
+      },
+      "minProperties": 0,
+      "description": "Conjunction of equality tests. Field existence, value types and NULL semantics are checked by the semantic validator."
+    },
+    "allowedValues": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[a-z][a-z0-9_]{0,47}$": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/scalarValue"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "minProperties": 1,
+      "description": "Allowed scalar values for named writable fields. References and value types are checked separately."
+    },
+    "fieldDefinition": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/stringField"
+        },
+        {
+          "$ref": "#/$defs/integerField"
+        },
+        {
+          "$ref": "#/$defs/booleanField"
+        },
+        {
+          "$ref": "#/$defs/decimalField"
+        },
+        {
+          "$ref": "#/$defs/dateField"
+        },
+        {
+          "$ref": "#/$defs/timestampField"
+        },
+        {
+          "$ref": "#/$defs/uuidField"
+        },
+        {
+          "$ref": "#/$defs/enumField"
+        },
+        {
+          "$ref": "#/$defs/jsonField"
+        }
+      ]
+    },
+    "stringField": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "minLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxLength": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "default": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "maxLength"
+      ]
+    },
+    "integerField": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "integer"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "minimum": {
+          "type": "integer"
+        },
+        "maximum": {
+          "type": "integer"
+        },
+        "default": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "type"
+      ]
+    },
+    "booleanField": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "boolean"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "default": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "type"
+      ]
+    },
+    "decimalField": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "decimal"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "precision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "scale": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "minimum": {
+          "type": "string",
+          "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$"
+        },
+        "maximum": {
+          "type": "string",
+          "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$"
+        },
+        "default": {
+          "type": "string",
+          "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$"
+        }
+      },
+      "required": [
+        "type",
+        "precision",
+        "scale"
+      ],
+      "description": "Decimal values are canonical decimal strings, not JSON numbers or SQL expressions. Scale <= precision, digit counts, ranges and platform precision limits are semantic checks."
+    },
+    "dateField": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "date"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "default": {
+          "type": "string",
+          "format": "date"
+        }
+      },
+      "required": [
+        "type"
+      ]
+    },
+    "timestampField": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "timestamptz"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "default": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "(?:Z|\\+00:00)$"
+        }
+      },
+      "required": [
+        "type"
+      ]
+    },
+    "uuidField": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "uuid"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "default": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "references": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "collection": {
+              "$ref": "#/$defs/identifier"
+            },
+            "field": {
+              "const": "id"
+            }
+          },
+          "required": [
+            "collection"
+          ]
+        }
+      },
+      "required": [
+        "type"
+      ]
+    },
+    "enumField": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "enum"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "default": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "values"
+      ],
+      "description": "Membership of default in values is a semantic check."
+    },
+    "jsonField": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "json"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "maxBytes": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "type",
+        "maxBytes"
+      ],
+      "description": "Arbitrary JSON data is bounded at runtime by serialized UTF-8 bytes and platform depth/node limits. Composite defaults and author-defined schema keywords are intentionally outside v1alpha1."
+    },
+    "readRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "permission": {
+          "$ref": "#/$defs/dottedIdentifier"
+        },
+        "rowScope": {
+          "$ref": "#/$defs/rowScope"
+        },
+        "conditions": {
+          "$ref": "#/$defs/conditions"
+        },
+        "readFields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "permission",
+        "rowScope"
+      ]
+    },
+    "writeRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "permission": {
+          "$ref": "#/$defs/dottedIdentifier"
+        },
+        "rowScope": {
+          "$ref": "#/$defs/rowScope"
+        },
+        "conditions": {
+          "$ref": "#/$defs/conditions"
+        },
+        "writeFields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "allowedValues": {
+          "$ref": "#/$defs/allowedValues"
+        }
+      },
+      "required": [
+        "permission",
+        "rowScope",
+        "writeFields"
+      ]
+    },
+    "deleteRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "permission": {
+          "$ref": "#/$defs/dottedIdentifier"
+        },
+        "rowScope": {
+          "$ref": "#/$defs/rowScope"
+        },
+        "conditions": {
+          "$ref": "#/$defs/conditions"
+        }
+      },
+      "required": [
+        "permission",
+        "rowScope"
+      ]
+    },
+    "crud": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "create": {
+          "$ref": "#/$defs/writeRule"
+        },
+        "list": {
+          "$ref": "#/$defs/readRule"
+        },
+        "get": {
+          "$ref": "#/$defs/readRule"
+        },
+        "update": {
+          "$ref": "#/$defs/writeRule"
+        },
+        "delete": {
+          "$ref": "#/$defs/deleteRule"
+        }
+      }
+    },
+    "index": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "unique": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "fields"
+      ]
+    },
+    "collection": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "type": "object",
+          "additionalProperties": false,
+          "patternProperties": {
+            "^[a-z][a-z0-9_]{0,47}$": {
+              "$ref": "#/$defs/fieldDefinition"
+            }
+          },
+          "minProperties": 1
+        },
+        "crud": {
+          "$ref": "#/$defs/crud"
+        },
+        "indexes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/index"
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "fields",
+        "crud"
+      ]
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "collection": {
+          "$ref": "#/$defs/identifier"
+        },
+        "operation": {
+          "enum": [
+            "get",
+            "list",
+            "insert",
+            "update",
+            "delete",
+            "count",
+            "groupCount"
+          ]
+        },
+        "permission": {
+          "$ref": "#/$defs/dottedIdentifier"
+        },
+        "rowScope": {
+          "$ref": "#/$defs/rowScope"
+        },
+        "readFields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "writeFields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "returnFields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Explicit result projection for insert/update. Omission grants no record-field projection; it never widens rowScope or permissions."
+        },
+        "allowedValues": {
+          "$ref": "#/$defs/allowedValues"
+        },
+        "conditions": {
+          "$ref": "#/$defs/conditions"
+        }
+      },
+      "required": [
+        "collection",
+        "operation",
+        "permission",
+        "rowScope"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "enum": [
+                  "insert",
+                  "update"
+                ]
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
+          "then": {
+            "required": [
+              "writeFields"
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "writeFields"
+                  ]
+                },
+                {
+                  "required": [
+                    "allowedValues"
+                  ]
+                },
+                {
+                  "required": [
+                    "returnFields"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "enum": [
+                  "get",
+                  "list",
+                  "groupCount"
+                ]
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
+          "then": {
+            "required": [
+              "readFields"
+            ]
+          }
+        }
+      ],
+      "description": "For groupCount, readFields is the allowed grouping-field list. returnFields is the explicit insert/update result projection. Semantic validation checks collection/field references, permitted return fields, operation combinations, and effective permissions."
+    },
+    "restrictedSchema": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/restrictedObjectSchema"
+        },
+        {
+          "$ref": "#/$defs/restrictedArraySchema"
+        },
+        {
+          "$ref": "#/$defs/restrictedStringSchema"
+        },
+        {
+          "$ref": "#/$defs/restrictedIntegerSchema"
+        },
+        {
+          "$ref": "#/$defs/restrictedNumberSchema"
+        },
+        {
+          "$ref": "#/$defs/restrictedBooleanSchema"
+        },
+        {
+          "$ref": "#/$defs/restrictedNullSchema"
+        }
+      ],
+      "description": "Author-supplied schema language: closed objects, bounded arrays and primitive JSON values. Every array requires items and maxItems <= 200. Author $ref, regex, composition, custom formats and custom keywords are deliberately unsupported. maxDepth, total nodes and cumulative bytes require a separate bounded semantic parser."
+    },
+    "restrictedObjectSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "object"
+        },
+        "additionalProperties": {
+          "const": false
+        },
+        "properties": {
+          "type": "object",
+          "additionalProperties": false,
+          "patternProperties": {
+            "^[A-Za-z][A-Za-z0-9_]{0,63}$": {
+              "$ref": "#/$defs/restrictedSchema"
+            }
+          },
+          "minProperties": 0
+        },
+        "required": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/jsonPropertyName"
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "type",
+        "additionalProperties",
+        "properties"
+      ]
+    },
+    "jsonPropertyName": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+      "description": "API input/output property names may use camelCase (for example nextCursor). Collection and database-field identifiers retain the stricter lowercase identifier rule."
+    },
+    "restrictedArraySchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "array"
+        },
+        "items": {
+          "$ref": "#/$defs/restrictedSchema"
+        },
+        "minItems": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 200
+        },
+        "maxItems": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 200
+        }
+      },
+      "required": [
+        "type",
+        "items",
+        "maxItems"
+      ],
+      "description": "Homogeneous bounded array. minItems <= maxItems, nested maxDepth, total nodes and cumulative payload bytes are semantic/runtime checks."
+    },
+    "restrictedStringSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "string"
+        },
+        "minLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "format": {
+          "enum": [
+            "uuid",
+            "date-time",
+            "date"
+          ]
+        },
+        "enum": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "type"
+      ]
+    },
+    "restrictedIntegerSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "integer"
+        },
+        "minimum": {
+          "type": "integer"
+        },
+        "maximum": {
+          "type": "integer"
+        },
+        "enum": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "type"
+      ]
+    },
+    "restrictedNumberSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "number"
+        },
+        "minimum": {
+          "type": "number"
+        },
+        "maximum": {
+          "type": "number"
+        },
+        "enum": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "type"
+      ]
+    },
+    "restrictedBooleanSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "boolean"
+        },
+        "enum": {
+          "type": "array",
+          "items": {
+            "type": "boolean"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "type"
+      ]
+    },
+    "restrictedNullSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "null"
+        },
+        "enum": {
+          "type": "array",
+          "items": {
+            "type": "null"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "type"
+      ]
+    },
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$"
+        },
+        "method": {
+          "enum": [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE"
+          ]
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^/v1/custom/(?:[a-z][a-z0-9_-]*|:[a-z][a-z0-9_]{0,47})(?:/(?:[a-z][a-z0-9_-]*|:[a-z][a-z0-9_]{0,47}))*$"
+        },
+        "handler": {
+          "type": "string",
+          "pattern": "^handlers/(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+\\.mjs#default$"
+        },
+        "permission": {
+          "$ref": "#/$defs/dottedIdentifier"
+        },
+        "transaction": {
+          "enum": [
+            "required",
+            "read_only"
+          ]
+        },
+        "ifMatch": {
+          "enum": [
+            "required",
+            "none"
+          ]
+        },
+        "idempotency": {
+          "enum": [
+            "required",
+            "none"
+          ]
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dottedIdentifier"
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/restrictedObjectSchema"
+            },
+            "query": {
+              "$ref": "#/$defs/restrictedObjectSchema"
+            },
+            "body": {
+              "$ref": "#/$defs/restrictedSchema"
+            }
+          }
+        },
+        "output": {
+          "$ref": "#/$defs/restrictedSchema"
+        }
+      },
+      "required": [
+        "name",
+        "method",
+        "path",
+        "handler",
+        "permission",
+        "transaction",
+        "ifMatch",
+        "idempotency",
+        "capabilities",
+        "input",
+        "output"
+      ],
+      "description": "Paths are relative to /api. Literal path segments or simple :id-style parameters only. Semantic validation requires GET to use transaction=read_only; every read_only transaction must resolve only read capabilities. Parameter agreement, route collisions, handler presence and conditional-write preconditions are also semantic checks."
+    },
+    "role": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dottedIdentifier"
+          },
+          "minItems": 1,
+          "maxItems": 50,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "label",
+        "permissions"
+      ]
+    },
+    "permission": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "label"
+      ]
+    }
+  }
+}

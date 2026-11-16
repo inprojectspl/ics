@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { clsx } from "clsx";
 import { Check, Copy, Link2Off, UserPlus } from "lucide-react";
 import { api, AssetShareRow, AssetSummary, ShareLink } from "../api";
@@ -19,6 +20,9 @@ import { Dialog } from "./ui/Dialog";
 import { Disclosure } from "./ui/Disclosure";
 import { IconButton } from "./ui/IconButton";
 import { canManage } from "../lib/assetRoles";
+import { setMicroAppAccess, type MicroAppGrantSet } from "../api/microApplications";
+import { GrantPicker, type GrantCatalog } from "./microapps/GrantPicker";
+import { microAppAccessQuery } from "./microapps/useMicroAppControl";
 
 interface Props {
   asset: AssetSummary;
@@ -27,7 +31,11 @@ interface Props {
 
 type ShareTab = "links" | "people" | "projects";
 
+const NO_GRANTS: MicroAppGrantSet = { roles: [], permissions: [] };
+const hasGrants = (g: MicroAppGrantSet) => g.roles.length + g.permissions.length > 0;
+
 export function ShareDialog({ asset, onClose }: Props) {
+  const queryClient = useQueryClient();
   const [shares, setShares] = useState<ShareLink[] | null>(null);
   const [userShares, setUserShares] = useState<AssetShareRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +83,18 @@ export function ShareDialog({ asset, onClose }: Props) {
     refresh();
   }, [refresh]);
 
+  const isApp = asset.kind === "micro_application";
+  // What a link or a person gets in the app: chosen explicitly, never everything by default.
+  const appAccess = useQuery({ ...microAppAccessQuery(asset.id), enabled: isApp });
+  const appCatalog: GrantCatalog | null = appAccess.data
+    ? { roles: appAccess.data.roles, permissions: appAccess.data.permissions.filter((p) => !p.platform) }
+    : appAccess.isError
+      ? { roles: [], permissions: [] }
+      : null;
+  const [appChosen, setAppChosen] = useState<MicroAppGrantSet>(NO_GRANTS);
+  const [personChosen, setPersonChosen] = useState<MicroAppGrantSet>(NO_GRANTS);
+  const roleLabel = (r: string) => appCatalog?.roles.find((x) => x.role === r)?.label ?? r;
+
   const onAddUserShare = async (e: FormEvent) => {
     e.preventDefault();
     if (!userShareEmail.trim()) return;
@@ -83,6 +103,13 @@ export function ShareDialog({ asset, onClose }: Props) {
       const row = await api.createAssetShare(
         asset.slug, userShareEmail.trim(), userShareRole,
       );
+      // Opening an app gives nothing in it: the person also gets the app
+      // roles chosen here, as a link does.
+      if (isApp && hasGrants(personChosen)) {
+        await setMicroAppAccess(asset.id, { user_email: row.email, ...personChosen });
+        setPersonChosen(NO_GRANTS);
+        void queryClient.invalidateQueries({ queryKey: microAppAccessQuery(asset.id).queryKey });
+      }
       setUserShareEmail("");
       toast(
         row.new_account
@@ -116,9 +143,17 @@ export function ShareDialog({ asset, onClose }: Props) {
 
   const onCreate = async (link: NewLink): Promise<boolean> => {
     setError(null);
+    if (isApp && !hasGrants(appChosen)) {
+      setError(t("shareDialog.appPermissionsRequired"));
+      return false;
+    }
     setBusy(true);
     try {
-      await api.createShare(asset.id, link);
+      await api.createShare(
+        asset.id,
+        isApp ? { ...link, app_roles: appChosen.roles, app_permissions: appChosen.permissions } : link,
+      );
+      setAppChosen(NO_GRANTS);
       await refresh();
       return true;
     } catch (e) {
@@ -197,7 +232,14 @@ export function ShareDialog({ asset, onClose }: Props) {
               ) : (
                 <AccessList label={t("shareDialog.activeLinks")}>
                   {shares.map((s) => (
-                    <LinkRow key={s.id} share={s} copied={copiedKey === s.url} onCopy={() => copy(s.url, s.url)} onRevoke={() => void onRevoke(s.id)} />
+                    <LinkRow
+                      key={s.id}
+                      share={s}
+                      roleLabel={roleLabel}
+                      copied={copiedKey === s.url}
+                      onCopy={() => copy(s.url, s.url)}
+                      onRevoke={() => void onRevoke(s.id)}
+                    />
                   ))}
                 </AccessList>
               )}
@@ -205,6 +247,12 @@ export function ShareDialog({ asset, onClose }: Props) {
             {/* Mounted once the list is known: with no link yet the form starts open. */}
             {shares !== null && (
               <Disclosure title={t("shareDialog.newLink")} defaultOpen={live.length === 0}>
+                {isApp && appCatalog && (
+                  <div className="mb-3">
+                    <p className="mb-1 text-meta text-text-secondary">{t("shareDialog.appPermissions")}</p>
+                    <GrantPicker catalog={appCatalog} value={appChosen} onChange={setAppChosen} label={t("shareDialog.newLink")} />
+                  </div>
+                )}
                 <NewLinkForm busy={busy} error={error} onCreate={onCreate} onInvalid={setError} />
               </Disclosure>
             )}
@@ -214,6 +262,12 @@ export function ShareDialog({ asset, onClose }: Props) {
         {tab === "people" && (
           <section className="space-y-4">
             <p className="text-ui text-text-secondary">{t("shareDialog.byEmailIntro")}</p>
+            {isApp && appCatalog && (
+              <div>
+                <p className="mb-1 text-meta text-text-secondary">{t("shareDialog.personAppRoles")}</p>
+                <GrantPicker catalog={appCatalog} value={personChosen} onChange={setPersonChosen} label={t("shareDialog.tabPeople")} />
+              </div>
+            )}
             <form onSubmit={onAddUserShare} className="flex flex-col gap-2 sm:flex-row sm:items-end">
               <label className="min-w-0 flex-1">
                 <span className="mb-1.5 block text-ui font-medium text-text-primary">{t("shareDialog.emailLabel")}</span>
@@ -267,8 +321,21 @@ export function ShareDialog({ asset, onClose }: Props) {
   );
 }
 
-function LinkRow({ share: s, copied, onCopy, onRevoke }: { share: ShareLink; copied: boolean; onCopy: () => void; onRevoke: () => void }) {
+function LinkRow({
+  share: s,
+  roleLabel,
+  copied,
+  onCopy,
+  onRevoke,
+}: {
+  share: ShareLink;
+  roleLabel: (role: string) => string;
+  copied: boolean;
+  onCopy: () => void;
+  onRevoke: () => void;
+}) {
   const info = MODE_INFO[s.mode];
+  const gives = [...(s.app_roles ?? []).map(roleLabel), ...(s.app_permissions ?? [])];
   return (
     <AccessRow
       muted={Boolean(s.revoked_at)}
@@ -283,6 +350,7 @@ function LinkRow({ share: s, copied, onCopy, onRevoke }: { share: ShareLink; cop
           <code className="min-w-0 max-w-full truncate font-code text-caption text-text-primary">{s.url}</code>
           {s.expires_at && <span>{t("shareDialog.expires", { date: formatShortDate(s.expires_at) })}</span>}
           {s.mode === "magic_email" && s.allowed_emails && <span>{tn("shareDialog.recipients", s.allowed_emails.length)}</span>}
+          {gives.length > 0 && <span>{t("shareDialog.linkGives", { what: gives.join(", ") })}</span>}
           <ViewCounter share={s} />
           {s.revoked_at && <span className="text-danger">{t("shareDialog.revoked")}</span>}
         </>

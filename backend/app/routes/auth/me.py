@@ -73,4 +73,5 @@ async def auth_config(settings: Annotated[Settings, Depends(get_settings)]) -> d
         "self_register_enabled": settings.allow_self_register,
         "dev_stub_sso": settings.dev_stub_sso,
         "sync_image": settings.sync_image,
+        "microapps_enabled": settings.microapps_enabled,
     }

@@ -12,7 +12,7 @@ EPL-2.0) and are listed so their terms are easy to find. They are used
 unmodified; their source code is available at the URLs given. No LGPL or GPL
 dependencies were found.
 
-The list was produced from the lockfiles (backend/uv.lock,
+The list was produced from the lockfiles (backend/uv.lock, microapp-runtime/package-lock.json,
 frontend/package-lock.json) with pip-licenses and license-checker. Versions
 change as dependencies are updated; the complete and current list of
 third-party licenses is available from the package metadata, for example:

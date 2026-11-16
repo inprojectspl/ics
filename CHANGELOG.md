@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - First public release.
 - Documentation site at <https://inprojectspl.github.io/ics/>, built with MkDocs from `docs/`.
+- `GET /api/assets/by-id/{id}/meta`: the asset meta by id for any viewer, as
+  `/by-slug/{slug}/meta` (`/api/assets/{id}` answers editors only).
 - `format=markdown` on an agent read of a Markdown file (`file-mcp`, `agent-view`, share
   `resolve`) drops its HTML comments, so machine markers such as transcript timestamps do not
   cost tokens; comments in code stay and every line keeps its number.
@@ -28,6 +30,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   returns the original result; an older generation under a new ID is refused with
   `release_generation_conflict`, and once a binding has a release a manifest without one gets
   `release_required` (migration 0047). `ics-sync` does not send these fields yet.
+- Micro-applications (PoC, `ICS_MICROAPPS_ENABLED`): the `micro_application` asset kind, a
+  validated `ics.microapp/v1alpha1` manifest, plan/apply with durable, idempotent publication
+  operations, a schema and runtime role per app in a separate `ics_apps` database, generic CRUD
+  and JavaScript handlers run by a shared Node.js broker with two QuickJS/WASM runners
+  (`microapp-runtime/`), and a per-app origin and session. Apps are ordinary assets in the
+  panel (status, control, data, access and logs on the asset page; no upload). An app
+  declares a document view (a read-only endpoint that renders its content with the records
+  as Markdown, run as the reader) and seed rows for the collections a release creates; the
+  agent read of an app starts with that view. Publishers compare package versions like any
+  asset's (Versions in the menu, `/v/<slug>/diff`), with each version's release state and
+  `app_changes` saying what changed for the people using the app; plans show the same against
+  the running release, count against the storage quota and take a `change_note`. The broker
+  checks seed rows and the values a manifest states for fields with the rules of the app's
+  own API. Watchers hear of an app once its first release runs; one whose first publication
+  fails goes to the trash. Deleting an app removes the roles people hold in it. A rename or a
+  hand-written summary survives later releases. Generic content, version, restore, sync,
+  download and read paths refuse the kind; relations point at an app as a whole. Local
+  profile: `scripts/microapps-local.sh` and `docs/development/microapps-local.md`.
+- `seed-user` CLI command for local profiles.
 
 ### Changed
 
@@ -36,6 +57,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- The session cookie is `__Host-ics-session` (plain-HTTP debug setups: `ics-session`). The
+  prefix stops a sibling subdomain, such as an HTML bundle on the viewer host, from setting a
+  session of its own for ICS (cookie tossing) and signing the visitor into another account.
+  Everyone signs in again once after the upgrade.
 - KaTeX 0.18.11 and mermaid 12.2.0 replace versions with a published advisory (prototype pollution
   bypassing KaTeX trust restrictions); both share one copy of KaTeX.
 - Locking an account and an admin's **Revoke all tokens** also sign out the person's AI assistants

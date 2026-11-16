@@ -105,6 +105,8 @@ nav:
       - guide/gitlab.md
       - guide/administration.md
   - Deployment: DEPLOY.md
+  - Development:
+      - development/microapps-local.md
   - Reference:
       - api-errors.md
       - notifications-api.md

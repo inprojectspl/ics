@@ -339,6 +339,28 @@ async def _doc_payload_for(
     sent (a visitor learns it from the 410 anyway). `version` is the raw
     `?version=` for a read-only archived preview; `session` adds its date.
     """
+    if asset.kind == "micro_application":
+        # Landing data only: the app runs on its own origin, and its package
+        # is not content of the viewer (see app.microapp_guard).
+        return {
+            "id": str(asset.id),
+            "slug": asset.slug,
+            "title": asset.title,
+            "kind": asset.kind,
+            "version": asset.version,
+            "size_bytes": None,
+            "entry_path": None,
+            "html": None,
+            "tree": None,
+            "files": [],
+            "security_status": asset.security_status,
+            "security_report": None,
+            "created_at": asset.created_at.isoformat(),
+            "updated_at": asset.updated_at.isoformat(),
+            "preview_version": None,
+            "current_version": asset.version,
+            "version_created_at": None,
+        }
     v = resolve_version_or_404(asset, version)
     stale = v != asset.version
     # Query the version date only for archived versions: on the current one

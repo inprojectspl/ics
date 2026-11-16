@@ -222,6 +222,28 @@ async def test_meta_rejects_other_users_asset(client, session):
     assert r.status_code in (403, 404)
 
 
+@pytest.mark.asyncio
+async def test_meta_by_id_answers_a_viewer_where_the_plain_id_route_does_not(client, session):
+    from app.models import AssetShare
+
+    owner = await mk_user(session)
+    reader = await mk_user(session)
+    stranger = await mk_user(session)
+    asset = await mk_asset(session, owner, title="Shared")
+    session.add(AssetShare(asset_id=asset.id, user_id=reader.id, role="viewer"))
+    await session.commit()
+
+    await _login(client, reader)
+    r = await client.get(f"/api/assets/by-id/{asset.id}/meta")
+    assert r.status_code == 200 and r.json()["slug"] == asset.slug
+    assert r.json()["access_role"] == "viewer"
+    # The editor route keeps its anti-enumeration answer for viewers.
+    assert (await client.get(f"/api/assets/{asset.id}")).status_code == 404
+
+    await _login(client, stranger)
+    assert (await client.get(f"/api/assets/by-id/{asset.id}/meta")).status_code == 404
+
+
 # ---------- PUT /{id}/tags ----------
 
 

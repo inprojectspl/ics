@@ -23,9 +23,13 @@ import pytest
 from sqlalchemy import select
 
 from app import passwords, tokens
+from app.config import get_settings
 from app.models import User
+from app.session_store import session_cookie_name
 from app.slug import generate_slug
 from tests.conftest import mk_admin, mk_user
+
+COOKIE = session_cookie_name(get_settings().debug)
 
 
 def _login_payload(email: str, password: str = "TestPass123!") -> dict:
@@ -185,19 +189,19 @@ async def test_stolen_cookie_loses_validity_after_logout(client, session):
     # browser) and check that it works; then the victim logs out and a
     # second request with the same cookie must be 401.
     await _login(client, user)
-    stolen = client.cookies.get("session")
+    stolen = client.cookies.get(COOKIE)
     assert stolen is not None
 
     # Same client, but a request with an explicit Cookie: checks that we
     # rely on the server-side check, not on the browser cookie jar.
-    r = await client.get("/api/auth/me", headers={"Cookie": f"session={stolen}"})
+    r = await client.get("/api/auth/me", headers={"Cookie": f"{COOKIE}={stolen}"})
     assert r.status_code == 200
 
     # The victim logs out.
     await client.post("/api/auth/logout")
 
     # The client comes back with the "stolen" cookie after logout.
-    r = await client.get("/api/auth/me", headers={"Cookie": f"session={stolen}"})
+    r = await client.get("/api/auth/me", headers={"Cookie": f"{COOKIE}={stolen}"})
     assert r.status_code == 401, "Stolen cookie still valid after logout"
 
 
@@ -215,9 +219,9 @@ async def test_locked_account_rejects_active_session(client, session):
     user = await mk_user(session)
     await session.commit()
     await _login(client, user)
-    stolen = client.cookies.get("session")
+    stolen = client.cookies.get(COOKIE)
     assert (
-        await client.get("/api/auth/me", headers={"Cookie": f"session={stolen}"})
+        await client.get("/api/auth/me", headers={"Cookie": f"{COOKIE}={stolen}"})
     ).status_code == 200
 
     # Lock the account directly in the DB.
@@ -226,11 +230,11 @@ async def test_locked_account_rejects_active_session(client, session):
 
     # The cookie is still cryptographically valid, but get_current_user sees
     # locked_until > now -> revoke sid + 403.
-    r = await client.get("/api/auth/me", headers={"Cookie": f"session={stolen}"})
+    r = await client.get("/api/auth/me", headers={"Cookie": f"{COOKIE}={stolen}"})
     assert r.status_code == 403, "Lockout did not end the active session (CWE-613)"
 
     # The next request with the same cookie -> 401 (sid revoked after the first rejection).
-    r2 = await client.get("/api/auth/me", headers={"Cookie": f"session={stolen}"})
+    r2 = await client.get("/api/auth/me", headers={"Cookie": f"{COOKIE}={stolen}"})
     assert r2.status_code == 401, "Sid should be revoked after the lockout check"
 
 
@@ -243,17 +247,17 @@ async def test_session_revocation_via_logout_blocks_all_endpoints(client, sessio
     user = await mk_user(session)
     await session.commit()
     await _login(client, user)
-    stolen = client.cookies.get("session")
+    stolen = client.cookies.get(COOKIE)
 
     # /api/auth/me (smoke check first that the cookie works).
     assert (
-        await client.get("/api/auth/me", headers={"Cookie": f"session={stolen}"})
+        await client.get("/api/auth/me", headers={"Cookie": f"{COOKIE}={stolen}"})
     ).status_code == 200
 
     await client.post("/api/auth/logout")
 
     # /api/auth/me: 401 (revoked sid).
-    r1 = await client.get("/api/auth/me", headers={"Cookie": f"session={stolen}"})
+    r1 = await client.get("/api/auth/me", headers={"Cookie": f"{COOKIE}={stolen}"})
     assert r1.status_code == 401
 
     # OAuth /authorize: no sid in the session -> redirect to login (302).
@@ -270,7 +274,7 @@ async def test_session_revocation_via_logout_blocks_all_endpoints(client, sessio
             "code_challenge_method": "S256",
             "resource": "https://ics.test/mcp",
         },
-        headers={"Cookie": f"session={stolen}"},
+        headers={"Cookie": f"{COOKIE}={stolen}"},
         follow_redirects=False,
     )
     # Redirect to the frontend login (Starlette RedirectResponse defaults
@@ -604,3 +608,19 @@ async def test_password_reset_confirm_rejects_weak_password(client, session):
     # The password really was not changed.
     await session.refresh(user)
     assert passwords.verify_password("TestPass123!", user.password_hash)
+
+
+def test_the_session_cookie_cannot_be_planted_from_a_sibling_subdomain():
+    """Production names it with `__Host-`; plain-HTTP debug cannot use the prefix."""
+    from starlette.middleware.sessions import SessionMiddleware
+
+    from app.main import app
+
+    assert session_cookie_name(False) == "__Host-ics-session"
+    assert session_cookie_name(True) == "ics-session"
+    mw = next(m for m in app.user_middleware if m.cls is SessionMiddleware)
+    opts = mw.kwargs
+    assert opts["session_cookie"] == session_cookie_name(get_settings().debug)
+    # The prefix holds only with Secure, Path=/ and no Domain.
+    assert opts["https_only"] is not get_settings().debug
+    assert opts.get("path", "/") == "/" and "domain" not in opts

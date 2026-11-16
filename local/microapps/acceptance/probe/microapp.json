@@ -1,0 +1,39 @@
+{
+  "apiVersion": "ics.microapp/v1alpha1",
+  "kind": "micro_application",
+  "metadata": { "title": "Sonda runtime (test odbiorczy)", "description": "Handlery do prób timeoutu, pamięci i awarii publikacji." },
+  "frontend": { "entry": "public/index.html" },
+  "runtime": { "profile": "js-capabilities-v1", "sdkVersion": "1.0", "idleSeconds": 600 },
+  "database": {
+    "collections": {
+      "pings": {
+        "fields": { "note": { "type": "string", "maxLength": 100, "default": "" } },
+        "crud": {
+          "create": { "permission": "probe.use", "rowScope": "own", "writeFields": ["note"] },
+          "list": { "permission": "probe.use", "rowScope": "own" }
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "pings.count_own": { "collection": "pings", "operation": "count", "permission": "probe.use", "rowScope": "own", "readFields": ["note"] }
+  },
+  "endpoints": [
+    { "name": "ping", "method": "GET", "path": "/v1/custom/ping", "handler": "handlers/ping.mjs#default", "permission": "probe.use",
+      "transaction": "read_only", "ifMatch": "none", "idempotency": "none", "capabilities": ["pings.count_own"],
+      "input": { "query": { "type": "object", "additionalProperties": false, "properties": {} } },
+      "output": { "type": "object", "additionalProperties": false, "required": ["ok", "count"], "properties": { "ok": { "type": "boolean" }, "count": { "type": "integer" } } } },
+    { "name": "spin", "method": "GET", "path": "/v1/custom/spin", "handler": "handlers/spin.mjs#default", "permission": "probe.use",
+      "transaction": "read_only", "ifMatch": "none", "idempotency": "none", "capabilities": [],
+      "input": { "query": { "type": "object", "additionalProperties": false, "properties": {} } },
+      "output": { "type": "object", "additionalProperties": false, "properties": {} } },
+    { "name": "alloc", "method": "GET", "path": "/v1/custom/alloc", "handler": "handlers/alloc.mjs#default", "permission": "probe.use",
+      "transaction": "read_only", "ifMatch": "none", "idempotency": "none", "capabilities": [],
+      "input": { "query": { "type": "object", "additionalProperties": false, "properties": {} } },
+      "output": { "type": "object", "additionalProperties": false, "properties": {} } }
+  ],
+  "permissions": { "probe.use": { "label": "Run the probes" } },
+  "roles": { "tester": { "label": "Tester", "permissions": ["probe.use"] } },
+  "compatibility": { "schemaMin": 1, "schemaMax": 2 },
+  "limitsRequested": { "wallMs": 3000, "maxDbCalls": 5, "maxResponseBytes": 65536 }
+}

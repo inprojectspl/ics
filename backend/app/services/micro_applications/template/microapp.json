@@ -1,0 +1,72 @@
+{
+  "apiVersion": "ics.microapp/v1alpha1",
+  "kind": "micro_application",
+  "metadata": {"title": "Notes", "description": "Own notes with a custom pin endpoint."},
+  "frontend": {"entry": "public/index.html"},
+  "runtime": {"profile": "js-capabilities-v1", "sdkVersion": "1.0", "idleSeconds": 600},
+  "database": {
+    "collections": {
+      "notes": {
+        "fields": {
+          "text": {"type": "string", "required": true, "maxLength": 2000},
+          "pinned": {"type": "boolean", "default": false}
+        },
+        "crud": {
+          "create": {"permission": "notes.write", "rowScope": "own", "writeFields": ["text"]},
+          "list": {"permission": "notes.read", "rowScope": "own"},
+          "get": {"permission": "notes.read", "rowScope": "own"},
+          "update": {"permission": "notes.write", "rowScope": "own", "writeFields": ["text"]},
+          "delete": {"permission": "notes.write", "rowScope": "own"}
+        },
+        "indexes": [{"fields": ["created_by", "created_at", "id"]}]
+      }
+    }
+  },
+  "capabilities": {
+    "notes.read_own": {"collection": "notes", "operation": "get", "permission": "notes.write",
+                       "rowScope": "own", "readFields": ["id", "pinned", "revision"]},
+    "notes.pin_own": {"collection": "notes", "operation": "update", "permission": "notes.write",
+                      "rowScope": "own", "writeFields": ["pinned"],
+                      "returnFields": ["id", "pinned", "revision"]},
+    "notes.list_own": {"collection": "notes", "operation": "list", "permission": "notes.read",
+                       "rowScope": "own", "readFields": ["id", "text", "pinned", "created_at"]}
+  },
+  "endpoints": [
+    {
+      "name": "togglePin", "method": "POST", "path": "/v1/custom/notes/:id/toggle-pin",
+      "handler": "handlers/toggle-pin.mjs#default", "permission": "notes.write",
+      "transaction": "required", "ifMatch": "required", "idempotency": "required",
+      "capabilities": ["notes.read_own", "notes.pin_own"],
+      "input": {
+        "params": {"type": "object", "additionalProperties": false, "required": ["id"],
+                   "properties": {"id": {"type": "string", "format": "uuid"}}},
+        "body": {"type": "object", "additionalProperties": false, "properties": {}}
+      },
+      "output": {"type": "object", "additionalProperties": false, "required": ["id", "pinned", "revision"],
+                 "properties": {"id": {"type": "string", "format": "uuid"}, "pinned": {"type": "boolean"},
+                                "revision": {"type": "integer", "minimum": 1}}}
+    },
+    {
+      "name": "document", "method": "GET", "path": "/v1/custom/document",
+      "handler": "handlers/document.mjs#default", "permission": "notes.read",
+      "transaction": "read_only", "ifMatch": "none", "idempotency": "none",
+      "capabilities": ["notes.list_own"],
+      "input": {"query": {"type": "object", "additionalProperties": false, "properties": {}}},
+      "output": {"type": "object", "additionalProperties": false, "required": ["markdown"],
+                 "properties": {"markdown": {"type": "string", "maxLength": 200000}}}
+    }
+  ],
+  "document": {"endpoint": "document"},
+  "permissions": {
+    "notes.read": {"label": "Read own notes"},
+    "notes.write": {"label": "Write and pin own notes"}
+  },
+  "roles": {
+    "author": {"label": "Author", "description": "Keeps their own notes.",
+               "permissions": ["notes.read", "notes.write"]},
+    "reader": {"label": "Reader", "description": "Sees their own notes only.",
+               "permissions": ["notes.read"]}
+  },
+  "compatibility": {"schemaMin": 1, "schemaMax": 1},
+  "limitsRequested": {"wallMs": 5000, "maxDbCalls": 20, "maxResponseBytes": 262144}
+}

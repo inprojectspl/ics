@@ -11,7 +11,7 @@ from uuid import uuid4
 from fastapi import Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import audit, permissions, quota
+from app import audit, microapp_guard, permissions, quota
 from app.auth import CurrentUser
 from app.config import Settings, get_settings
 from app.db import get_session
@@ -82,6 +82,7 @@ async def create_html_bundle_json(
             quota.assert_bundle_fits(total_bytes=total, bundle_max_bytes=user.bundle_max_bytes)
         files_raw.append((f.path, data, f.mime))
 
+    microapp_guard.refuse_manifest_upload(seen_paths)
     if payload.entry_path not in seen_paths:
         raise ApiError(status.HTTP_400_BAD_REQUEST, "invalid_entry_path", "entry_path not in files")
 

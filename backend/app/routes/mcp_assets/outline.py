@@ -11,7 +11,7 @@ import orjson
 from fastapi import Depends, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import permissions
+from app import microapp_guard, permissions
 from app.auth import CurrentUser
 from app.db import get_session
 from app.jobs.queue import enqueue
@@ -58,6 +58,7 @@ async def asset_outline(
     asset, _ = await permissions.get_asset_with_role(
         session, user=user, min_role="viewer", slug=slug
     )
+    microapp_guard.refuse_source(asset)
     graph = await _graph_block(session, user, asset, edges=edges, shape=shape)
     # Freshness and edges change without a new outline, so they are in the ETag.
     digest = hashlib.sha256(orjson.dumps(graph)).hexdigest()[:16]
@@ -121,6 +122,7 @@ async def rebuild_outline_now(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ORJSONResponse:
     asset = await permissions.get_owned_asset_by_id(session, asset_id, user)
+    microapp_guard.refuse_write(asset)
     asset.outline_status = "stale"
     asset.outline_error = None
     await session.commit()

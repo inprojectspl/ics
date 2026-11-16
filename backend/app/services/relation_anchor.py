@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import re
 
+from app import microapp_guard
 from app.collections_io import (
     decode_text,
     list_version_files,
@@ -81,6 +82,7 @@ async def check_target_location(
     when the location is missing; return the anchor to store."""
     if target_path is None and not target_anchor:
         return target_anchor
+    microapp_guard.refuse_addressing(target)
     text, html = await _target_text(target, target_path, settings)
     if not target_anchor:
         return target_anchor

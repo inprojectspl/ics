@@ -1,0 +1,15 @@
+/* `hidden` must win over any display rule below. */
+[hidden] { display: none !important; }
+:root { color-scheme: light dark; --line: #8884; --accent: #2563eb; }
+body { font: 15px/1.5 system-ui, sans-serif; margin: 0 auto; max-width: 46rem; padding: 1.5rem 1rem; }
+h1 { margin: 0; font-size: 1.5rem; }
+.muted { opacity: .7; margin: .25rem 0 1rem; }
+form { display: grid; gap: .5rem; margin-bottom: 1rem; }
+label { display: grid; gap: .25rem; }
+input, textarea, button { font: inherit; padding: .4rem .6rem; }
+button { cursor: pointer; }
+.list { list-style: none; padding: 0; display: grid; gap: .5rem; }
+.list li { border: 1px solid var(--line); border-radius: .5rem; padding: .6rem .8rem; display: grid; gap: .3rem; }
+.row { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.badge { font-size: .8rem; padding: .05rem .45rem; border-radius: 1rem; border: 1px solid var(--line); }
+.badge.approved { border-color: #16a34a; color: #16a34a; }

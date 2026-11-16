@@ -1,0 +1,383 @@
+{
+  "apiVersion": "ics.microapp/v1alpha1",
+  "kind": "micro_application",
+  "metadata": {
+    "title": "Rejestr wniosków",
+    "description": "Własne wnioski i zatwierdzanie przez recenzenta."
+  },
+  "frontend": {
+    "entry": "public/index.html"
+  },
+  "runtime": {
+    "profile": "js-capabilities-v1",
+    "sdkVersion": "1.0",
+    "idleSeconds": 600
+  },
+  "database": {
+    "collections": {
+      "requests": {
+        "fields": {
+          "title": {
+            "type": "string",
+            "required": true,
+            "maxLength": 200
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 8000,
+            "default": ""
+          },
+          "status": {
+            "type": "enum",
+            "values": [
+              "submitted",
+              "approved"
+            ],
+            "default": "submitted"
+          }
+        },
+        "crud": {
+          "create": {
+            "permission": "requests.create",
+            "rowScope": "own",
+            "writeFields": [
+              "title",
+              "description"
+            ]
+          },
+          "list": {
+            "permission": "requests.read",
+            "rowScope": "own"
+          },
+          "get": {
+            "permission": "requests.read",
+            "rowScope": "own"
+          },
+          "update": {
+            "permission": "requests.edit",
+            "rowScope": "own",
+            "writeFields": [
+              "title",
+              "description"
+            ],
+            "conditions": {
+              "status": "submitted"
+            }
+          },
+          "delete": {
+            "permission": "requests.delete",
+            "rowScope": "own",
+            "conditions": {
+              "status": "submitted"
+            }
+          }
+        },
+        "indexes": [
+          {
+            "fields": [
+              "created_by",
+              "created_at",
+              "id"
+            ]
+          },
+          {
+            "fields": [
+              "status",
+              "created_at",
+              "id"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "capabilities": {
+    "requests.review": {
+      "collection": "requests",
+      "operation": "get",
+      "permission": "requests.approve",
+      "rowScope": "all",
+      "readFields": [
+        "id",
+        "created_by",
+        "status",
+        "revision"
+      ]
+    },
+    "requests.approve": {
+      "collection": "requests",
+      "operation": "update",
+      "permission": "requests.approve",
+      "rowScope": "not_own",
+      "writeFields": [
+        "status"
+      ],
+      "returnFields": [
+        "id",
+        "status",
+        "revision"
+      ],
+      "allowedValues": {
+        "status": [
+          "approved"
+        ]
+      },
+      "conditions": {
+        "status": "submitted"
+      }
+    },
+    "requests.review_queue": {
+      "collection": "requests",
+      "operation": "list",
+      "permission": "requests.approve",
+      "rowScope": "not_own",
+      "readFields": [
+        "id",
+        "title",
+        "description",
+        "status",
+        "revision"
+      ],
+      "conditions": {
+        "status": "submitted"
+      }
+    },
+    "requests.list_own": {
+      "collection": "requests",
+      "operation": "list",
+      "permission": "requests.read",
+      "rowScope": "own",
+      "readFields": [
+        "id",
+        "title",
+        "status",
+        "created_at"
+      ]
+    }
+  },
+  "endpoints": [
+    {
+      "name": "approveRequest",
+      "method": "POST",
+      "path": "/v1/custom/requests/:id/approve",
+      "handler": "handlers/approve.mjs#default",
+      "permission": "requests.approve",
+      "transaction": "required",
+      "ifMatch": "required",
+      "idempotency": "required",
+      "capabilities": [
+        "requests.review",
+        "requests.approve"
+      ],
+      "input": {
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "body": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        }
+      },
+      "output": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "status",
+          "revision"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "approved"
+            ]
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "reviewRequests",
+      "method": "GET",
+      "path": "/v1/custom/review-requests",
+      "handler": "handlers/review.mjs#default",
+      "permission": "requests.approve",
+      "transaction": "read_only",
+      "ifMatch": "none",
+      "idempotency": "none",
+      "capabilities": [
+        "requests.review_queue"
+      ],
+      "input": {
+        "query": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "cursor": {
+              "type": "string",
+              "maxLength": 2048
+            }
+          }
+        }
+      },
+      "output": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "title",
+                "status",
+                "revision"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "title": {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 8000
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "submitted"
+                  ]
+                },
+                "revision": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "maxLength": 2048
+          }
+        }
+      }
+    },
+    {
+      "name": "document",
+      "method": "GET",
+      "path": "/v1/custom/document",
+      "handler": "handlers/document.mjs#default",
+      "permission": "requests.read",
+      "transaction": "read_only",
+      "ifMatch": "none",
+      "idempotency": "none",
+      "capabilities": [
+        "requests.list_own",
+        "requests.review_queue"
+      ],
+      "input": {
+        "query": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        }
+      },
+      "output": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "markdown"
+        ],
+        "properties": {
+          "markdown": {
+            "type": "string",
+            "maxLength": 200000
+          }
+        }
+      }
+    }
+  ],
+  "document": {
+    "endpoint": "document"
+  },
+  "permissions": {
+    "requests.create": {
+      "label": "Składanie wniosków"
+    },
+    "requests.read": {
+      "label": "Podgląd własnych wniosków"
+    },
+    "requests.edit": {
+      "label": "Poprawianie własnych wniosków"
+    },
+    "requests.delete": {
+      "label": "Wycofywanie własnych wniosków"
+    },
+    "requests.approve": {
+      "label": "Zatwierdzanie cudzych wniosków"
+    }
+  },
+  "roles": {
+    "employee": {
+      "label": "Pracownik",
+      "description": "Składa i poprawia własne wnioski.",
+      "permissions": [
+        "requests.create",
+        "requests.read",
+        "requests.edit",
+        "requests.delete"
+      ]
+    },
+    "reviewer": {
+      "label": "Recenzent",
+      "description": "Zatwierdza wnioski innych osób i widzi swoje.",
+      "permissions": [
+        "requests.read",
+        "requests.approve"
+      ]
+    }
+  },
+  "compatibility": {
+    "schemaMin": 1,
+    "schemaMax": 1
+  },
+  "limitsRequested": {
+    "wallMs": 5000,
+    "maxDbCalls": 20,
+    "maxResponseBytes": 262144
+  }
+}

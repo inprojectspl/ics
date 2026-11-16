@@ -17,7 +17,9 @@ async def compute_search_content(
 ) -> str | None:
     """Every .md file of the current version concatenated; None for html_bundle or
     no .md content. `sources` saves a reread when the caller has the files."""
-    if asset.kind == "html_bundle":
+    # A bundle's text is HTML; an app's content is data. Both are found by
+    # title, summary and tags, which the index covers on its own.
+    if asset.kind in ("html_bundle", "micro_application"):
         return None
     if sources is None:
         sources = await read_markdown_files(asset, settings)

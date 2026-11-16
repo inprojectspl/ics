@@ -9,7 +9,7 @@ from typing import Annotated
 from fastapi import Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import permissions
+from app import microapp_guard, permissions
 from app.auth import CurrentUser
 from app.collections_io import slice_lines
 from app.config import get_settings
@@ -80,6 +80,7 @@ async def file_with_line_range(
     asset, role = await permissions.get_asset_with_role(
         session, user=user, min_role="viewer", slug=slug
     )
+    microapp_guard.refuse_source(asset)
     if documents.is_document(asset.kind) and permissions.is_read_only(role):
         # A document held for review is withheld from read-only roles on
         # every content path (`/doc`, `/download`, `/pdf` too).

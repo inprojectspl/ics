@@ -6,7 +6,8 @@ import { join } from "node:path";
 // Lazy chunks (PDF.js, the document-graph views, the notification screens,
 // the graph explorer) count here although no page loads them eagerly.
 const MAX_JS_FILES = 176;
-const MAX_DIST_BYTES = 10 * 1024 * 1024;
+// 9.9 MiB before the micro-application screens; 11 leaves room for one more feature.
+const MAX_DIST_BYTES = 11 * 1024 * 1024;
 const assets = new URL("../dist/assets/", import.meta.url).pathname;
 
 const files = readdirSync(assets);

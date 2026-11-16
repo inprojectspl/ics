@@ -13,13 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import audit, email_templates, passwords, permissions, tokens
 from app.auth import CurrentUser
 from app.config import Settings, get_settings
-from app.constants import SHARE_MODES
+from app.constants import MICRO_APPLICATION, SHARE_MODES
 from app.db import get_session
 from app.email_outbox import queue_email
 from app.errors import ApiError
 from app.i18n import resolve_locale
 from app.i18n.request import AcceptLanguage
-from app.models import ShareLink, User
+from app.models import Asset, ShareLink, User
 from app.services import asset_security
 from app.services import sharing as sharing_svc
 from app.slug import generate_token
@@ -58,6 +58,10 @@ async def create_share(
             "asset flagged critical: administrator approval is required before sharing",
         )
 
+    app_permissions = await _app_permissions_for(
+        session, user, asset, body.app_roles, body.app_permissions
+    )
+
     password_hash: str | None = None
     if body.mode == "password":
         if not body.password:
@@ -89,6 +93,7 @@ async def create_share(
         expires_at=body.expires_at,
         max_views=body.max_views,
         created_by=user.id,
+        app_permissions=app_permissions,
     )
     session.add(share)
     await session.flush()
@@ -138,11 +143,58 @@ async def create_share(
             if (body.mode == "magic_email" and allowed_emails)
             else 0,
             "expires_at": share.expires_at.isoformat() if share.expires_at else None,
+            "app_permissions": app_permissions,
         },
     )
     await session.commit()
     await session.refresh(share)
     return _to_out(share, settings)
+
+
+async def _app_permissions_for(
+    session: AsyncSession,
+    user: User,
+    asset: Asset,
+    roles: list[str] | None,
+    requested: list[str] | None,
+) -> list[str] | None:
+    """A micro-application link must name what it grants: roles the active
+    release defines and/or permissions it declares, stored together (roles as
+    `role:<name>`). Only someone who may manage the app's access can hand
+    them out. Documents take none."""
+    if asset.kind != MICRO_APPLICATION:
+        if requested or roles:
+            raise ApiError(
+                status.HTTP_400_BAD_REQUEST,
+                "app_permissions_not_applicable",
+                "app_permissions apply to micro-application links only",
+            )
+        return None
+    from app.routes.micro_applications import require_enabled
+    from app.services.micro_applications import access
+    from app.services.micro_applications.common import load_app
+
+    require_enabled(get_settings())
+    _, env = await load_app(session, asset.id)
+    if not (await access.rights(session, user, asset)).manage:
+        raise ApiError(
+            status.HTTP_403_FORBIDDEN,
+            "manage_permission_required",
+            "app.access.manage is required to share a micro-application",
+        )
+    release = await access.active_release(session, env)
+    allowed = access.declared_permissions(release)
+    defined = access.declared_roles(release)
+    chosen = set(requested or [])
+    chosen_roles = set(roles or [])
+    if not (chosen or chosen_roles) or not chosen <= allowed or not chosen_roles <= defined.keys():
+        raise ApiError(
+            status.HTTP_400_BAD_REQUEST,
+            "app_permissions_invalid",
+            "name one or more roles the application defines or permissions it declares",
+            extra={"allowed": sorted(allowed), "allowed_roles": list(defined)},
+        )
+    return sorted({access.role_grant(r) for r in chosen_roles} | chosen)
 
 
 @router.get("/api/assets/{asset_id}/shares")

@@ -11,7 +11,7 @@ from typing import Annotated
 from fastapi import Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import permissions
+from app import microapp_guard, permissions
 from app.auth import CurrentUser
 from app.config import Settings, get_settings
 from app.db import get_session
@@ -22,6 +22,7 @@ from app.routes._version_param import VersionParam, resolve_version_or_404
 from app.routes.assets._helpers import _doc_payload_for
 from app.routes.assets.view import _gate_bundle_for_read_only, router
 from app.services import documents, link_resolution, superseded
+from app.services.micro_applications import access as app_access
 from app.services.sharing import build_asset_url
 
 
@@ -38,6 +39,7 @@ async def asset_html_grant(
     from app.routes.html_viewer import issue_grant, user_basis
 
     asset, _ = await permissions.get_viewable_asset_by_slug(session, slug, user)
+    microapp_guard.refuse_source(asset)
     if asset.kind != "html_bundle":
         raise ApiError(
             status.HTTP_400_BAD_REQUEST, "not_html_bundle", "the document is not an HTML bundle"
@@ -82,6 +84,9 @@ async def get_doc(
         locale=resolve_locale(user.locale, accept_language=accept_language),
     )
     payload["my_role"] = role
+    # The viewer offers history and comparison to those who may read them
+    # (for an app, its publishers).
+    payload["history_readable"] = await app_access.history_readable(session, user, asset, role)
     payload["superseded_by"] = await superseded.for_viewer(session, user, asset)
     # The viewer rewrites its address bar to this, since people paste it into
     # chat. The `/s/<token>` form only goes to roles that may share externally

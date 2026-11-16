@@ -1,0 +1,128 @@
+# =============================================================================
+# ICS micro-applications overlay (opt-in)
+#
+# Adds the shared broker and two runner supervisors, and turns the feature on
+# in the backend and the worker. Use on top of the production files:
+#     docker compose -f compose.yaml -f compose.prod.yaml -f compose.microapps.yaml up -d --pull always
+#
+# Before the first start (docs/DEPLOY.md, "Micro-applications"):
+#   - the `ics_apps` database and the `ics_apps_provisioner` role on the host
+#     Postgres, with the pg_hba.conf lines for the runtime roles;
+#   - a wildcard DNS record and certificate for ICS_MICROAPPS_APP_HOST_SUFFIX
+#     on a domain of their own (not under the ICS domain) and the apps
+#     server blocks of docs/deploy/nginx.example.conf;
+#   - the ICS_MICROAPPS_* values in .env.
+# =============================================================================
+
+x-microapps-env: &microapps-env
+  ICS_MICROAPPS_ENABLED: "true"
+  # Trusted provisioner of per-app schemas and roles in `ics_apps`; the
+  # worker uses it to publish and delete apps, request code never does.
+  ICS_MICROAPPS_APPS_DATABASE_URL: postgresql://ics_apps_provisioner:${ICS_APPS_PROVISIONER_PASSWORD:?}@host.docker.internal:5432/ics_apps
+  # Where the broker reaches `ics_apps` with the per-app runtime roles.
+  ICS_MICROAPPS_RUNTIME_DB_HOST: host.docker.internal
+  ICS_MICROAPPS_RUNTIME_DB_PORT: "5432"
+  ICS_MICROAPPS_APP_HOST_SUFFIX: ${ICS_MICROAPPS_APP_HOST_SUFFIX:?}
+  ICS_MICROAPPS_APP_SCHEME: https
+  ICS_MICROAPPS_SERVICE_TOKEN: ${ICS_MICROAPPS_SERVICE_TOKEN:?}
+  ICS_MICROAPPS_BROKER_ADMIN_URL: http://broker:8081
+  # Optional read-only role for database tools (docs/DEPLOY.md); empty: none.
+  ICS_MICROAPPS_READER_ROLE: ${ICS_MICROAPPS_READER_ROLE:-}
+
+x-runner: &runner
+  image: ${ICS_IMAGE_REGISTRY}/microapp-runtime:${IMAGE_TAG:-latest}
+  command: ["node", "src/runner/supervisor.js"]
+  # No network at all: a runner talks only to the broker, over a Unix socket
+  # in a volume the two share. No secrets in its environment.
+  network_mode: none
+  read_only: true
+  tmpfs:
+    - /tmp:size=16m
+  user: "10001:10010"
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+  mem_limit: 256m
+  memswap_limit: 256m
+  pids_limit: 64
+  cpus: 1.0
+  restart: unless-stopped
+
+services:
+  backend:
+    environment:
+      <<: *microapps-env
+
+  arq-worker:
+    environment:
+      <<: *microapps-env
+
+  # The shared gateway and data broker of every app. It holds no role able to
+  # create databases or roles and never sees SSO secrets.
+  broker:
+    image: ${ICS_IMAGE_REGISTRY}/microapp-runtime:${IMAGE_TAG:-latest}
+    command: ["node", "src/broker/main.js"]
+    user: "10002:10010"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      ICS_INTERNAL_URL: http://backend:8000
+      ICS_PUBLIC_BASE_URL: ${ICS_BASE_URL:?}
+      ICS_MICROAPPS_SERVICE_TOKEN: ${ICS_MICROAPPS_SERVICE_TOKEN:?}
+      ICS_MICROAPPS_SESSION_SECRET: ${ICS_MICROAPPS_SESSION_SECRET:?}
+      ICS_MICROAPPS_APP_HOST_SUFFIX: ${ICS_MICROAPPS_APP_HOST_SUFFIX:?}
+      ICS_MICROAPPS_RUNNER_SOCKETS: /run/ics-runners/1/runner.sock,/run/ics-runners/2/runner.sock
+      # Connections to `ics_apps` over all apps together; keep below what the
+      # host Postgres leaves after ICS itself.
+      ICS_MICROAPPS_DB_MAX_CONNECTIONS: ${ICS_MICROAPPS_DB_MAX_CONNECTIONS:-24}
+      ICS_MICROAPPS_IDLE_SECONDS: ${ICS_MICROAPPS_IDLE_SECONDS:-600}
+      # Rate limit buckets shared by every broker process (own Redis db).
+      ICS_MICROAPPS_REDIS_URL: redis://redis:6379/1
+      ICS_MICROAPPS_RATE_USER_PER_SECOND: ${ICS_MICROAPPS_RATE_USER_PER_SECOND:-20}
+      ICS_MICROAPPS_RATE_LINK_PER_SECOND: ${ICS_MICROAPPS_RATE_LINK_PER_SECOND:-100}
+    volumes:
+      - runner1_sock:/run/ics-runners/1
+      - runner2_sock:/run/ics-runners/2
+    depends_on:
+      backend:
+        condition: service_healthy
+      runner-1:
+        condition: service_started
+      runner-2:
+        condition: service_started
+    networks:
+      # `ics` for the backend, Redis and the admin port 8081; `edge` so the
+      # proxy reaches port 8080. Port 8081 must never be routed by the proxy.
+      - ics
+      - edge
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  runner-1:
+    <<: *runner
+    environment:
+      ICS_RUNNER_SOCKET: /run/ics-runner/runner.sock
+      ICS_RUNNER_ID: "1"
+    volumes:
+      - runner1_sock:/run/ics-runner
+
+  runner-2:
+    <<: *runner
+    environment:
+      ICS_RUNNER_SOCKET: /run/ics-runner/runner.sock
+      ICS_RUNNER_ID: "2"
+    volumes:
+      - runner2_sock:/run/ics-runner
+
+volumes:
+  runner1_sock:
+  runner2_sock:

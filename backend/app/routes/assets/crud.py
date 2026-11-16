@@ -16,7 +16,7 @@ from sqlalchemy import delete as _delete
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import audit, permissions, quota, search
+from app import audit, microapp_guard, permissions, quota, search
 from app.auth import CurrentUser
 from app.collections_io import (
     normalize_collection_path,
@@ -32,7 +32,7 @@ from app.html_bundle import (
     normalize_bundle_path,
     pick_html_entry,
 )
-from app.models import Asset, AssetShare, AssetVersion, Project, ShareLink
+from app.models import Asset, AssetShare, AssetVersion, MicroAppGrant, Project, ShareLink
 from app.routes.assets._create_metadata import CreateMetadataForm
 from app.routes.assets._helpers import UploadShareMode
 from app.services import asset_security, read_size, relation_extraction
@@ -168,6 +168,7 @@ async def upload_collection(
     entry_path: Annotated[str | None, Form()] = None,
 ) -> dict:
     validate_pairs_count(files, paths, settings=settings)
+    microapp_guard.refuse_manifest_upload(paths)
     md_pairs = [
         (f, normalize_collection_path(p))
         for f, p in zip(files, paths, strict=True)
@@ -277,6 +278,7 @@ async def upload_html_bundle(
     project: Annotated[Project | None, Depends(_upload_target_project)] = None,
 ) -> dict:
     validate_pairs_count(files, paths, settings=settings)
+    microapp_guard.refuse_manifest_upload(paths)
     pairs = [
         (file, normalize_bundle_path(p))
         for file, p in zip(files, paths, strict=True)
@@ -415,9 +417,10 @@ async def delete_asset(
         .where(ShareLink.asset_id == asset.id, ShareLink.revoked_at.is_(None))
         .values(revoked_at=now)
     )
-    # Per-user shares get dropped: restoring on undelete would re-create
-    # "zombie" grants the original sharer might no longer want.
+    # Per-user shares and an app's roles get dropped: restoring on undelete
+    # would re-create "zombie" grants the original sharer might no longer want.
     await session.execute(_delete(AssetShare).where(AssetShare.asset_id == asset.id))
+    await session.execute(_delete(MicroAppGrant).where(MicroAppGrant.asset_id == asset.id))
     await audit.record(
         session,
         actor=user,

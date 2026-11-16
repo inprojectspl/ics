@@ -370,6 +370,19 @@ async def test_doc_payload_falls_back_to_slug_url(client, session, fs_storage):
 
 
 @pytest.mark.asyncio
+async def test_a_micro_application_keeps_its_asset_page_address(client, session):
+    """Its share link opens the app; the asset page and its tabs stay on
+    `/v/<slug>`, or every tab click would land in the app."""
+    from app.config import get_settings
+
+    owner = await mk_user(session)
+    asset = await mk_asset(session, owner, kind="micro_application", entry_path=None)
+    await _mk_share(session, asset, "org_sso")
+    canonical = await lr.canonical_url(session, get_settings(), asset)
+    assert canonical.endswith(f"/v/{asset.slug}")
+
+
+@pytest.mark.asyncio
 async def test_notifications_advertise_the_same_link_as_the_ui(client, session):
     """The notification dispatcher and the address bar must pick the same
     canonical link for an asset."""

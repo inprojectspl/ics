@@ -72,7 +72,9 @@ export function useAssetActions(
       const title = a.title ?? a.slug;
       const ok = await confirm({
         title: t("assetActions.deleteTitle", { title }),
-        message: t("assetActions.deleteMessage"),
+        // An app also stops for everyone and its roles go; its data stays
+        // with the asset in the trash.
+        message: t(a.kind === "micro_application" ? "assetActions.deleteAppMessage" : "assetActions.deleteMessage"),
         confirmLabel: t("common.delete"),
         destructive: true,
       });

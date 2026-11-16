@@ -1,0 +1,20 @@
+{
+  "name": "ics-microapp-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared Node.js gateway, data broker and QuickJS/WASM runners for ICS micro-applications",
+  "type": "module",
+  "engines": {
+    "node": ">=24.11"
+  },
+  "scripts": {
+    "broker": "node src/broker/main.js",
+    "runner": "node src/runner/supervisor.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "pg": "8.23.1",
+    "quickjs-emscripten": "0.32.0",
+    "redis": "4.7.0"
+  }
+}

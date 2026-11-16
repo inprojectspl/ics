@@ -40,6 +40,7 @@ dependencies = [
     "onnxruntime>=1.30",
     "opencv-python-headless>=4.12",
     "http-ece>=1.2",
+    "jsonschema>=4.23",
 ]
 
 [dependency-groups]
@@ -57,6 +58,7 @@ dev = [
     "types-bleach>=6.4.0.20260728",
     "types-olefile>=0.47.0.20260508",
     "lxml-stubs>=0.5.1",
+    "types-jsonschema>=4.23",
 ]
 
 [tool.uv]
@@ -90,6 +92,7 @@ init_typed = true
 module = [
     "aiobotocore.*",
     "arq.*",
+    "asyncpg.*",
     "authlib.*",
     "http_ece.*",
     "botocore.*",

@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import type { RelationItem } from "../../api";
 import { Button, buttonClass } from "../../components/ui/Button";
 import { useConfirmBasis, useRelations } from "../../components/RelationsPanel/useRelations";
 import { formatApiError } from "../../lib/apiError";
@@ -40,19 +41,24 @@ export function BasisChanges({ slug, onDone, onError }: Props) {
       {items.map((r) => (
         <li key={r.id} className="flex flex-wrap items-center gap-2 text-ui">
           <span className="flex-1 min-w-[10rem] text-text-primary truncate">{r.other.title || r.other.slug}</span>
-          {r.target_version != null && r.target_version_now != null && (
-            <a
-              href={`/v/${r.other.slug}/diff?from=${r.target_version}&to=${r.target_version_now}`}
-              className={buttonClass("secondary", "sm")}
-            >
-              {t("hygiene.showChanges")}
-            </a>
-          )}
+          {r.target_version != null && r.target_version_now != null && <BasisLink row={r} />}
           <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => void confirm(r.id)}>
             {t("assetMeta.stillCurrent")}
           </Button>
         </li>
       ))}
     </ul>
+  );
+}
+
+/** What changed in the basis; an app's comparison is its publishers', so a
+ * document that links to an app opens the app instead. */
+function BasisLink({ row: r }: { row: RelationItem }) {
+  const app = r.other.kind === "micro_application";
+  const href = app ? `/v/${r.other.slug}` : `/v/${r.other.slug}/diff?from=${r.target_version}&to=${r.target_version_now}`;
+  return (
+    <a href={href} className={buttonClass("secondary", "sm")}>
+      {t(app ? "common.open" : "hygiene.showChanges")}
+    </a>
   );
 }

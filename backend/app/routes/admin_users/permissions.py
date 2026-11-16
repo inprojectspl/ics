@@ -102,6 +102,21 @@ async def patch_user(
         )
         audited.append("bundle_max_bytes")
 
+    if (
+        body.microapp_data_max_bytes is not None
+        and body.microapp_data_max_bytes != user.microapp_data_max_bytes
+    ):
+        old_data_limit = user.microapp_data_max_bytes
+        user.microapp_data_max_bytes = body.microapp_data_max_bytes
+        await audit.record(
+            session,
+            actor=admin,
+            action="user_microapp_data_limit_changed",
+            target=f"user:{user.id}",
+            payload={"from_bytes": old_data_limit, "to_bytes": body.microapp_data_max_bytes},
+        )
+        audited.append("microapp_data_max_bytes")
+
     if body.html_autobypass is not None and body.html_autobypass != user.html_autobypass:
         old_autobypass = user.html_autobypass
         user.html_autobypass = body.html_autobypass

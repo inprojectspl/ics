@@ -94,7 +94,8 @@ export function postJson<T>(path: string, body: unknown, init?: RequestInit): Pr
   return req<T>(path, {
     ...init,
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    // Caller headers (e.g. Idempotency-Key) are kept, not replaced.
+    headers: { ...Object.fromEntries(new Headers(init?.headers).entries()), "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
 }

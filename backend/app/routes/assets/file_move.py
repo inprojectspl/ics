@@ -13,7 +13,7 @@ from fastapi import Depends, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import permissions
+from app import microapp_guard, permissions
 from app.auth import CurrentUser
 from app.collections_io import list_version_files, normalize_collection_path, read_text
 from app.config import Settings, get_settings
@@ -43,6 +43,7 @@ async def move_file_in_collection(
     a rename, or both). Copies the version tree, deletes the source,
     writes the destination. Total size unchanged."""
     asset = await permissions.get_owned_asset_by_id(session, asset_id, user)
+    microapp_guard.refuse_write(asset)
     _require_collection(asset, "moving files is only available for Markdown collections")
 
     from_rel = normalize_collection_path(body.from_path)

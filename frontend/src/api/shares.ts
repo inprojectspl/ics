@@ -39,6 +39,8 @@ export const createShare = (
     allowed_emails?: string[];
     expires_at?: string | null;
     max_views?: number | null;
+    app_roles?: string[];
+    app_permissions?: string[];
   },
 ) => postJson<ShareLink>(`/api/assets/${assetId}/shares`, body);
 

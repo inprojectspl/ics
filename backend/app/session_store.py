@@ -16,6 +16,18 @@ from redis.asyncio import Redis
 
 # Defined here rather than in auth.py to avoid an import cycle.
 SESSION_KEY = "user_id"
+# `__Host-` makes the browser refuse the cookie unless it is Secure, has
+# Path=/ and no Domain, so a sibling subdomain (an HTML bundle on the viewer
+# host, a micro-application) cannot plant its own session for this host.
+# The prefix needs HTTPS, so plain-HTTP debug setups use the bare name.
+SESSION_COOKIE = "__Host-ics-session"
+DEBUG_SESSION_COOKIE = "ics-session"
+
+
+def session_cookie_name(debug: bool) -> str:
+    return DEBUG_SESSION_COOKIE if debug else SESSION_COOKIE
+
+
 SESSION_SID_KEY = "sid"
 
 # Starlette's default cookie max_age = 2 weeks (1_209_600s). A revoked sid

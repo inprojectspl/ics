@@ -19,6 +19,7 @@ from app.bundle_extract import extract_to_storage
 from app.bundle_scan import prompt_injection
 from app.collections_io import derive_entry_path, read_markdown_files
 from app.config import Settings
+from app.constants import MICRO_APPLICATION
 from app.domain_errors import ConflictError, InvalidInputError, NotFoundError
 from app.models import Asset, AssetVersion, PublicationReceipt, User
 from app.services import (
@@ -84,6 +85,9 @@ class NewVersion:
 
 Stage = Callable[[VersionDraft], Awaitable[StagedTree]]
 AuditPayload = Callable[[NewVersion], dict[str, Any]]
+# Runs after the version row is added, before the commit: whatever it adds to
+# the session commits atomically with the new version.
+BeforeCommit = Callable[[AssetVersion], Awaitable[None]]
 
 
 async def commit_new_version(
@@ -100,6 +104,7 @@ async def commit_new_version(
     expected_version: int | None = None,
     publication: publications.VersionPublication | None = None,
     binding_publication: binding_publications.BindingPublication | None = None,
+    before_commit: BeforeCommit | None = None,
 ) -> NewVersion:
     """Write a new version of `asset` with `stage` and commit the session.
 
@@ -107,6 +112,11 @@ async def commit_new_version(
     else the caller changed in the session (the CI sync relies on it).
     `expected_version` compares against the locked row before touching storage;
     omitting it preserves the existing serialized-write behavior.
+
+    A `micro_application` package version is only history: activation,
+    migrations and the "updated" notification belong to its publication
+    operation (`services.micro_applications.publish`), which links itself to
+    the version through `before_commit` in this same commit.
     """
     user = actor if isinstance(actor, User) else None
     if binding_publication is not None and (
@@ -142,6 +152,7 @@ async def commit_new_version(
                 publication_result=saved,
             )
     await session.refresh(asset, with_for_update=True)
+    micro_app = asset.kind == MICRO_APPLICATION
     if publication is not None:
         if expected_version is None:
             raise InvalidInputError("invalid_version", "publication requires expected_version")
@@ -189,16 +200,39 @@ async def commit_new_version(
             asset.size_bytes = staged.size_bytes
         if staged.entry_path is not None:
             asset.entry_path = staged.entry_path
-        session.add(
-            AssetVersion(
-                asset_id=asset.id,
-                version=version,
-                storage_prefix=prefix,
-                size_bytes=asset.size_bytes,
-                created_by=created_by,
-                change_note=(change_note or "").strip() or None,
-            )
+        version_row = AssetVersion(
+            asset_id=asset.id,
+            version=version,
+            storage_prefix=prefix,
+            size_bytes=asset.size_bytes,
+            created_by=created_by,
+            change_note=(change_note or "").strip() or None,
         )
+        session.add(version_row)
+        if micro_app:
+            # No scan, search text, read size or relations from package files:
+            # handlers and author notes must not surface as snippets, outlines
+            # or agent context for someone who may only use the app.
+            security = None
+            result = NewVersion(
+                version=version,
+                size_bytes=asset.size_bytes,
+                entry_path=asset.entry_path,
+                file_count=staged.file_count,
+                security=None,
+            )
+            await session.flush()
+            if before_commit is not None:
+                await before_commit(version_row)
+            await audit.record(
+                session,
+                actor=actor,
+                action=audit_action,
+                target=f"asset:{asset.id}",
+                payload=audit_payload(result),
+            )
+            await session.commit()
+            return result
         # Markdown is read once for the prompt-injection scan and the search blob.
         sources = (
             await read_markdown_files(asset, settings)

@@ -116,6 +116,8 @@ def _updated(n: int = 1) -> dict:
 def test_links_open_viewer_or_diff():
     assert link_of(_updated()) == "/v/abc"
     assert link_of(_updated(3)) == "/v/abc/diff?from=2&to=5"
+    # New releases of an app open the app: its comparison is for publishers.
+    assert link_of({**_updated(3), "k": "micro_application"}) == "/v/abc"
     assert link_of({"c": "asset.deleted", "ps": "crm"}) == "/projects/crm"
     assert link_of({"c": "channel.chat_disabled"}) == "/account/notifications"
 
@@ -216,9 +218,20 @@ def test_every_asset_create_path_emits_the_created_event():
         for p in app_dir.rglob("*.py")
         if (text := p.read_text())
     }
+    # A micro-application exists from apply on, but is announced only once
+    # its first release runs: its emit is in the publication's activation.
+    deferred = {
+        app_dir / "services/micro_applications/operations.py": (
+            app_dir / "services/micro_applications/publish.py"
+        ),
+    }
     creators = {p: c for p, c in counts.items() if c[0]}
     assert creators, "no create path found; the pattern is out of date"
-    missing = {str(p): c for p, c in creators.items() if c[1] < c[0]}
+    missing = {
+        str(p): c
+        for p, c in creators.items()
+        if (counts[deferred[p]][1] if p in deferred else c[1]) < c[0]
+    }
     assert not missing
 
 

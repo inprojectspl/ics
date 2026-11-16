@@ -13,7 +13,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import TIMESTAMP
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.constants import DEFAULT_BUNDLE_MAX_BYTES, AuthMethod
+from app.constants import DEFAULT_BUNDLE_MAX_BYTES, DEFAULT_MICROAPP_DATA_MAX_BYTES, AuthMethod
 from app.db import Base
 
 
@@ -45,6 +45,13 @@ class User(Base):
         BigInteger,
         default=DEFAULT_BUNDLE_MAX_BYTES,
         server_default=str(DEFAULT_BUNDLE_MAX_BYTES),
+    )
+    # Cap on the data of all micro-applications the user owns; over it the
+    # apps refuse inserts and updates until records are deleted.
+    microapp_data_max_bytes: Mapped[int] = mapped_column(
+        BigInteger,
+        default=DEFAULT_MICROAPP_DATA_MAX_BYTES,
+        server_default=str(DEFAULT_MICROAPP_DATA_MAX_BYTES),
     )
     # Language of e-mails and pages the backend renders for this user (`pl`,
     # `en`). NULL means "not chosen": the request's Accept-Language decides.

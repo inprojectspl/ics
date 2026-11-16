@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Form, Query, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import permissions
+from app import microapp_guard, permissions
 from app.auth import CurrentUser
 from app.collections_io import (
     list_version_files,
@@ -56,6 +56,7 @@ async def edit_content(
 ) -> dict:
     """Inline edit: rewrite one .md file's content, creating a new version."""
     asset = await permissions.get_owned_asset_by_id(session, asset_id, user)
+    microapp_guard.refuse_write(asset)
     if asset.kind == "html_bundle":
         raise ApiError(
             status.HTTP_400_BAD_REQUEST,
@@ -155,6 +156,7 @@ async def delete_file_in_collection(
     deleted file was the `entry_path`, picks a new entry deterministically
     (readme/index/alphabetical first)."""
     asset = await permissions.get_owned_asset_by_id(session, asset_id, user)
+    microapp_guard.refuse_write(asset)
     _require_collection(asset, "deleting single files is only available for md_collection")
     rel = normalize_collection_path(path)
     if not rel.lower().endswith(".md"):
@@ -223,6 +225,7 @@ async def add_file_to_collection(
     back to the uploaded filename (top-level). Refuses to overwrite
     existing files (use PUT /content for that)."""
     asset = await permissions.get_owned_asset_by_id(session, asset_id, user)
+    microapp_guard.refuse_write(asset)
     _require_collection(asset, "adding single files is only available for md_collection")
     raw_path = (path or file.filename or "").strip()
     if not raw_path:
@@ -270,6 +273,7 @@ async def create_empty_file_in_collection(
     + audit ceremony as `add_file_to_collection`, but no multipart body:
     the UI opens the inline editor on the new file straight away."""
     asset = await permissions.get_owned_asset_by_id(session, asset_id, user)
+    microapp_guard.refuse_write(asset)
     _require_collection(asset, "creating empty files is only available for Markdown collections")
     rel = normalize_collection_path(body.path)
     if not rel.lower().endswith(".md"):

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rezerwacje sprzętu</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header><h1>Rezerwacje sprzętu</h1><p id="who" class="muted">…</p></header>
+  <main>
+    <section id="manage" hidden>
+      <h2>Dodaj sprzęt</h2>
+      <form id="new-equipment" class="grid">
+        <label>Nazwa <input name="name" maxlength="120" required></label>
+        <label>Kategoria
+          <select name="category"><option value="laptop">laptop</option><option value="projector">projektor</option><option value="camera">kamera</option><option value="other">inne</option></select>
+        </label>
+        <label>Liczba sztuk <input name="quantity" type="number" min="1" max="1000" value="1" required></label>
+        <button type="submit">Dodaj</button>
+      </form>
+    </section>
+    <section id="catalog" hidden>
+      <h2>Sprzęt</h2>
+      <ul id="equipment-list" class="list"></ul>
+    </section>
+    <section id="mine" hidden>
+      <h2>Moje rezerwacje</h2>
+      <ul id="reservation-list" class="list"></ul>
+    </section>
+    <p id="status" role="status" class="muted"></p>
+  </main>
+  <script src="/__ics/sdk.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
