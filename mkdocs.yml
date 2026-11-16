@@ -97,6 +97,7 @@ nav:
       - guide/versions.md
       - guide/search.md
       - guide/sharing.md
+      - guide/micro-applications.md
       - guide/projects.md
       - guide/graph.md
       - guide/notifications.md
@@ -110,6 +111,7 @@ nav:
   - Reference:
       - api-errors.md
       - notifications-api.md
+      - microapps-api.md
       - publication-receipts-api.md
       - expected-version-api.md
       - DESIGN.md
@@ -141,3 +143,4 @@ nav:
       - decisions/0024-app-shell-and-design-system.md
       - decisions/0025-graph-explorer.md
       - decisions/0026-unified-document-search.md
+      - decisions/0027-micro-applications.md

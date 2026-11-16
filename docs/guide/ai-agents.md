@@ -12,6 +12,7 @@ ics-mcp is a separate program that connects an assistant to the ICS API. Once yo
 - create share links and share documents with people;
 - read and edit relations between documents and walk the [document graph](graph.md);
 - gather the documents of one task in a single call (the context pack, described below) and link documents to tasks.
+- build, publish and run [micro-applications](micro-applications.md), give people roles in them and read an app with its records filled in.
 
 Every request is checked by ICS exactly as if you made it in the browser: the agent sees what you see and can change what you can change, nothing more. Deleting, overwriting and creating a public link (also together with a new document) go through a confirmation step in ics-mcp.
 
@@ -117,6 +118,28 @@ The pack is only as good as the links behind it:
 
 See [Projects](projects.md) for the Settings and Hygiene tabs.
 
+## Build and publish a micro-application
+
+There is no upload form for [micro-applications](micro-applications.md): you ask an agent, for example "build a register where staff file requests and a reviewer approves them, and give Priya the employee role". The agent then works through ics-mcp:
+
+1. It reads the build standard (`ics_microapp_contract`): the manifest format, the SDK, a working template and the limits.
+2. It sends the whole package for a **plan** (`ics_microapp_plan`). ICS checks it without touching the running app and answers with problems to fix, each naming the file and the place in it, or with what the release would change: roles, permissions, endpoints, the database migration and the starting records. Plans count against your storage limit like uploads.
+3. It **applies** the plan (`ics_microapp_apply`). ics-mcp asks for your confirmation first. Applying publishes exactly the planned package as a new version; a publication runs in the background and ends active or failed, never half done.
+4. It gives people roles (`ics_microapp_access_set`) and, if you want, creates a share link that names the app roles it gives.
+
+Planning needs an OAuth sign-in as described above: personal access tokens are read-only and cannot plan or apply. Who may apply: the owner of the app or of its project, or someone given the right to publish. An editor may prepare a plan but not apply it. The same rules let an agent run the app (sleep, restart, suspend) and read its logs.
+
+When an agent reads an app (`ics_asset_read`), it gets the app's own view with your records filled in, as on the **Data** tab, and then the records of each collection you may read. The app's code is shown only to its publishers.
+
+## Retry a write safely
+
+Writes through ics-mcp can be made safe to repeat when a response gets lost:
+
+- **A publication key.** An agent that creates an HTML bundle or replaces a whole document can send a key it keeps (`publication`). ICS stores the result with that key, so asking again returns the original document and version instead of creating a second one, and an agent can look the result up later (`ics_publication_get`).
+- **The expected version.** A write can name the version it was based on (`expected_version`). If someone published a newer version in the meantime, ICS refuses the write with `version_conflict` instead of overwriting their change; the agent reads the new version and tries again.
+
+Both are optional, and the details for developers are in the [publication receipts](../publication-receipts-api.md) and [expected version](../expected-version-api.md) references.
+
 ## Related
 
 - [ics-mcp user guide](https://github.com/inprojectspl/ics-mcp/tree/main/docs/guide): connect an assistant and use it.
@@ -125,3 +148,4 @@ See [Projects](projects.md) for the Settings and Hygiene tabs.
 - [Account and settings](account.md): personal access tokens.
 - [Formats](formats.md): how PDF, Word and HTML documents are converted to text.
 - [Administration](administration.md): the audit log.
+- [Micro-applications](micro-applications.md): what agents build and publish.

@@ -52,6 +52,9 @@ and decides, link by link, who may read them.
 - **Built for agents, too.** A token-efficient API, an OAuth 2.1 authorization server and the
   companion [`ics-mcp`](https://github.com/inprojectspl/ics-mcp) server let assistants such as
   Claude read, write and share documents with the signed-in user's own permissions.
+- **Small apps, too.** An agent can publish a micro-application, such as a request register or
+  a booking sheet, with its own data and roles, run in a sandbox on an origin of its own and
+  shared like any document.
 
 ## Features
 
@@ -101,7 +104,8 @@ and decides, link by link, who may read them.
 
 - One accent-insensitive full-text search over titles, summaries, tags, Markdown, PDF and Word
   text.
-- Version history with side-by-side diffs and one-click restore.
+- Version history with side-by-side diffs and one-click restore; writes can carry the expected
+  version and a publication key, so a retried request never overwrites or duplicates.
 - **Notifications** in the app, by e-mail, in Google Chat and as Web Push, for the documents
   and projects you watch.
 
@@ -127,6 +131,20 @@ and decides, link by link, who may read them.
   for administrator review.
 - Append-only audit log, per-user storage quotas, rate limiting and soft delete.
 - English and Polish interface, light and dark themes, a layout that works on a phone.
+
+</td>
+</tr>
+<tr>
+<td colspan="2" valign="top">
+
+#### 🧩 Micro-applications (optional)
+
+- Small apps with their own data, published by an agent through a checked plan and an
+  idempotent apply; every release is a version with a readable list of what changed.
+- A schema and a role per app in a separate `ics_apps` database, a shared Node.js broker and
+  QuickJS/WASM runners without network: adding an app adds no container.
+- Each app on its own origin under a domain of its own, with its own roles that owners give to
+  people, projects and share links. Agents read an app as Markdown with the records filled in.
 
 </td>
 </tr>
@@ -197,6 +215,10 @@ flowchart LR
   api --> store[(File storage<br/>fs or S3)]
   redis --> worker[arq worker<br/>outlines, notifications]
   redis --> ocr[OCR worker<br/>scanned PDFs]
+  proxy -.->|app origins| broker[Micro-app broker<br/>optional]
+  broker -.-> runners[QuickJS/WASM runners]
+  broker -.-> apps[(ics_apps database)]
+  api -.-> broker
 ```
 
 | Component | Role |
@@ -208,6 +230,7 @@ flowchart LR
 | PostgreSQL | Documents, relations, full-text search, audit log. |
 | Redis | Sessions, rate limits, job queues, notification inboxes. |
 | Storage | Files of every version, on a local volume (`fs://`) or any S3-compatible service (`s3://`). |
+| [`microapp-runtime/`](./microapp-runtime) | Optional, with `compose.microapps.yaml`: the broker that serves every micro-application origin and two runner supervisors that run app handlers in QuickJS/WASM, against the `ics_apps` database. See [ADR-0027](./docs/decisions/0027-micro-applications.md). |
 
 ## Quick start
 
@@ -318,6 +341,10 @@ reverse proxy on the network named by `ICS_EDGE_NETWORK`
 and backend and frontend images in a registry (`ICS_IMAGE_REGISTRY`, `IMAGE_TAG`). The backend
 image applies Alembic migrations on start.
 
+Micro-applications are optional: add `-f compose.microapps.yaml`, a domain of their own and the
+`ics_apps` database, as described in
+[Micro-applications in DEPLOY.md](./docs/DEPLOY.md#micro-applications-optional).
+
 ## GitLab repository bindings
 
 A binding connects a document to a GitLab repository, so every push to the default branch
@@ -349,6 +376,8 @@ Claude Code and Codex CLI.
 | OAuth endpoints | `/api/auth/oauth/{authorize,token,revoke,register,jwks.json}` |
 | Agent API | `/api/assets/index`, `search-mcp`, `by-slug/{slug}/meta`, `outline`, `files-mcp`, `file-mcp` |
 | Task context pack | `GET /api/context`, see [ADR-0019](./docs/decisions/0019-agent-context-pack.md) |
+| Micro-applications | `/api/micro-applications/...`, see [the micro-applications API](./docs/microapps-api.md) |
+| Safe retries | publication receipts and `expected_version`, see [publication receipts](./docs/publication-receipts-api.md) and [expected version](./docs/expected-version-api.md) |
 
 Set `ICS_OAUTH_PRIVATE_KEY_PEM` and `ICS_MCP_RESOURCE_URI` to enable it. Owners and editors
 can open `/v/<slug>/agent` in the web app to see exactly what an agent reads for a document.
@@ -395,6 +424,23 @@ npm run e2e            # Playwright, needs the dev stack on :5173
 
 </details>
 
+<details>
+<summary><b>Micro-application runtime and local profile</b></summary>
+
+<br>
+
+```bash
+cd microapp-runtime && npm ci && npm test   # broker and runner tests (node --test)
+scripts/microapps-local.sh init             # isolated local stack with HTTPS and app origins
+scripts/microapps-local.sh up
+scripts/microapps-local.sh test             # every test set, then the acceptance run
+```
+
+The profile, its addresses and the acceptance run are described in
+[`docs/development/microapps-local.md`](./docs/development/microapps-local.md).
+
+</details>
+
 CI enforces a backend coverage gate of 90%, the frontend thresholds in
 [`frontend/vitest.config.ts`](./frontend/vitest.config.ts) and a 500-line budget per source
 file ([ADR-0002](./docs/decisions/0002-quality-bar.md)).
@@ -406,11 +452,14 @@ The documentation is published at <https://inprojectspl.github.io/ics/>; its sou
 
 | Document | What it covers |
 |---|---|
-| [`docs/guide/`](./docs/guide/README.md) | User guide: documents, sharing, projects, the graph, AI agents and administration |
+| [`docs/guide/`](./docs/guide/README.md) | User guide: documents, sharing, micro-applications, projects, the graph, AI agents and administration |
 | [`docs/DEPLOY.md`](./docs/DEPLOY.md) | Production deployment, step by step |
 | [`docs/DESIGN.md`](./docs/DESIGN.md) | The design and UX contract of the frontend |
 | [`docs/api-errors.md`](./docs/api-errors.md) | API error codes; responses look like `{"detail": "...", "code": "..."}` |
 | [`docs/notifications-api.md`](./docs/notifications-api.md) | The notifications API |
+| [`docs/microapps-api.md`](./docs/microapps-api.md) | The micro-applications management and app APIs |
+| [`docs/publication-receipts-api.md`](./docs/publication-receipts-api.md), [`docs/expected-version-api.md`](./docs/expected-version-api.md) | Safe retries: publication receipts, signed GitLab releases and the expected version of a write |
+| [`docs/development/microapps-local.md`](./docs/development/microapps-local.md) | The local micro-applications profile with an acceptance run |
 | [`docs/decisions/`](./docs/decisions/) | Architectural Decision Records, the reasoning behind the design |
 
 ## Contributing

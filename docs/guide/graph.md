@@ -94,7 +94,7 @@ You need to be an editor of the document you start from (owner, project owner or
 2. Click **Add relation**.
 3. In **Document**, type at least 2 characters of the other document's title and pick it from the list.
 4. Choose a **Type**. The text under the field explains what the type means and what ICS does with it.
-5. If the other document is a collection, you can pick a **File in the collection** instead of **The whole document**. If it has headings, you can point at a **Heading**.
+5. If the other document is a collection, you can pick a **File in the collection** instead of **The whole document**. If it has headings, you can point at a **Heading**. A [micro-application](micro-applications.md) is always related as a whole.
 6. Optionally write a **Note (optional)** that says why the relation exists.
 7. Click **Add**.
 

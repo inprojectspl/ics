@@ -12,6 +12,7 @@ This guide is for people who use ICS: authors, readers, project owners and admin
 - **Versions.** ICS never overwrites a document. Each change creates a new version, older versions stay readable, and you can compare and restore them.
 - **Sharing.** A document can have several links at once, each for its own audience: your organisation, named people by e-mail, anyone with a password, or the public. Links can expire, be one-time and be revoked. You can also give a named person a role on a document.
 - **Projects.** A project is a shared space with members who are owners, editors or viewers. A document in a project is open to its members according to their role.
+- **Micro-applications.** Besides documents, ICS can host small apps with their own data, such as a request register or a booking sheet. People open them from ICS, and each app has its own roles that the app's owner gives out.
 - **The graph.** Documents relate to each other: one depends on another, is derived from it, replaces it. ICS records these relations, also from the links in the content, and shows them as a graph you can explore.
 
 ## Where to start
@@ -28,6 +29,7 @@ New to ICS? Read [Getting started](getting-started.md) to sign in and find your 
 - [Versions](versions.md): version history, change notes, comparing, viewing and restoring versions
 - [Search](search.md): what the search finds, how matching works, the command palette as a launcher
 - [Sharing](sharing.md): share links and their modes, personal grants, project shares, what a visitor sees
+- [Micro-applications](micro-applications.md): opening and running apps, their data, roles, sharing and versions
 
 ### Working together
 
@@ -38,7 +40,7 @@ New to ICS? Read [Getting started](getting-started.md) to sign in and find your 
 ### Your account and integrations
 
 - [Account settings](account.md): notification settings, personal access tokens, language and theme
-- [AI agents](ai-agents.md): letting assistants work with ICS through ics-mcp, and what an agent reads
+- [AI agents](ai-agents.md): letting assistants work with ICS through ics-mcp, what an agent reads, building micro-applications
 - [GitLab](gitlab.md): publishing a repository to ICS on every push
 
 ### For administrators
