@@ -287,14 +287,14 @@ async def with_release_states(
     """Version history rows of an app with the release each package version
     became: the current one is the release that runs (a later package may
     have failed to publish)."""
-    states = dict(
+    states: dict[int, str] = dict(
         (
             await session.execute(
                 select(MicroAppRelease.package_version, MicroAppRelease.status).where(
                     MicroAppRelease.asset_id == asset.id
                 )
             )
-        ).all()
+        ).tuples().all()
     )
     return [
         {

@@ -110,7 +110,7 @@ async def between_versions(
     """`manifest_changes` of two package versions, from the manifests their
     releases keep (every package version is a release); None when one of
     them has none."""
-    rows = dict(
+    rows: dict[int, dict[str, Any]] = dict(
         (
             await session.execute(
                 select(MicroAppRelease.package_version, MicroAppRelease.manifest).where(
@@ -118,7 +118,7 @@ async def between_versions(
                     MicroAppRelease.package_version.in_((from_v, to_v)),
                 )
             )
-        ).all()
+        ).tuples().all()
     )
     if from_v not in rows or to_v not in rows:
         return None
