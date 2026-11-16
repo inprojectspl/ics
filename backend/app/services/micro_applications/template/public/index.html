@@ -2,7 +2,10 @@
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Notes</title><link rel="stylesheet" href="app.css"></head>
-<body><main><h1>Notes</h1><form id="new"><input name="text" maxlength="2000" required><button>Add</button></form>
-<ul id="list"></ul></main>
+<body>
+<header class="app-header"><div class="inner"><span class="mark" aria-hidden="true">N</span><div><h1>Notes</h1><p class="muted">Your own notes; pinned ones come first.</p></div></div></header>
+<main><section class="card" aria-labelledby="notes-title"><h2 id="notes-title">My notes <span id="count" class="count"></span></h2>
+<form id="new"><label>Note <input name="text" maxlength="2000" required></label><button class="primary">Add</button></form>
+<ul id="list" class="list"></ul></section></main>
 <script src="/__ics/sdk.js"></script><script src="app.js"></script></body>
 </html>

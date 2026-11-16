@@ -78,6 +78,9 @@ PROCEDURE = [
     "Read this contract (all sections share contract_hash).",
     "Write microapp.json, public/ (static UI, no inline scripts: CSP script-src 'self') "
     "and handlers/*.mjs only where CRUD is not enough.",
+    "Start public/app.css from the template's: it carries the ICS palette (light and dark "
+    "follow the system) and the classes for the header, cards, forms, buttons, lists, "
+    "badges and empty states, so the app looks like part of ICS.",
     "Keep the app's content in its collections, not in public/ files: data that exists at "
     "the start (e.g. the items of a document turned into an app) goes to "
     "seed/<collection>.json, a JSON array of records (the collection's fields, optionally id "

@@ -177,7 +177,7 @@ async def test_status_logs_releases_and_package(client, session):
     await session.commit()
 
     await login_as(client, owner)
-    listing = (await client.get("/api/micro-applications?q=Rejestr")).json()
+    listing = (await client.get("/api/micro-applications?q=Request")).json()
     item = next(i for i in listing["items"] if i["asset_id"] == aid)
     assert item["desired_state"] == "enabled" and item["active_release"] is not None
     assert item["runtime"]["state"] == "sleeping" and item["rights"]["control"] is True
@@ -885,11 +885,11 @@ async def test_roles_give_their_permissions_to_people_projects_and_links(client,
 
     view = (await client.get(url, headers=bearer(owner))).json()
     assert [(r["role"], r["label"]) for r in view["roles"]] == [
-        ("employee", "Pracownik"),
-        ("reviewer", "Recenzent"),
+        ("employee", "Employee"),
+        ("reviewer", "Reviewer"),
     ]
     labels = {p["permission"]: p["label"] for p in view["permissions"]}
-    assert labels["requests.approve"] == "Zatwierdzanie cudzych wniosków"
+    assert labels["requests.approve"] == "Approve other people's requests"
 
     async def put(body):
         return await client.put(url, json=body, headers=bearer(owner))
@@ -976,7 +976,7 @@ async def test_roles_give_their_permissions_to_people_projects_and_links(client,
     client.cookies.clear()
 
     doc = (await client.get(f"/api/micro-applications/{aid}/document", headers=bearer(bob))).json()
-    assert "## Roles" in doc["markdown"] and "| `employee` | Pracownik |" in doc["markdown"]
+    assert "## Roles" in doc["markdown"] and "| `employee` | Employee |" in doc["markdown"]
     assert "| your roles | `employee`, `reviewer` |" in doc["markdown"]
 
     # A release that drops a role people hold says so in its plan.

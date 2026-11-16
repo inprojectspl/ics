@@ -1,8 +1,15 @@
-// Rejestr wniosków: own requests through generic CRUD, approval through the
+// Request register: own requests through generic CRUD, approval through the
 // custom endpoint. All data access goes through window.ics (same origin).
 const requests = ics.collection("requests");
 const $ = (id) => document.getElementById(id);
-const say = (text) => { $("status").textContent = text; };
+const STATUS = { submitted: "submitted", approved: "approved" };
+
+let statusTimer;
+const say = (text) => {
+  $("status").textContent = text;
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => { $("status").textContent = ""; }, 4000);
+};
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -16,50 +23,57 @@ function el(tag, attrs = {}, ...children) {
 }
 
 function failed(err) {
-  say(`Błąd: ${err.code || err.status} ${err.message}`);
+  say(`Error: ${err.code || err.status} ${err.message}`);
 }
+
+function fill(listId, countId, items, empty, render) {
+  $(countId).textContent = String(items.length);
+  $(listId).replaceChildren(...(items.length ? items.map(render) : [el("li", { class: "empty" }, empty)]));
+}
+
+const heading = (r) =>
+  el("div", { class: "row" },
+    el("span", { class: "title" }, r.title),
+    el("span", { class: `badge ${r.status}` }, STATUS[r.status] ?? r.status));
 
 async function loadMine() {
   const page = await requests.list({ limit: 50 });
-  $("my-list").replaceChildren(...page.items.map((r) => {
-    const actions = el("div", { class: "row" });
+  fill("my-list", "mine-count", page.items, "You have no requests yet.", (r) => {
+    const actions = el("div", { class: "row actions" });
     if (r.status === "submitted") {
       actions.append(
-        el("button", { onclick: async () => {
-          const title = prompt("Nowy tytuł", r.title);
+        el("button", { type: "button", onclick: async () => {
+          const title = prompt("New title", r.title);
           if (!title) return;
-          try { await requests.update(r.id, r.revision, { title }); say("Zapisano."); await loadMine(); } catch (e) { failed(e); }
-        } }, "Edytuj"),
-        el("button", { onclick: async () => {
-          try { await requests.remove(r.id, r.revision); say("Usunięto."); await loadMine(); } catch (e) { failed(e); }
-        } }, "Usuń"),
+          try { await requests.update(r.id, r.revision, { title }); say("Saved."); await loadMine(); } catch (e) { failed(e); }
+        } }, "Edit"),
+        el("button", { type: "button", class: "danger", onclick: async () => {
+          try { await requests.remove(r.id, r.revision); say("Deleted."); await loadMine(); } catch (e) { failed(e); }
+        } }, "Delete"),
       );
     }
-    return el("li", { "data-id": r.id },
-      el("div", { class: "row" }, el("strong", {}, r.title), el("span", { class: `badge ${r.status}` }, r.status)),
-      r.description ? el("div", {}, r.description) : "",
-      actions);
-  }));
+    return el("li", { "data-id": r.id }, heading(r), r.description ? el("div", { class: "desc" }, r.description) : "", actions);
+  });
 }
 
 async function loadReview() {
   const page = await ics.call("GET", "/v1/custom/review-requests", { query: { limit: 50 } });
-  $("review-list").replaceChildren(...page.items.map((r) =>
+  fill("review-list", "review-count", page.items, "Nothing is waiting for approval.", (r) =>
     el("li", { "data-id": r.id },
-      el("strong", {}, r.title),
-      r.description ? el("div", {}, r.description) : "",
-      el("div", { class: "row" }, el("button", { onclick: async () => {
+      heading(r),
+      r.description ? el("div", { class: "desc" }, r.description) : "",
+      el("div", { class: "row actions" }, el("button", { type: "button", class: "primary", onclick: async () => {
         try {
           await ics.call("POST", `/v1/custom/requests/${r.id}/approve`, { body: {}, ifMatch: r.revision });
-          say("Zatwierdzono.");
+          say("Approved.");
           await loadReview();
         } catch (e) { failed(e); }
-      } }, "Zatwierdź")))));
+      } }, "Approve"))));
 }
 
 async function main() {
   const s = await ics.session();
-  $("who").textContent = `${s.user.displayName ?? "Gość"} · wydanie ${s.app.release.slice(0, 8)}`;
+  $("who").textContent = `${s.user.displayName ?? "Guest"} · release ${s.app.release.slice(0, 8)}`;
   const can = new Set(s.permissions);
   if (can.has("requests.read") || can.has("requests.create")) {
     $("mine").hidden = false;
@@ -69,7 +83,9 @@ async function main() {
     $("review").hidden = false;
     await loadReview();
   }
-  if (!can.size) say("Nie masz jeszcze uprawnień w tej aplikacji. Poproś opiekuna o przydział w ICS.");
+  if (!can.size) {
+    document.querySelector("main").append(el("p", { class: "card empty" }, "You have no permissions in this app yet. Ask its owner to give you a role in ICS."));
+  }
 }
 
 $("new-request").addEventListener("submit", async (e) => {
@@ -78,7 +94,7 @@ $("new-request").addEventListener("submit", async (e) => {
   try {
     await requests.create({ title: form.title.value, description: form.description.value });
     form.reset();
-    say("Złożono wniosek.");
+    say("Request submitted.");
     await loadMine();
   } catch (err) { failed(err); }
 });

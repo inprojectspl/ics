@@ -2,8 +2,8 @@
   "apiVersion": "ics.microapp/v1alpha1",
   "kind": "micro_application",
   "metadata": {
-    "title": "Rejestr wniosków",
-    "description": "Własne wnioski i zatwierdzanie przez recenzenta."
+    "title": "Request register",
+    "description": "Staff file their own requests; a reviewer approves them."
   },
   "frontend": {
     "entry": "public/index.html"
@@ -336,25 +336,25 @@
   },
   "permissions": {
     "requests.create": {
-      "label": "Składanie wniosków"
+      "label": "Submit requests"
     },
     "requests.read": {
-      "label": "Podgląd własnych wniosków"
+      "label": "See own requests"
     },
     "requests.edit": {
-      "label": "Poprawianie własnych wniosków"
+      "label": "Edit own requests"
     },
     "requests.delete": {
-      "label": "Wycofywanie własnych wniosków"
+      "label": "Withdraw own requests"
     },
     "requests.approve": {
-      "label": "Zatwierdzanie cudzych wniosków"
+      "label": "Approve other people's requests"
     }
   },
   "roles": {
     "employee": {
-      "label": "Pracownik",
-      "description": "Składa i poprawia własne wnioski.",
+      "label": "Employee",
+      "description": "Files and edits their own requests.",
       "permissions": [
         "requests.create",
         "requests.read",
@@ -363,8 +363,8 @@
       ]
     },
     "reviewer": {
-      "label": "Recenzent",
-      "description": "Zatwierdza wnioski innych osób i widzi swoje.",
+      "label": "Reviewer",
+      "description": "Approves other people's requests and sees their own.",
       "permissions": [
         "requests.read",
         "requests.approve"

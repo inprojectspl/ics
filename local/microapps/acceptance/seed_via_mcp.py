@@ -22,7 +22,7 @@ import localenv as L  # noqa: E402
 
 APPS = {
     "requests": {
-        "title": "Rejestr wniosków",
+        "title": "Request register",
         "share": ["bob", "carol", "dave"],
         # Roles from the manifest; single permissions beside them where a
         # person needs a mix no role gives (carol files requests and reviews).
@@ -32,7 +32,7 @@ APPS = {
         },
     },
     "equipment": {
-        "title": "Rezerwacje sprzętu",
+        "title": "Equipment booking",
         "share": ["bob", "carol", "dave"],
         "grants": {
             "alice": {"roles": ["keeper"]},

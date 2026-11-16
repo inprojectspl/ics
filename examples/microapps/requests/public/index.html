@@ -1,29 +1,34 @@
 <!doctype html>
-<html lang="pl">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Rejestr wniosków</title>
+  <title>Request register</title>
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
-  <header><h1>Rejestr wniosków</h1><p id="who" class="muted">…</p></header>
+  <header class="app-header">
+    <div class="inner">
+      <span class="mark" aria-hidden="true">R</span>
+      <div><h1>Request register</h1><p id="who" class="muted">…</p></div>
+    </div>
+  </header>
   <main>
-    <section id="mine" hidden>
-      <h2>Moje wnioski</h2>
+    <section id="mine" class="card" hidden aria-labelledby="mine-title">
+      <h2 id="mine-title">My requests <span id="mine-count" class="count"></span></h2>
       <form id="new-request">
-        <label>Tytuł <input name="title" maxlength="200" required></label>
-        <label>Opis <textarea name="description" maxlength="8000" rows="3"></textarea></label>
-        <button type="submit">Złóż wniosek</button>
+        <label>Title <input name="title" maxlength="200" required></label>
+        <label>Description <textarea name="description" maxlength="8000" rows="3"></textarea></label>
+        <button type="submit" class="primary">Submit request</button>
       </form>
       <ul id="my-list" class="list"></ul>
     </section>
-    <section id="review" hidden>
-      <h2>Do zatwierdzenia</h2>
+    <section id="review" class="card" hidden aria-labelledby="review-title">
+      <h2 id="review-title">To approve <span id="review-count" class="count"></span></h2>
       <ul id="review-list" class="list"></ul>
     </section>
-    <p id="status" role="status" class="muted"></p>
   </main>
+  <p id="status" role="status"></p>
   <script src="/__ics/sdk.js"></script>
   <script src="app.js"></script>
 </body>
