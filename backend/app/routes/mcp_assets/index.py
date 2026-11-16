@@ -18,7 +18,7 @@ from app.config import get_settings
 from app.db import get_session
 from app.errors import ApiError
 from app.json_response import ORJSONResponse
-from app.models import Asset, AssetPin, AssetShare, ProjectMember
+from app.models import Asset, AssetPin, AssetShare, ProjectMember, User
 from app.services import doc_types, ocr
 from app.services.asset_projection import (
     AssetMetadataRow,
@@ -227,6 +227,29 @@ async def asset_meta(
     asset, role = await permissions.get_asset_with_role(
         session, user=user, min_role="viewer", slug=slug
     )
+    return await _meta_response(session, user, request, asset, role)
+
+
+@router.get("/by-id/{asset_id}/meta")
+async def asset_meta_by_id(
+    asset_id: UUID,
+    user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    request: Request,
+) -> Response:
+    """`/by-slug/{slug}/meta` by id, for any viewer (`/api/assets/{id}`
+    answers editors only): agents get ids from listings and relations."""
+    asset, role = await permissions.get_viewable_asset_by_id(session, asset_id, user)
+    return await _meta_response(session, user, request, asset, role)
+
+
+async def _meta_response(
+    session: AsyncSession,
+    user: User,
+    request: Request,
+    asset: Asset,
+    role: permissions.EffectiveRole,
+) -> Response:
     # The ETag is per user (it includes the pin); shared caches are covered by
     # the `Vary: Cookie` SessionMiddleware adds to every session response.
     pin = await session.get(AssetPin, (user.id, asset.id))

@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - First public release.
 - Documentation site at <https://inprojectspl.github.io/ics/>, built with MkDocs from `docs/`.
+- `GET /api/assets/by-id/{id}/meta`: the asset meta by id for any viewer, as
+  `/by-slug/{slug}/meta` (`/api/assets/{id}` answers editors only).
 - `format=markdown` on an agent read of a Markdown file (`file-mcp`, `agent-view`, share
   `resolve`) drops its HTML comments, so machine markers such as transcript timestamps do not
   cost tokens; comments in code stay and every line keeps its number.
