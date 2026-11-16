@@ -2,8 +2,8 @@
   "apiVersion": "ics.microapp/v1alpha1",
   "kind": "micro_application",
   "metadata": {
-    "title": "Rezerwacje sprzętu",
-    "description": "Katalog sprzętu i rezerwacje; rezerwacja i anulowanie zmieniają dwie tabele w jednej transakcji."
+    "title": "Equipment booking",
+    "description": "An equipment catalogue and bookings; booking and cancelling change two tables in one transaction."
   },
   "frontend": {
     "entry": "public/index.html"
@@ -505,22 +505,22 @@
   },
   "permissions": {
     "equipment.read": {
-      "label": "Przeglądanie katalogu"
+      "label": "Browse the catalogue"
     },
     "equipment.manage": {
-      "label": "Zarządzanie katalogiem"
+      "label": "Manage the catalogue"
     },
     "reservations.read": {
-      "label": "Podgląd rezerwacji"
+      "label": "See bookings"
     },
     "reservations.book": {
-      "label": "Rezerwowanie i anulowanie"
+      "label": "Book and cancel"
     }
   },
   "roles": {
     "borrower": {
-      "label": "Wypożyczający",
-      "description": "Rezerwuje sprzęt dla siebie.",
+      "label": "Borrower",
+      "description": "Books equipment for themselves.",
       "permissions": [
         "equipment.read",
         "reservations.read",
@@ -528,8 +528,8 @@
       ]
     },
     "keeper": {
-      "label": "Opiekun sprzętu",
-      "description": "Prowadzi katalog i widzi rezerwacje.",
+      "label": "Equipment keeper",
+      "description": "Keeps the catalogue and sees the bookings.",
       "permissions": [
         "equipment.read",
         "equipment.manage",

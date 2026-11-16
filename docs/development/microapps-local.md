@@ -109,22 +109,22 @@ complete the OAuth login in a headless Chromium with the local password.
 ## Manual check
 
 1. `doctor`, `up`, `seed`. Sign in to the panel as `alice`, filter the
-   documents by the micro-application kind: *Rejestr wniosków* and
-   *Rezerwacje sprzętu* show
+   documents by the micro-application kind: *Request register* and
+   *Equipment booking* show
    *Enabled*, *Sleeping: no resources* (or *Ready* after use), active release,
    data size once measured. There is no upload or create form.
-2. Open *Rejestr wniosków* as `bob` (Open, or the app URL). Submit a request,
+2. Open *Request register* as `bob` (Open, or the app URL). Submit a request,
    edit it, delete another one.
-3. As `carol` (role *Recenzent* plus single permissions to file her own
-   requests) open the same app: the request is in *Do zatwierdzenia*; approve
+3. As `carol` (role *Reviewer* plus single permissions to file her own
+   requests) open the same app: the request is in *To approve*; approve
    it. As `bob` the request shows `approved` and can no longer be edited.
 4. As `dave` the app opens but shows no permissions; the API answers 403.
-5. On the app's asset page, tab *Access*: `bob` holds the role *Pracownik*.
+5. On the app's asset page, tab *Access*: `bob` holds the role *Employee*.
    Take it away and give single permissions without `requests.read`; his open
    tab gets 403 on the next action. Give the role back.
-6. *Rezerwacje sprzętu*: as `alice` add equipment (quantity 2); as `bob`
+6. *Equipment booking*: as `alice` add equipment (quantity 2); as `bob`
    reserve and cancel; availability changes in both tables together.
-7. Suspend *Rejestr wniosków* in the panel (or `ics_microapp_control`): the
+7. Suspend *Request register* in the panel (or `ics_microapp_control`): the
    app answers 503 `app_suspended`. `scripts/microapps-local.sh compose
    restart broker backend arq-worker`: it stays suspended. Enable it: state
    *Enabled* + *Sleeping* until the next request.

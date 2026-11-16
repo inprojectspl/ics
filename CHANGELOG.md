@@ -57,6 +57,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `format=markdown` on a file that is neither HTML nor Markdown answers `format_unsupported`
   instead of `html_only`.
+- The example micro-applications (`examples/microapps`) and the template agents start from are in
+  English and use the ICS palette: a header, cards, status badges, empty states and light and dark
+  themes that follow the system setting.
 
 ### Security
 

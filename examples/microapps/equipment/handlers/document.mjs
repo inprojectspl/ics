@@ -18,15 +18,15 @@ export default async function document(input, ctx) {
   const can = new Set(ctx.actor.permissions);
   const catalog = await all(ctx, "equipment", "equipment.catalog");
   const names = new Map(catalog.map((e) => [e.id, e.name]));
-  const lines = ["# Rezerwacje sprzętu", "", "## Katalog", ""];
-  if (!catalog.length) lines.push("_Katalog jest pusty._", "");
-  else lines.push("| Sprzęt | Kategoria | Dostępne | Razem |", "|---|---|---|---|",
+  const lines = ["# Equipment booking", "", "## Catalogue", ""];
+  if (!catalog.length) lines.push("_The catalogue is empty._", "");
+  else lines.push("| Equipment | Category | Available | Total |", "|---|---|---|---|",
     ...catalog.filter((e) => e.active).map((e) => `| ${cell(e.name)} | ${cell(e.category)} | ${e.available} | ${e.quantity} |`), "");
   if (can.has("reservations.read")) {
     const mine = await all(ctx, "reservations", "reservations.mine");
-    lines.push("## Moje rezerwacje", "");
-    if (!mine.length) lines.push("_Brak rezerwacji._", "");
-    else lines.push("| Sprzęt | Od | Do | Sztuk | Stan |", "|---|---|---|---|---|",
+    lines.push("## My bookings", "");
+    if (!mine.length) lines.push("_No bookings._", "");
+    else lines.push("| Equipment | From | To | Quantity | Status |", "|---|---|---|---|---|",
       ...mine.map((r) => `| ${cell(names.get(r.equipment_id) ?? r.equipment_id)} | ${r.starts_on} | ${r.ends_on} | ${r.quantity} | ${r.status} |`), "");
   }
   return { status: 200, body: { markdown: lines.join("\n") } };

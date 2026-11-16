@@ -322,7 +322,7 @@ def browser_scenarios(probe_url: str) -> None:
         section("Panel: micro-applications are ordinary assets")
         panel_page = alice.new_page()
         panel_page.goto(f"{L.BASE_URL}/microapps")
-        panel_page.wait_for_selector("text=Rejestr wniosków", timeout=15000)
+        panel_page.wait_for_selector("text=Request register", timeout=15000)
         check("the old /microapps address lands on the documents list filtered by kind",
               "f=type%3Amicro_application" in panel_page.url, panel_page.url)
         slug = panel_page.evaluate(f"async () => (await (await fetch('/api/micro-applications/{REQ['asset_id']}')).json()).slug")
@@ -339,8 +339,8 @@ def browser_scenarios(probe_url: str) -> None:
         check("the access tab lists the people of the app", panel_page.locator("text=bob@example.com").count() >= 1)
         bob_row = panel_page.locator("li", has_text="bob@example.com")
         check("bob's row shows the app's roles with his one chosen",
-              bob_row.get_by_role("checkbox", name="Pracownik").is_checked()
-              and not bob_row.get_by_role("checkbox", name="Recenzent").is_checked())
+              bob_row.get_by_role("checkbox", name="Employee").is_checked()
+              and not bob_row.get_by_role("checkbox", name="Reviewer").is_checked())
         check("the asset page has no upload control", panel_page.locator('input[type="file"]').count() == 0)
         # With a share link the asset page and its tabs stay on /v/<slug>: the
         # link opens the app itself, so tabs under it would land in the app.
@@ -451,15 +451,20 @@ async def mcp_scenarios() -> str:
     section("Agents read an app as each person sees it")
     views = {u: await mcp(u, "ics_asset_read", {"slug_or_id": REQ["asset_id"]}) for u in ("bob", "carol", "dave")}
     check("bob's view of the register lists his own requests, without the review queue",
-          "#### Moje wnioski" in views["bob"]["content"] and "Do zatwierdzenia" not in views["bob"]["content"], views["bob"].get("app_view"))
+          "#### My requests" in views["bob"]["content"] and "To approve" not in views["bob"]["content"], views["bob"].get("app_view"))
     check("carol, a reviewer, also sees the queue waiting for her",
-          "#### Moje wnioski" in views["carol"]["content"] and "#### Do zatwierdzenia" in views["carol"]["content"], views["carol"].get("app_view"))
+          "#### My requests" in views["carol"]["content"] and "#### To approve" in views["carol"]["content"], views["carol"].get("app_view"))
     check("dave, without requests.read, is told which permission the view needs",
           "Not readable for you (needs `requests.read`)" in views["dave"]["content"] and views["dave"]["app_view"]["error"] == "forbidden",
           views["dave"].get("app_view"))
 
     section("Publishers compare releases, users do not")
     versions = (await mcp("alice", "ics_asset_versions", {"slug_or_id": REQ["asset_id"]}))["versions"]
+    if len(versions) < 2:
+        # A freshly seeded register has one release; publish it again to compare two.
+        _, op = await publish("alice", "requests", REQ["asset_id"])
+        await wait_op("alice", op["operation_id"])
+        versions = (await mcp("alice", "ics_asset_versions", {"slug_or_id": REQ["asset_id"]}))["versions"]
     check("the register has a package version per release", len(versions) >= 2, len(versions))
     newest, before = versions[0]["version"], versions[1]["version"]
     diff = await mcp("alice", "ics_asset_diff", {"slug_or_id": REQ["asset_id"], "v1": before, "v2": newest})

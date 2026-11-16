@@ -1,56 +1,71 @@
-// Rezerwacje sprzętu: catalog via CRUD, booking and cancelling via custom
+// Equipment booking: catalog via CRUD, booking and cancelling via custom
 // endpoints that change both tables in one transaction.
 const equipment = ics.collection("equipment");
 const reservations = ics.collection("reservations");
 const $ = (id) => document.getElementById(id);
-const say = (text) => { $("status").textContent = text; };
+let statusTimer;
+const say = (text) => {
+  $("status").textContent = text;
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => { $("status").textContent = ""; }, 4000);
+};
 const today = () => new Date().toISOString().slice(0, 10);
 let names = new Map();
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
-    if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+    if (k === "class") node.className = v;
+    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
     else node.setAttribute(k, v);
   }
   node.append(...children);
   return node;
 }
 
-const failed = (e) => say(`Błąd: ${e.code || e.status} ${e.message}`);
+const failed = (e) => say(`Error: ${e.code || e.status} ${e.message}`);
+
+function fill(listId, countId, items, empty, render) {
+  $(countId).textContent = String(items.length);
+  $(listId).replaceChildren(...(items.length ? items.map(render) : [el("li", { class: "empty" }, empty)]));
+}
 
 async function loadCatalog(canBook) {
   const page = await equipment.list({ limit: 100, sort: "name" });
   names = new Map(page.items.map((x) => [x.id, x.name]));
-  $("equipment-list").replaceChildren(...page.items.map((x) => {
-    const qty = el("input", { type: "number", min: "1", max: "50", value: "1", "aria-label": "Liczba" });
-    const book = el("button", { onclick: async () => {
+  fill("equipment-list", "catalog-count", page.items, "The catalogue is empty.", (x) => {
+    const qty = el("input", { type: "number", min: "1", max: "50", value: "1", "aria-label": "Quantity" });
+    const book = el("button", { type: "button", class: "primary", onclick: async () => {
       try {
         const r = await ics.call("POST", "/v1/custom/reservations", {
           body: { equipmentId: x.id, startsOn: today(), endsOn: today(), quantity: Number(qty.value) },
         });
-        say(`Zarezerwowano. Dostępne: ${r.available}.`);
+        say(`Booked. Available: ${r.available}.`);
         await refresh();
       } catch (e) { failed(e); }
-    } }, "Rezerwuj");
+    } }, "Book");
+    const stock = el("span", { class: `badge ${x.available ? "approved" : "cancelled"}` }, `${x.available} of ${x.quantity} available`);
     return el("li", { "data-id": x.id },
-      el("strong", {}, x.name), el("span", {}, `${x.category} · dostępne ${x.available}/${x.quantity}`),
-      ...(canBook && x.active ? [qty, book] : []));
-  }));
+      el("div", { class: "row" }, el("span", { class: "title" }, x.name), stock),
+      el("div", { class: "desc" }, x.category),
+      ...(canBook && x.active ? [el("div", { class: "row actions" }, el("span", { class: "qty" }, qty), book)] : []));
+  });
 }
 
 async function loadMine() {
   const page = await reservations.list({ limit: 100 });
-  $("reservation-list").replaceChildren(...page.items.map((r) => el("li", { "data-id": r.id },
-    el("strong", {}, names.get(r.equipment_id) ?? r.equipment_id),
-    el("span", {}, `${r.starts_on} → ${r.ends_on} · ${r.quantity} szt. · ${r.status}`),
-    ...(r.status === "active" ? [el("button", { onclick: async () => {
+  fill("reservation-list", "mine-count", page.items, "You have no bookings.", (r) => el("li", { "data-id": r.id },
+    el("div", { class: "row" },
+      el("span", { class: "title" }, names.get(r.equipment_id) ?? r.equipment_id),
+      el("span", { class: `badge ${r.status}` }, r.status)),
+    el("div", { class: "desc" }, `${r.starts_on} → ${r.ends_on} · ${r.quantity} pcs`),
+    ...(r.status === "active" ? [el("div", { class: "row actions" }, el("button", { type: "button", class: "danger", onclick: async () => {
       try {
         const out = await ics.call("POST", `/v1/custom/reservations/${r.id}/cancel`, { body: {}, ifMatch: r.revision });
-        say(`Anulowano. Dostępne: ${out.available}.`);
+        say(`Cancelled. Available: ${out.available}.`);
         await refresh();
       } catch (e) { failed(e); }
-    } }, "Anuluj")] : []))));
+    } }, "Cancel"))] : [])));
 }
 
 let perms = new Set();
@@ -62,11 +77,13 @@ async function refresh() {
 async function main() {
   const s = await ics.session();
   perms = new Set(s.permissions);
-  $("who").textContent = `${s.user.displayName ?? "Gość"} · wydanie ${s.app.release.slice(0, 8)}`;
+  $("who").textContent = `${s.user.displayName ?? "Guest"} · release ${s.app.release.slice(0, 8)}`;
   $("manage").hidden = !perms.has("equipment.manage");
   $("catalog").hidden = !perms.has("equipment.read");
   $("mine").hidden = !perms.has("reservations.read");
-  if (!perms.size) say("Nie masz jeszcze uprawnień w tej aplikacji.");
+  if (!perms.size) {
+    document.querySelector("main").append(el("p", { class: "card empty" }, "You have no permissions in this app yet. Ask its owner to give you a role in ICS."));
+  }
   await refresh();
 }
 
@@ -77,7 +94,7 @@ $("new-equipment").addEventListener("submit", async (e) => {
   try {
     await equipment.create({ name: f.name.value, category: f.category.value, quantity, available: quantity, active: true });
     f.reset();
-    say("Dodano sprzęt.");
+    say("Equipment added.");
     await refresh();
   } catch (err) { failed(err); }
 });
