@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.services import notifications
 
@@ -61,3 +61,13 @@ class Manifest(BaseModel):
     commit_sha: str = Field(min_length=1, max_length=64)
     commit_timestamp: datetime
     bundle_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    release_id: str | None = Field(
+        default=None, min_length=1, max_length=200, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    )
+    release_generation: int | None = Field(default=None, strict=True, ge=1, le=2**63 - 1)
+
+    @model_validator(mode="after")
+    def release_identity_is_complete(self) -> Manifest:
+        if (self.release_id is None) != (self.release_generation is None):
+            raise ValueError("release_id and release_generation must be supplied together")
+        return self

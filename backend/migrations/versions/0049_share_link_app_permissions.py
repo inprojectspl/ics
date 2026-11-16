@@ -1,7 +1,7 @@
 """share link app permissions
 
-Revision ID: 0046
-Revises: 0045
+Revision ID: 0049
+Revises: 0048
 Create Date: 2026-11-12
 
 A share link of a micro-application names the app permissions its holders
@@ -14,8 +14,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0046"
-down_revision: str | None = "0045"
+revision: str = "0049"
+down_revision: str | None = "0048"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

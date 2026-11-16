@@ -392,13 +392,14 @@ async def project_role(session: AsyncSession, user: User, project: Project) -> s
 
 
 async def assert_project_contributor(
-    session: AsyncSession, user: User, project_id: UUID
+    session: AsyncSession, user: User, project_id: UUID, *, refresh: bool = False
 ) -> Project:
     """Resolve a project the caller may add content to (admin, owner or editor).
 
     404 when missing or soft-deleted, 403 otherwise.
+    `refresh` bypasses cached row state after waiting for a mutation lock.
     """
-    project = await session.get(Project, project_id)
+    project = await session.get(Project, project_id, populate_existing=refresh)
     if project is None or project.deleted_at is not None:
         raise NotFoundError("project_not_found", "project not found")
     if await project_role(session, user, project) not in ("owner", "editor"):

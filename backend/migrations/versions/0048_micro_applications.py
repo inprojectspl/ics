@@ -1,7 +1,7 @@
 """micro-applications
 
-Revision ID: 0045
-Revises: 0044
+Revision ID: 0048
+Revises: 0047
 Create Date: 2026-11-12
 
 Platform records of the `micro_application` asset kind: environments with
@@ -17,8 +17,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0045"
-down_revision: str | None = "0044"
+revision: str = "0048"
+down_revision: str | None = "0047"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

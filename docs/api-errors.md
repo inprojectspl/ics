@@ -115,6 +115,7 @@ Codes follow the RFC 6749, RFC 7591 and RFC 8707 error names.
 | `bundle_withheld` | 410 | HTML bundle or document (PDF, Office) is withheld pending admin review. |
 | `file_not_found` | 404 | File does not exist in the asset or version. |
 | `file_exists` | 409 | A file with this path already exists. |
+| `version_conflict` | 409 | `expected_version` does not match the current version under the write lock. Reload before retrying; the rejected write does not stage files or create a version. |
 | `source_missing` | 404 | Stored source files are missing. |
 | `entry_missing` | 404 | The asset has no entry file. |
 | `collection_only` | 400 | Operation works only on Markdown collections. |
@@ -166,6 +167,8 @@ Codes follow the RFC 6749, RFC 7591 and RFC 8707 error names.
 | `binary_too_large` | 413 | Binary file is too large for base64 transfer. |
 | `upload_too_large` | 413 | Uploaded file or asset exceeds the size limit. |
 | `request_too_large` | 413 | Request body exceeds the server limit. |
+| `publication_conflict` | 409 | Publication key already belongs to a different semantic payload. |
+| `publication_not_found` | 404 | Publication receipt is absent, belongs to another principal, or its asset was removed. |
 | `storage_quota_exceeded` | 413 | User's storage quota would be exceeded. |
 | `bundle_too_large` | 413 | Bundle exceeds the size limit. |
 | `bundle_too_many_files` | 413 | Bundle has too many files. |
@@ -291,6 +294,8 @@ Codes follow the RFC 6749, RFC 7591 and RFC 8707 error names.
 | `bundle_hash_mismatch` | 400 | Bundle SHA-256 differs from the manifest. |
 | `commit_from_future` | 400 | Commit timestamp is too far in the future. |
 | `replay_rejected` | 409 | Push is a replay or out of order. |
+| `release_required` | 409 | This binding already uses release generations; the signed manifest must include its release identity. |
+| `release_generation_conflict` | 409 | A new release ID must have a generation greater than the last accepted generation. |
 | `webhook_pair_incomplete` | 400 | `provider` and `webhook_url` must be set, cleared or patched together. |
 | `invalid_webhook` | 400 | Unknown notification provider or URL not valid for it. |
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-from datetime import UTC, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
@@ -18,12 +18,19 @@ from app.db import get_session
 from app.errors import ApiError
 from app.models import Asset, GitLabBinding
 from app.redis_client import get_redis
-from app.services import asset_versions, notifications
+from app.services import asset_versions, binding_publications, notifications, publications
 from app.util import ip_hash
 from app.util import now as utc_now
 
 from ._models import Manifest
 from ._router import router
+
+
+def _assert_legacy_order(binding: GitLabBinding, timestamp: datetime) -> None:
+    if binding.last_release_generation is not None:
+        raise ApiError(409, "release_required", "binding requires signed release identity")
+    if binding.last_sync_timestamp is not None and timestamp <= binding.last_sync_timestamp:
+        raise ApiError(409, "replay_rejected", "replay or out-of-order push")
 
 
 @router.post("/{binding_id}/sync", status_code=status.HTTP_201_CREATED)
@@ -62,6 +69,7 @@ async def sync_binding(
     # bundle. Forged requests pay only manifest+signature read costs.
     manifest_bytes = await manifest.read()
     signature_b64 = (await signature.read()).decode("ascii", errors="replace").strip()
+    verified_key = binding.public_key
     # Ed25519 verify + PEM parse cost ~10-30 ms CPU; offload so the event loop is not blocked.
     if not await asyncio.to_thread(
         signing.verify, manifest_bytes, signature_b64, binding.public_key
@@ -96,10 +104,10 @@ async def sync_binding(
     if manifest_ts > utc_now() + timedelta(minutes=5):
         raise ApiError(status.HTTP_400_BAD_REQUEST, "commit_from_future", "commit from the future")
 
-    # Replay check needs only the manifest, so a replayed push is refused
-    # before the bundle is read or hashed.
-    if binding.last_sync_timestamp is not None and manifest_ts <= binding.last_sync_timestamp:
-        raise ApiError(status.HTTP_409_CONFLICT, "replay_rejected", "replay or out-of-order push")
+    # Keep the legacy cheap rejection. Signed releases must validate the
+    # actual bundle before they may recover an already committed result.
+    if m.release_id is None:
+        _assert_legacy_order(binding, manifest_ts)
 
     bundle_bytes = await bundle.read()
     # Hashing 100 MB costs a few hundred ms of CPU, so it is offloaded too.
@@ -107,17 +115,50 @@ async def sync_binding(
     if digest != m.bundle_sha256:
         raise ApiError(status.HTTP_400_BAD_REQUEST, "bundle_hash_mismatch", "bundle hash mismatch")
 
-    asset = await session.get(Asset, binding.asset_id)
+    # Recheck the principal and order after upload and lock acquisition. The
+    # same binding lock covers receipt lookup and the version's commit.
+    binding = await session.get(
+        GitLabBinding, binding_id, with_for_update=True, populate_existing=True
+    )
+    if binding is None:
+        raise ApiError(404, "binding_not_found", "binding not found")
+    if binding.public_key != verified_key and not await asyncio.to_thread(
+        signing.verify, manifest_bytes, signature_b64, binding.public_key
+    ):
+        raise ApiError(403, "bad_signature", "binding signing key changed")
+    asset = await session.get(Asset, binding.asset_id, with_for_update=True, populate_existing=True)
     if asset is None or asset.deleted_at is not None:
         raise ApiError(status.HTTP_404_NOT_FOUND, "asset_not_found", "asset not found")
     microapp_guard.refuse_write(asset)
 
-    # The check above ran before the bundle was read; a newer push may have
-    # landed meanwhile. Under the row lock, held until the version commits,
-    # an older push cannot overwrite it.
-    await session.refresh(binding, with_for_update=True)
-    if binding.last_sync_timestamp is not None and manifest_ts <= binding.last_sync_timestamp:
-        raise ApiError(status.HTTP_409_CONFLICT, "replay_rejected", "replay or out-of-order push")
+    publication = None
+    if m.release_id is None:
+        _assert_legacy_order(binding, manifest_ts)
+    else:
+        assert m.release_generation is not None  # validated as a pair by Manifest
+        publication = binding_publications.BindingPublication(
+            binding_id=binding.id,
+            release_id=m.release_id,
+            generation=m.release_generation,
+            payload_hash=publications.canonical_hash(
+                {
+                    "schema_version": publications.SCHEMA_VERSION,
+                    "operation": "binding_sync",
+                    "binding_id": str(binding.id),
+                    "asset_id": str(binding.asset_id),
+                    "release_id": m.release_id,
+                    "release_generation": m.release_generation,
+                    "commit_sha": m.commit_sha,
+                    "commit_timestamp": manifest_ts.astimezone(UTC).isoformat(),
+                    "bundle_sha256": digest,
+                }
+            ),
+            commit_sha=m.commit_sha,
+        )
+        replay = await binding_publications.replay_or_admit(session, binding, publication)
+        if replay is not None:
+            return replay
+        binding.last_release_generation = m.release_generation
 
     binding.last_sync_at = utc_now()
     binding.last_sync_commit_sha = m.commit_sha
@@ -131,6 +172,7 @@ async def sync_binding(
         stage=asset_versions.extract_bundle(bundle_bytes, settings),
         actor=f"binding:{binding.id}",
         created_by=binding.created_by,
+        binding_publication=publication,
         audit_action="binding_synced",
         audit_payload=lambda nv: {
             "commit_sha": m.commit_sha,
@@ -139,6 +181,11 @@ async def sync_binding(
             "file_count": nv.file_count,
             "size_bytes": nv.size_bytes,
             "security": nv.security,
+            **(
+                {"release_id": publication.release_id, "release_generation": publication.generation}
+                if publication is not None
+                else {}
+            ),
         },
     )
 
@@ -156,7 +203,7 @@ async def sync_binding(
         settings=settings,
     )
 
-    return {
+    return result.publication_result or {
         "version": result.version,
         "entry_path": result.entry_path,
         "file_count": result.file_count,

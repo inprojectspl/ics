@@ -27,6 +27,7 @@ class MoveFileIn(BaseModel):
     from_path: str = Field(min_length=1, max_length=500)
     to_path: str = Field(min_length=1, max_length=500)
     change_note: str | None = Field(default=None, max_length=asset_versions.CHANGE_NOTE_MAX_CHARS)
+    expected_version: int | None = Field(default=None, ge=1)
 
 
 @router.patch("/{asset_id}/files/move")
@@ -56,37 +57,41 @@ async def move_file_in_collection(
     if not from_rel.lower().endswith(".md") or not to_rel.lower().endswith(".md"):
         raise ApiError(status.HTTP_400_BAD_REQUEST, "md_file_required", "only .md files")
 
-    try:
-        moved_text = await read_text(asset, from_rel, settings)
-    except FileNotFoundError:
-        raise ApiError(
-            status.HTTP_404_NOT_FOUND,
-            "file_not_found",
-            f"file {from_rel} does not exist in the current version",
-        ) from None
+    async def stage(draft: asset_versions.VersionDraft) -> asset_versions.StagedTree:
+        try:
+            moved_text = await read_text(draft.asset, from_rel, settings)
+        except FileNotFoundError:
+            raise ApiError(
+                status.HTTP_404_NOT_FOUND,
+                "file_not_found",
+                f"file {from_rel} does not exist in the current version",
+            ) from None
 
-    current_files = await list_version_files(asset, asset.version, settings)
-    if to_rel in current_files:
-        raise ApiError(
-            status.HTTP_409_CONFLICT,
-            "file_exists",
-            f"file {to_rel} already exists; choose another name",
-        )
+        current_files = await list_version_files(draft.asset, draft.asset.version, settings)
+        if to_rel in current_files:
+            raise ApiError(
+                status.HTTP_409_CONFLICT,
+                "file_exists",
+                f"file {to_rel} already exists; choose another name",
+            )
+
+        return await asset_versions.edit_files(
+            put={to_rel: moved_text.encode("utf-8")},
+            delete=[from_rel],
+            entry_path=to_rel if from_rel == draft.asset.entry_path else None,
+        )(draft)
 
     # Total bytes unchanged: same content, just renamed/relocated.
     result = await asset_versions.commit_new_version(
         session,
         asset,
         settings,
-        stage=asset_versions.edit_files(
-            put={to_rel: moved_text.encode("utf-8")},
-            delete=[from_rel],
-            entry_path=to_rel if from_rel == asset.entry_path else None,
-        ),
+        stage=stage,
         actor=user,
         audit_action="vault_file_moved",
         audit_payload=lambda nv: {"version": nv.version, "from": from_rel, "to": to_rel},
         change_note=body.change_note,
+        expected_version=body.expected_version,
     )
     return {
         "id": str(asset.id),
