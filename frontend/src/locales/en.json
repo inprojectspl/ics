@@ -1190,7 +1190,10 @@
   "microapps.packageNewer": "Newer package v{version} is not active",
   "microapps.platform.control": "Control: enable, sleep, restart, logs",
   "microapps.platform.publish": "Publishing new releases",
-  "microapps.rows": "≈{rows} rows in {tables} tables",
+  "microapps.rows": {
+    "one": "≈{count} row in {tables}",
+    "other": "≈{count} rows in {tables}"
+  },
   "microapps.sampled": "Sample {when}",
   "microapps.schema": "Schema v{version}",
   "microapps.state.draining": "Finishing requests",
@@ -1201,6 +1204,10 @@
   "microapps.state.unknown": "State unknown (no fresh sample)",
   "microapps.suspendBody": "New requests are refused at once and running ones are finished. Data stays. The app does not wake up on its own until someone enables it.",
   "microapps.suspendTitle": "Suspend {name}?",
+  "microapps.tables": {
+    "one": "{count} table",
+    "other": "{count} tables"
+  },
   "microapps.tab.access": "Access",
   "microapps.tab.app": "App",
   "microapps.tab.data": "Data",

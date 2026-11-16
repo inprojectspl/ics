@@ -1,6 +1,6 @@
 import type { MicroApp, MicroAppAction } from "../../api/microApplications";
 import { formatBytes, formatRelative } from "../../lib/format";
-import { t, type MessageKey } from "../../lib/i18n";
+import { t, tn, type MessageKey } from "../../lib/i18n";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { DetailItem, DetailList } from "../ui/DetailList";
@@ -76,7 +76,7 @@ export function MicroAppOverview({ app }: { app: MicroApp }) {
             <>
               <div>{formatBytes(app.data.bytes)}</div>
               <div className="text-meta text-text-secondary">
-                {t("microapps.rows", { rows: app.data.rows_estimate ?? 0, tables: app.data.tables ?? 0 })}
+                {tn("microapps.rows", app.data.rows_estimate ?? 0, { tables: tn("microapps.tables", app.data.tables ?? 0) })}
               </div>
             </>
           ) : (

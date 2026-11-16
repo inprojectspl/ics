@@ -130,4 +130,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   leaves the current version and its history intact.
 - The backend test runner waits for PostgreSQL over TCP, so the temporary Unix-socket-only server of
   the image initialization no longer starts tests before the final database is ready.
+- An app's data summary says "1 table" and "1 row" instead of "1 tables", in English and Polish.
 
