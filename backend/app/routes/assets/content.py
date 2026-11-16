@@ -37,11 +37,13 @@ class EditContentIn(BaseModel):
     content: str = Field(max_length=10_000_000)  # 10 MB hard cap; quota does the soft one
     path: str | None = Field(default=None, max_length=500)
     change_note: str | None = Field(default=None, max_length=asset_versions.CHANGE_NOTE_MAX_CHARS)
+    expected_version: int | None = Field(default=None, ge=1)
 
 
 class NewEmptyFileIn(BaseModel):
     path: str = Field(min_length=1, max_length=500)
     change_note: str | None = Field(default=None, max_length=asset_versions.CHANGE_NOTE_MAX_CHARS)
+    expected_version: int | None = Field(default=None, ge=1)
 
 
 @router.put("/{asset_id}/content", status_code=status.HTTP_201_CREATED)
@@ -124,6 +126,7 @@ async def edit_content(
             "new_bytes": len(new_bytes),
         },
         change_note=body.change_note,
+        expected_version=body.expected_version,
     )
     return {
         "id": str(asset.id),
@@ -143,6 +146,7 @@ async def delete_file_in_collection(
     change_note: Annotated[
         str | None, Query(max_length=asset_versions.CHANGE_NOTE_MAX_CHARS)
     ] = None,
+    expected_version: Annotated[int | None, Query(ge=1)] = None,
 ) -> dict:
     """Remove a single .md file from a vault, bumping the asset version.
 
@@ -189,6 +193,7 @@ async def delete_file_in_collection(
             "new_entry": nv.entry_path,
         },
         change_note=change_note,
+        expected_version=expected_version,
     )
     return {
         "id": str(asset.id),
@@ -210,6 +215,7 @@ async def add_file_to_collection(
     change_note: Annotated[
         str | None, Form(max_length=asset_versions.CHANGE_NOTE_MAX_CHARS)
     ] = None,
+    expected_version: Annotated[int | None, Form(ge=1)] = None,
 ) -> dict:
     """Add a new .md file to an existing vault, bumping the asset version.
 
@@ -242,6 +248,7 @@ async def add_file_to_collection(
         audit_action="vault_file_added",
         audit_payload=lambda nv: {"version": nv.version, "path": rel, "bytes": len(content)},
         change_note=change_note,
+        expected_version=expected_version,
     )
     return {
         "id": str(asset.id),
@@ -277,6 +284,7 @@ async def create_empty_file_in_collection(
         audit_action="vault_file_added",
         audit_payload=lambda nv: {"version": nv.version, "path": rel, "bytes": 0, "empty": True},
         change_note=body.change_note,
+        expected_version=body.expected_version,
     )
     return {
         "id": str(asset.id),

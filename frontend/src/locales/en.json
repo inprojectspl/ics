@@ -725,6 +725,7 @@
   "error.external_ref_limit": "This document already has the maximum number of task links.",
   "error.external_ref_not_found": "Task link not found.",
   "error.file_exists": "A file with this path already exists.",
+  "error.version_conflict": "This document changed. Reload it before trying to save again.",
   "error.file_not_found": "File not found.",
   "error.file_too_large": "The file is too long to show in full.",
   "error.forbidden": "You are not allowed to do this.",

@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HTML JSON publications accept a scoped idempotency key and keep a durable receipt (`GET
   /api/assets/publications/{id}`), so a retry after a lost response returns the original result
   instead of a second document (migration 0046, docs/publication-receipts-api.md).
+- Version writes can reject stale edits. Asset write endpoints accept an optional
+  `expected_version`; a mismatch returns `409 version_conflict` before any file is staged, and calls
+  without it behave as before (docs/expected-version-api.md).
 
 ### Changed
 

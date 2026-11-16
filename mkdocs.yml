@@ -109,6 +109,7 @@ nav:
       - api-errors.md
       - notifications-api.md
       - publication-receipts-api.md
+      - expected-version-api.md
       - DESIGN.md
   - Decisions:
       - Overview: decisions/README.md

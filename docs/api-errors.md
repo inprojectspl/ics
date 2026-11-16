@@ -115,6 +115,7 @@ Codes follow the RFC 6749, RFC 7591 and RFC 8707 error names.
 | `bundle_withheld` | 410 | HTML bundle or document (PDF, Office) is withheld pending admin review. |
 | `file_not_found` | 404 | File does not exist in the asset or version. |
 | `file_exists` | 409 | A file with this path already exists. |
+| `version_conflict` | 409 | `expected_version` does not match the current version under the write lock. Reload before retrying; the rejected write does not stage files or create a version. |
 | `source_missing` | 404 | Stored source files are missing. |
 | `entry_missing` | 404 | The asset has no entry file. |
 | `collection_only` | 400 | Operation works only on Markdown collections. |

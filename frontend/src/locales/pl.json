@@ -771,6 +771,7 @@
   "error.external_ref_limit": "Ten dokument ma już maksymalną liczbę powiązań z zadaniami.",
   "error.external_ref_not_found": "Nie znaleziono powiązania z zadaniem.",
   "error.file_exists": "Plik o tej ścieżce już istnieje.",
+  "error.version_conflict": "Dokument został zmieniony. Wczytaj go ponownie przed kolejną próbą zapisu.",
   "error.file_not_found": "Nie znaleziono pliku.",
   "error.file_too_large": "Plik jest za długi, by pokazać go w całości.",
   "error.forbidden": "Brak uprawnień do tej operacji.",

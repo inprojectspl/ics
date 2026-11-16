@@ -27,6 +27,7 @@ class MoveFileIn(BaseModel):
     from_path: str = Field(min_length=1, max_length=500)
     to_path: str = Field(min_length=1, max_length=500)
     change_note: str | None = Field(default=None, max_length=asset_versions.CHANGE_NOTE_MAX_CHARS)
+    expected_version: int | None = Field(default=None, ge=1)
 
 
 @router.patch("/{asset_id}/files/move")
@@ -89,6 +90,7 @@ async def move_file_in_collection(
         audit_action="vault_file_moved",
         audit_payload=lambda nv: {"version": nv.version, "from": from_rel, "to": to_rel},
         change_note=body.change_note,
+        expected_version=body.expected_version,
     )
     return {
         "id": str(asset.id),

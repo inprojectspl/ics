@@ -116,6 +116,7 @@ async def create_version(
         str | None, Form(max_length=asset_versions.CHANGE_NOTE_MAX_CHARS)
     ] = None,
     entry_path: Annotated[str | None, Form()] = None,
+    expected_version: Annotated[int | None, Form(ge=1)] = None,
 ) -> dict:
     """Replace asset content with a new version. The asset's kind is
     immutable, so uploads must match the existing kind's shape:
@@ -200,6 +201,7 @@ async def create_version(
             "security": nv.security,
         },
         change_note=change_note,
+        expected_version=expected_version,
     )
     return {
         "id": str(asset.id),
@@ -238,6 +240,7 @@ async def restore_version(
     change_note: Annotated[
         str | None, Query(max_length=asset_versions.CHANGE_NOTE_MAX_CHARS)
     ] = None,
+    expected_version: Annotated[int | None, Query(ge=1)] = None,
 ) -> dict:
     """Roll back to an older version by copying its storage tree forward to
     version N+1. Keeps the history monotonic (no "version going backwards"
@@ -276,6 +279,7 @@ async def restore_version(
             "security": nv.security,
         },
         change_note=change_note,
+        expected_version=expected_version,
     )
     return {
         "id": str(asset.id),

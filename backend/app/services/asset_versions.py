@@ -19,7 +19,7 @@ from app.bundle_extract import extract_to_storage
 from app.bundle_scan import prompt_injection
 from app.collections_io import derive_entry_path, read_markdown_files
 from app.config import Settings
-from app.domain_errors import InvalidInputError, NotFoundError
+from app.domain_errors import ConflictError, InvalidInputError, NotFoundError
 from app.models import Asset, AssetVersion, User
 from app.services import asset_security, documents, ocr, read_size, relation_extraction
 from app.services.notifications import events as notification_events
@@ -86,13 +86,22 @@ async def commit_new_version(
     audit_payload: AuditPayload,
     created_by: UUID | None = None,
     change_note: str | None = None,
+    expected_version: int | None = None,
 ) -> NewVersion:
     """Write a new version of `asset` with `stage` and commit the session.
 
     `created_by` defaults to the acting user. The commit also saves whatever
     else the caller changed in the session (the CI sync relies on it).
+    `expected_version` compares against the locked row before touching storage;
+    omitting it preserves the existing serialized-write behavior.
     """
     await session.refresh(asset, with_for_update=True)
+    if expected_version is not None and expected_version != asset.version:
+        raise ConflictError(
+            "version_conflict",
+            "the asset version changed; reload it before retrying the write",
+            field="expected_version",
+        )
     user = actor if isinstance(actor, User) else None
     if created_by is None and user is not None:
         created_by = user.id
