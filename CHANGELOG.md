@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `format=markdown` on an agent read of a Markdown file (`file-mcp`, `agent-view`, share
   `resolve`) drops its HTML comments, so machine markers such as transcript timestamps do not
   cost tokens; comments in code stay and every line keeps its number.
+- HTML JSON publications accept a scoped idempotency key and keep a durable receipt (`GET
+  /api/assets/publications/{id}`), so a retry after a lost response returns the original result
+  instead of a second document (migration 0046, docs/publication-receipts-api.md).
 
 ### Changed
 

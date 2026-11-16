@@ -808,6 +808,8 @@
   "error.project_not_found": "Project not found.",
   "error.project_role_required": "Your project role does not allow this.",
   "error.project_share_home": "The file already belongs to this project.",
+  "error.publication_conflict": "This publication key was already used for different content.",
+  "error.publication_not_found": "Publication confirmation not found.",
   "error.push_endpoint_not_allowed": "This browser's push service is not supported.",
   "error.push_not_configured": "Browser notifications are not configured on the server.",
   "error.push_subscription_not_found": "This device was not found. It may have been removed already.",

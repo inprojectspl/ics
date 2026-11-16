@@ -108,6 +108,7 @@ nav:
   - Reference:
       - api-errors.md
       - notifications-api.md
+      - publication-receipts-api.md
       - DESIGN.md
   - Decisions:
       - Overview: decisions/README.md

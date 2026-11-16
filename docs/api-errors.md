@@ -166,6 +166,8 @@ Codes follow the RFC 6749, RFC 7591 and RFC 8707 error names.
 | `binary_too_large` | 413 | Binary file is too large for base64 transfer. |
 | `upload_too_large` | 413 | Uploaded file or asset exceeds the size limit. |
 | `request_too_large` | 413 | Request body exceeds the server limit. |
+| `publication_conflict` | 409 | Publication key already belongs to a different semantic payload. |
+| `publication_not_found` | 404 | Publication receipt is absent, belongs to another principal, or its asset was removed. |
 | `storage_quota_exceeded` | 413 | User's storage quota would be exceeded. |
 | `bundle_too_large` | 413 | Bundle exceeds the size limit. |
 | `bundle_too_many_files` | 413 | Bundle has too many files. |

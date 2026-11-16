@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+from dataclasses import asdict
 from typing import Annotated
 from uuid import uuid4
 
@@ -16,13 +18,14 @@ from app.db import get_session
 from app.errors import ApiError
 from app.jobs.queue import enqueue
 from app.json_response import ORJSONResponse
-from app.models import Asset, AssetVersion, ShareLink
+from app.models import Asset, AssetVersion, PublicationReceipt, ShareLink
 from app.routes.assets._create_metadata import request_summary_source
-from app.services import asset_metadata, read_size, relation_extraction
+from app.services import asset_metadata, publications, read_size, relation_extraction
 from app.services import asset_security as asset_security_svc
 from app.services.notifications import events as notification_events
 from app.services.upload import BytesFile, stage_asset_files
 from app.slug import generate_token
+from app.storage import storage_from_url
 
 from ._models import HtmlBundleCreate
 from ._router import router
@@ -41,12 +44,7 @@ async def create_html_bundle_json(
     if payload.project_id is not None:
         await permissions.assert_project_contributor(session, user, payload.project_id)
     share_mode = payload.share_mode or "org_sso"
-    meta = await asset_metadata.prepare_create_metadata(
-        session,
-        doc_type=payload.doc_type,
-        summary=payload.summary,
-        source=request_summary_source(request),
-    )
+    source = request_summary_source(request)
 
     total = 0
     files_raw: list[tuple[str, bytes, str | None]] = []
@@ -80,11 +78,47 @@ async def create_html_bundle_json(
             )
         total += len(data)
         # Checked incrementally so we can reject before decoding the rest.
-        quota.assert_bundle_fits(total_bytes=total, bundle_max_bytes=user.bundle_max_bytes)
+        if payload.publication is None:
+            quota.assert_bundle_fits(total_bytes=total, bundle_max_bytes=user.bundle_max_bytes)
         files_raw.append((f.path, data, f.mime))
 
     if payload.entry_path not in seen_paths:
         raise ApiError(status.HTTP_400_BAD_REQUEST, "invalid_entry_path", "entry_path not in files")
+
+    scope = None
+    payload_hash = None
+    if payload.publication is not None:
+        key = payload.publication
+        scope = publications.PublicationScope(
+            user.id, payload.project_id, key.order_id, key.role, key.id
+        )
+        summary = asset_metadata.normalize_summary(payload.summary)
+        payload_hash = publications.canonical_hash(
+            {
+                "schema_version": publications.SCHEMA_VERSION,
+                "operation": "create_html",
+                "title": payload.title,
+                "entry_path": payload.entry_path,
+                "share_mode": share_mode,
+                "project_id": str(payload.project_id) if payload.project_id else None,
+                "tags": payload.tags,
+                "doc_type": payload.doc_type or None,
+                "summary": summary,
+                "summary_source": source if summary else None,
+                "files": [
+                    {"path": path, "sha256": hashlib.sha256(data).hexdigest(), "mime": mime}
+                    for path, data, mime in sorted(files_raw)
+                ],
+            }
+        )
+        receipt = await publications.lock_and_replay(session, scope, user, payload_hash)
+        if receipt is not None:
+            return ORJSONResponse(receipt.result, status_code=201)
+        quota.assert_bundle_fits(total_bytes=total, bundle_max_bytes=user.bundle_max_bytes)
+
+    meta = await asset_metadata.prepare_create_metadata(
+        session, doc_type=payload.doc_type, summary=payload.summary, source=source
+    )
 
     # The shared pipeline applies the asset size limit and the total quota,
     # and wipes the files again when either fails, as for multipart uploads.
@@ -96,61 +130,58 @@ async def create_html_bundle_json(
     )
     slug, prefix = staged.slug, staged.storage_prefix
 
-    asset = Asset(
-        id=uuid4(),
-        slug=slug,
-        owner_id=user.id,
-        content_updated_by=user.id,
-        project_id=payload.project_id,
-        kind="html_bundle",
-        title=payload.title,
-        storage_prefix=prefix,
-        entry_path=payload.entry_path,
-        size_bytes=total,
-        tags=payload.tags,
-        outline_status="stale",
-    )
-    session.add(asset)
-    meta.apply(asset)
-    session.add(
-        AssetVersion(
-            asset_id=asset.id,
-            version=1,
-            storage_prefix=f"{prefix}/v1",
+    try:
+        asset = Asset(
+            id=uuid4(),
+            slug=slug,
+            owner_id=user.id,
+            content_updated_by=user.id,
+            project_id=payload.project_id,
+            kind="html_bundle",
+            title=payload.title,
+            storage_prefix=prefix,
+            entry_path=payload.entry_path,
             size_bytes=total,
-            created_by=user.id,
+            tags=payload.tags,
+            outline_status="stale",
         )
-    )
-    await asset_security_svc.scan_and_apply(asset, settings, session, actor=user)
-    await read_size.refresh_read_tokens(asset, settings)
-    await relation_extraction.extract_from_content(session, asset, settings, user.id)
-    # A critical bundle gets no link until an admin approves it (as in multipart).
-    blocked = asset_security_svc.publication_blocked(asset)
-    if not blocked:
+        session.add(asset)
+        meta.apply(asset)
         session.add(
-            ShareLink(
-                asset_id=asset.id, token=generate_token(), mode=share_mode, created_by=user.id
+            AssetVersion(
+                asset_id=asset.id,
+                version=1,
+                storage_prefix=f"{prefix}/v1",
+                size_bytes=total,
+                created_by=user.id,
             )
         )
+        await asset_security_svc.scan_and_apply(asset, settings, session, actor=user)
+        await read_size.refresh_read_tokens(asset, settings)
+        await relation_extraction.extract_from_content(session, asset, settings, user.id)
+        # A critical bundle gets no link until an admin approves it (as in multipart).
+        blocked = asset_security_svc.publication_blocked(asset)
+        if not blocked:
+            session.add(
+                ShareLink(
+                    asset_id=asset.id, token=generate_token(), mode=share_mode, created_by=user.id
+                )
+            )
 
-    await audit.record_from_request(
-        session,
-        request,
-        actor=user,
-        action="asset_uploaded",
-        target=f"asset:{asset.id}",
-        payload={
-            "kind": "html_bundle",
-            "via": "json",
-            "size": total,
-            "share_mode": None if blocked else share_mode,
-        },
-    )
-    await session.commit()
-    await notification_events.emit_created(asset, user)
-    await enqueue("rebuild_outline", str(asset.id), _job_id=f"outline:{asset.id}")
-    return ORJSONResponse(
-        {
+        await audit.record_from_request(
+            session,
+            request,
+            actor=user,
+            action="asset_uploaded",
+            target=f"asset:{asset.id}",
+            payload={
+                "kind": "html_bundle",
+                "via": "json",
+                "size": total,
+                "share_mode": None if blocked else share_mode,
+            },
+        )
+        result = {
             "id": str(asset.id),
             "slug": asset.slug,
             "title": asset.title,
@@ -159,6 +190,22 @@ async def create_html_bundle_json(
             "file_count": len(files_raw),
             "size_bytes": total,
             "security_status": asset.security_status,
-        },
-        status_code=201,
-    )
+        }
+        if scope is not None and payload_hash is not None:
+            session.add(
+                PublicationReceipt(
+                    **asdict(scope),
+                    schema_version=publications.SCHEMA_VERSION,
+                    payload_hash=payload_hash,
+                    asset_id=asset.id,
+                    version=1,
+                    result=result,
+                )
+            )
+    except Exception:
+        await storage_from_url(settings.storage_url).delete_prefix(prefix)
+        raise
+    await session.commit()
+    await notification_events.emit_created(asset, user)
+    await enqueue("rebuild_outline", str(asset.id), _job_id=f"outline:{asset.id}")
+    return ORJSONResponse(result, status_code=201)

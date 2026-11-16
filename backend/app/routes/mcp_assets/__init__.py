@@ -12,6 +12,7 @@ from . import (  # noqa: F401
     listing,
     outline,
     partial_read,
+    publications,
     search,
     security,
     upload,

@@ -106,7 +106,7 @@ def test_scope_upgrade_preserves_links_and_downgrade_never_discards_collisions()
     step = _alembic("upgrade", "0044", url=url)
     assert step.returncode == 0, step.stderr
     asset, before = asyncio.run(_seed(url))
-    step = _alembic("upgrade", "head", url=url)
+    step = _alembic("upgrade", "0045", url=url)
     assert step.returncode == 0, step.stderr
     collision, expected = asyncio.run(_check(url, asset, before))
     step = _alembic("downgrade", "0044", url=url)
@@ -115,5 +115,5 @@ def test_scope_upgrade_preserves_links_and_downgrade_never_discards_collisions()
     asyncio.run(_check_failed_downgrade(url, expected, collision))
     step = _alembic("downgrade", "0044", url=url)
     assert step.returncode == 0, step.stderr
-    step = _alembic("upgrade", "head", url=url)
+    step = _alembic("upgrade", "0045", url=url)
     assert step.returncode == 0, step.stderr

@@ -11,6 +11,7 @@ from app.models.notifications import NotificationPreference, PushSubscription, W
 from app.models.oauth import OAuthAuthCode, OAuthClient, OAuthJTIBlacklist, OAuthRefreshToken
 from app.models.ocr import DocumentOcr
 from app.models.projects import Project, ProjectMember
+from app.models.publications import PublicationReceipt
 from app.models.relations import AssetRelation, DuplicateDismissal
 from app.models.sharing import AssetProjectShare, AssetShare, ShareLink
 from app.models.tokens import PersonalAccessToken
@@ -42,6 +43,7 @@ __all__ = [
     "ProjectExternalRef",
     "ProjectKeyDocument",
     "ProjectMember",
+    "PublicationReceipt",
     "PushSubscription",
     "ShareLink",
     "User",

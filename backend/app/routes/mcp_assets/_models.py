@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.services.ocr import OcrState
 
@@ -119,6 +119,13 @@ class HtmlBundleFile(BaseModel):
         return v
 
 
+class PublicationIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: str = Field(min_length=1, max_length=200, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
+    order_id: str = Field(min_length=1, max_length=200, pattern=r"^[^\x00-\x20\x7f]+$")
+    role: str = Field(min_length=1, max_length=100, pattern=r"^[^\x00-\x20\x7f]+$")
+
+
 class HtmlBundleCreate(BaseModel):
     title: str
     entry_path: str
@@ -128,6 +135,7 @@ class HtmlBundleCreate(BaseModel):
     tags: list[str] = Field(default_factory=list, max_length=_MAX_TAGS)
     doc_type: str | None = Field(default=None, max_length=32)
     summary: str | None = None
+    publication: PublicationIn | None = None
     files: list[HtmlBundleFile] = Field(..., min_length=1, max_length=_HTML_BUNDLE_MAX_FILES)
 
     @field_validator("tags")
