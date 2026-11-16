@@ -25,6 +25,7 @@ When nothing matches, the list shows **No results for "*query*"** with the note 
 | Text of PDFs | The text layer of the file; for scanned pages, the text recognized by [OCR](formats.md#scanned-pages-and-ocr) once it finishes. |
 | Text of Word and OpenDocument files | The converted text. |
 | HTML bundles | Only the title, address, description and tags, not the page content. |
+| Micro-applications | Only the title, address, description and tags, not the app's code or its records. |
 
 Only the current version of each document is searched. Documents you cannot open never appear in results, and neither do deleted ones.
 

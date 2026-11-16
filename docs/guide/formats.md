@@ -12,6 +12,8 @@ ICS handles five kinds of documents: Markdown notes, collections of notes, HTML 
 
 How to upload each of them and the size limits are in [Documents](documents.md#upload-documents).
 
+A [micro-application](micro-applications.md) is listed among documents too, but it is an app with its own data rather than a format: it is not uploaded, an AI agent publishes it through ics-mcp.
+
 ## Markdown
 
 ICS renders Markdown on the server and shows it with the same typography in the app, on shared pages and in both themes.

@@ -1250,7 +1250,12 @@
   "microapps.packageNewer": "Nowsza paczka v{version} nie jest aktywna",
   "microapps.platform.control": "Sterowanie: włączanie, usypianie, restart, logi",
   "microapps.platform.publish": "Wdrażanie nowych wersji",
-  "microapps.rows": "≈{rows} rekordów w {tables} tabelach",
+  "microapps.rows": {
+    "one": "≈{count} rekord w {tables}",
+    "few": "≈{count} rekordy w {tables}",
+    "many": "≈{count} rekordów w {tables}",
+    "other": "≈{count} rekordu w {tables}"
+  },
   "microapps.sampled": "Próbka {when}",
   "microapps.schema": "Schemat v{version}",
   "microapps.state.draining": "Kończy żądania",
@@ -1261,6 +1266,12 @@
   "microapps.state.unknown": "Stan nieznany (brak świeżej próbki)",
   "microapps.suspendBody": "Nowe żądania są od razu odrzucane, rozpoczęte zostaną dokończone. Dane zostają. Aplikacja nie wznowi się sama, dopóki ktoś jej nie włączy.",
   "microapps.suspendTitle": "Wyłączyć {name}?",
+  "microapps.tables": {
+    "one": "{count} tabeli",
+    "few": "{count} tabelach",
+    "many": "{count} tabelach",
+    "other": "{count} tabeli"
+  },
   "microapps.tab.access": "Dostęp",
   "microapps.tab.app": "Aplikacja",
   "microapps.tab.data": "Dane",

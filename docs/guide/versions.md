@@ -8,7 +8,8 @@ ICS never overwrites a document. Every change of content (an edit in the browser
 - **Update content** with a new file or folder;
 - adding, moving or deleting a file in a collection;
 - a push to a connected GitLab repository (see [GitLab](gitlab.md));
-- restoring an older version.
+- restoring an older version;
+- publishing a new release of a micro-application (see [Micro-applications](micro-applications.md#versions-of-an-app)).
 
 Renaming a document, changing its description, metadata or tags, and sharing it do not create versions.
 

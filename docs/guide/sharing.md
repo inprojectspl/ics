@@ -131,6 +131,10 @@ Neither role can share the document further, move it to another project or delet
 
 To remove access, click **Revoke** next to the person and confirm **Revoke access**. "They will no longer be able to open this file."
 
+### Roles in a micro-application
+
+Sharing a [micro-application](micro-applications.md) with a person lets them open it. What they may do inside comes from the app's own roles: tick them under **What this person can do in the app** when you add the person, or give them later on the app's **Access** tab. A share link of an app names the roles it gives in **What people with the link may do in the app**. See [Share an app](micro-applications.md#share-an-app).
+
 ## Show a document in other projects
 
 The **Projects** tab is shown only to the document's owner and the owner of its project. "A document has one home project, but you can show it in other projects too. Their members get the chosen role."

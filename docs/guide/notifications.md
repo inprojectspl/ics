@@ -46,6 +46,8 @@ There are four kinds of events. You never get a notification about your own acti
 | New document version | People who watch the document or watch its project, plus the document's owner and maintainer. |
 | Document deleted | People who watch the document, plus its owner and maintainer. |
 
+A [micro-application](micro-applications.md#notifications) counts as a new document once its first release runs, not when its first package is uploaded, and each later release counts as a new version.
+
 The owner and the maintainer of a document get version and deletion notices without watching it, as long as **Changes to my documents** is on in the settings (it is on by default).
 
 New versions written in quick succession are merged: versions saved within about 20 seconds of each other become one notification, such as "Architecture overview: 2 new versions", which opens a comparison of the whole range. An unread notification about the same document is also updated in place rather than repeated. When several people edit the same document in one such burst, the notification names all of them except you, most recent first, and each of them hears about the others' changes.

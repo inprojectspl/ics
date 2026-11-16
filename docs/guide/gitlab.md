@@ -98,6 +98,10 @@ Open the dialog again (**...** > **Connect a GitLab repo**). Under **Active bind
 
 From this list you can also set or change the Google Chat card: **Add** (or **Edit**) next to **Notification**, then **Save**.
 
+## Signed releases
+
+A release process in CI can sign two more fields into the manifest: a `release_id` and an increasing `release_generation`. ICS then records the result of each release with the version it created, so retrying the same release after a lost response returns the original result instead of a second version, and an older release can no longer overwrite a newer one. Once a binding has accepted a release, every later sync must carry one. The details are in the [publication receipts reference](../publication-receipts-api.md#signed-releases-from-gitlab-bindings); `ics-sync` does not send these fields yet.
+
 ## Rotate the key
 
 Rotate the key when the private key may have leaked, when you lost it before saving it to GitLab, or to recover from a rejected out-of-order push (see below).
@@ -125,6 +129,8 @@ The bottom of the setup screen lists the most common errors of the CI job:
 | `403 bad signature` | The private key in CI does not match the binding, usually because the key was rotated in ICS and the new one never made it into `ICS_PRIVATE_KEY`. Rotate again and replace the variable. |
 | `404 Not Found` | The binding was deleted, or `binding_id` in `.inprojects.ics` has a typo. |
 | `409 replay or out-of-order` | The commit is not newer than the last accepted one, usually after a force push or rebase. Rotate the key to reset it. |
+| `409 release_required` | The binding already accepted a signed release (a `release_id` with a `release_generation`), and this manifest has none. Publish through the release process that sets both fields. |
+| `409 release_generation_conflict` | A new `release_id` came with a generation that is not greater than the last accepted one. The release process must allocate a higher generation. |
 | `400 manifest invalid` | The manifest failed the ICS schema check (`binding_id` must be a UUID, `commit_sha` 1 to 64 characters, `commit_timestamp` a date, `bundle_sha256` 64 hex characters). The response names the failing field; check the values from `--commit-sha` and `--commit-ts`, or `$CI_COMMIT_SHA`. |
 | `private key: the value after @ is a PEM key, not a file path; pass it without @` | `ICS_PRIVATE_KEY` is a plain (text) variable, so after the `@` the CLI got the key itself instead of a path. Change the variable type to File, or remove the `@` before `$ICS_PRIVATE_KEY`. The CLI does not print the key. |
 | `private key: cannot read the key file: no such file or directory` | The CLI got a path, but there is no file there. Usually `ICS_PRIVATE_KEY` is not passed to this job at all: a protected variable on an unprotected branch, or an environment scope that does not match the job. |

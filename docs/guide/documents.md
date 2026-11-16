@@ -33,6 +33,8 @@ ICS looks at what you dropped and picks the document type:
 > [!WARNING]
 > Picking several `.md` files at once creates one collection, not separate documents. To get separate documents, upload the files one at a time. And when a folder contains both `.md` files and an `.html` page, the HTML wins: the whole folder becomes an HTML bundle.
 
+A [micro-application](micro-applications.md) cannot be uploaded here; an AI agent publishes it through ics-mcp. A folder with a `microapp.json` file is refused by the upload.
+
 Files ICS does not support are skipped, each with a message such as "Skipped *notes.txt*: supported files are .md, .pdf, .docx, .odt and .doc".
 
 ### Upload limits

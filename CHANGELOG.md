@@ -49,6 +49,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   download and read paths refuse the kind; relations point at an app as a whole. Local
   profile: `scripts/microapps-local.sh` and `docs/development/microapps-local.md`.
 - `seed-user` CLI command for local profiles.
+- The user guide covers micro-applications (opening and running an app, its data, roles, sharing,
+  versions and data limit, with screenshots) and safe retries for agents; `docs/microapps-api.md`
+  describes the management and app APIs and ADR-0027 the design.
 
 ### Changed
 
@@ -130,4 +133,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   leaves the current version and its history intact.
 - The backend test runner waits for PostgreSQL over TCP, so the temporary Unix-socket-only server of
   the image initialization no longer starts tests before the final database is ready.
+- An app's data summary says "1 table" and "1 row" instead of "1 tables", in English and Polish.
 

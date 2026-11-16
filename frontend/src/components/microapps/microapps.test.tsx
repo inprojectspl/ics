@@ -86,6 +86,7 @@ describe("MicroAppPage, App tab", () => {
     expect(await screen.findByText("Enabled")).toBeInTheDocument();
     expect(screen.getByText("Sleeping: no resources")).toBeInTheDocument();
     expect(screen.getByText("Active release: package v2")).toBeInTheDocument();
+    expect(screen.getByText("≈3 rows in 1 table")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Open/ })).toHaveAttribute("href", "https://a-x-prod.apps.example/");
     expect(screen.getByRole("button", { name: "Put to sleep" })).toBeInTheDocument();
     for (const name of ["App", "Data", "Access", "Logs"]) expect(screen.getByRole("link", { name })).toBeInTheDocument();
