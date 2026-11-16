@@ -325,12 +325,14 @@ publishes a new version. ICS generates an Ed25519 key pair, keeps the public key
 private key once, together with a YAML config for the repository root and a ready-to-paste CI
 job.
 
-The job runs **[`ics-sync`](https://github.com/inprojectspl/ics-sync)**, a small CLI published
-as the container image `ghcr.io/inprojectspl/ics-sync:1`. It packs the files, signs a manifest
-and posts it to `POST /api/bindings/{id}/sync`; ICS verifies the signature against the stored
-key, checks the bundle hash, rejects replays and stores a new version. Set `ICS_SYNC_IMAGE` to
-that image (or your own build) so the snippet is ready to paste; when it is empty, the snippet
-shows a `<registry>/ics-sync:<tag>` placeholder.
+The job runs **[`ics-sync`](https://github.com/inprojectspl/ics-sync)**, a small CLI published as
+the container image `ghcr.io/inprojectspl/ics-sync:1`. It packs the files, signs a manifest and
+posts it to `POST /api/bindings/{id}/sync`; ICS verifies the signature against the stored key,
+checks the bundle hash, rejects replays and stores a new version. A signed release ID with a
+generation makes a retry after a lost response safe ([signed
+releases](docs/publication-receipts-api.md#signed-releases-from-gitlab-bindings)). Set
+`ICS_SYNC_IMAGE` to that image (or your own build) so the snippet is ready to paste; when it is
+empty, the snippet shows a `<registry>/ics-sync:<tag>` placeholder.
 
 ## MCP and AI agents
 

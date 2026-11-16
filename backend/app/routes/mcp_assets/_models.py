@@ -8,6 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.routes._publication import PublicationIn
 from app.services.ocr import OcrState
 
 from ._shared import _HTML_BUNDLE_MAX_FILES, _MAX_TAGS, _TAG_RE
@@ -128,6 +129,7 @@ class HtmlBundleCreate(BaseModel):
     tags: list[str] = Field(default_factory=list, max_length=_MAX_TAGS)
     doc_type: str | None = Field(default=None, max_length=32)
     summary: str | None = None
+    publication: PublicationIn | None = None
     files: list[HtmlBundleFile] = Field(..., min_length=1, max_length=_HTML_BUNDLE_MAX_FILES)
 
     @field_validator("tags")

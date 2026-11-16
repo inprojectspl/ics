@@ -14,6 +14,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `format=markdown` on an agent read of a Markdown file (`file-mcp`, `agent-view`, share
   `resolve`) drops its HTML comments, so machine markers such as transcript timestamps do not
   cost tokens; comments in code stay and every line keeps its number.
+- HTML JSON publications accept a scoped idempotency key and keep a durable receipt (`GET
+  /api/assets/publications/{id}`), so a retry after a lost response returns the original result
+  instead of a second document (migration 0046, docs/publication-receipts-api.md).
+- Version writes can reject stale edits. Asset write endpoints accept an optional
+  `expected_version`; a mismatch returns `409 version_conflict` before any file is staged, and calls
+  without it behave as before (docs/expected-version-api.md).
+- A version replacement accepts the same publication identity: its receipt is saved with the version
+  and a retry after a lost acknowledgement returns the original result. A keyed replacement requires
+  `expected_version`; a different payload under the same key is refused.
+- GitLab bindings accept a signed `release_id` with `release_generation`. The result, the version
+  and the generation commit together, so retrying the same signed release after a lost response
+  returns the original result; an older generation under a new ID is refused with
+  `release_generation_conflict`, and once a binding has a release a manifest without one gets
+  `release_required` (migration 0047). `ics-sync` does not send these fields yet.
 
 ### Changed
 
@@ -53,6 +67,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   name with directory segments cannot write into another document.
 - Bundle files served on the app origin (the legacy `/static/` links of documents and shares)
   are sandboxed and cannot call the API with the visitor's session.
+- joserfc 1.7.6 replaces 1.7.5 (CVE-2026-119284); only the lockfile changes, authentication code is
+  untouched.
+- dnspython 2.9.2 (CVE-2026-128089) and soupsieve 4.1.1 (CVE-2026-126190 to CVE-2026-126193) replace
+  versions with a published advisory.
 
 ### Fixed
 
@@ -75,3 +93,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   over it: the order check is repeated under a lock on the binding.
 - The sign-in page retries loading its configuration, so Google sign-in no longer disappears
   until a reload when the page opened while the server was restarting.
+- PS node references include the project. The same document can link to the same local node ID in
+  two PS projects; context packs and rekey stay scoped to the selected project. Repeating a link
+  within one project still returns `409 external_ref_exists`, also with changed required or
+  pinned-version parameters, and two racing retries get that conflict instead of a server error.
+  Migration 0045 keeps existing links, turns empty scopes into null and leaves unknown legacy scopes
+  unresolved; its downgrade refuses cross-project collisions instead of dropping links. OpenProject
+  work packages keep their single-instance identity.
+- Concurrent Markdown edits use the locked version. Edit, add, delete and move recheck the files
+  under the version lock, and sizes and quota growth use the tree actually staged. A failed write
+  leaves the current version and its history intact.
+- The backend test runner waits for PostgreSQL over TCP, so the temporary Unix-socket-only server of
+  the image initialization no longer starts tests before the final database is ready.
+

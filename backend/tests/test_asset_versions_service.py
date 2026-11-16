@@ -7,14 +7,18 @@ quota, and that any failure leaves the current version as it was.
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.collections_io import list_version_files, read_bytes_at_version
 from app.config import get_settings
+from app.domain_errors import ConflictError
 from app.models import Asset, AssetShare, AssetVersion, AuditLog, User
 from app.quota import QuotaExceededError
-from app.services import asset_versions
+from app.services import asset_versions, publications
 from tests.conftest import mk_asset, mk_user, put_blob
 
 pytestmark = pytest.mark.usefixtures("fs_storage")
@@ -66,7 +70,7 @@ async def test_edit_bumps_version_and_carries_untouched_files(session):
         session,
         asset,
         owner,
-        asset_versions.edit_files(put={"index.md": b"# edited"}, size_delta=5),
+        asset_versions.edit_files(put={"index.md": b"# edited"}),
     )
 
     assert result.version == 2
@@ -92,7 +96,7 @@ async def test_delete_and_entry_change(session):
         session,
         asset,
         owner,
-        asset_versions.edit_files(delete=["index.md"], size_delta=-1, entry_path="other.md"),
+        asset_versions.edit_files(delete=["index.md"], entry_path="other.md"),
     )
 
     assert result.entry_path == "other.md"
@@ -112,7 +116,7 @@ async def test_quota_refusal_leaves_the_current_version_intact(session):
             session,
             asset,
             owner,
-            asset_versions.edit_files(put={"big.md": b"x" * 10}, size_delta=10),
+            asset_versions.edit_files(put={"big.md": b"x" * 10}),
         )
     await session.rollback()
 
@@ -162,9 +166,7 @@ async def test_shrinking_is_allowed_over_quota(session):
     owner.storage_quota_bytes = 5  # an admin lowered the quota below usage
     await session.commit()
 
-    result = await _commit(
-        session, asset, owner, asset_versions.edit_files(delete=["big.md"], size_delta=-20)
-    )
+    result = await _commit(session, asset, owner, asset_versions.edit_files(delete=["big.md"]))
 
     assert result.version == 2
     assert asset.size_bytes == 1
@@ -185,7 +187,7 @@ async def test_growth_is_charged_to_the_owner_not_the_editor(session):
             session,
             asset,
             editor,
-            asset_versions.edit_files(put={"more.md": b"xyz"}, size_delta=3),
+            asset_versions.edit_files(put={"more.md": b"xyz"}),
         )
     await session.rollback()
 
@@ -197,7 +199,7 @@ async def test_growth_is_charged_to_the_owner_not_the_editor(session):
         session,
         asset,
         editor,
-        asset_versions.edit_files(put={"more.md": b"xyz"}, size_delta=3),
+        asset_versions.edit_files(put={"more.md": b"xyz"}),
     )
     assert result.version == 2
 
@@ -223,3 +225,150 @@ async def test_restore_of_a_bundle_respects_the_bundle_cap(session):
     await session.refresh(asset)
     assert asset.version == 1
     assert await _tree(asset, 2) == {}
+
+
+@pytest.mark.asyncio
+async def test_concurrent_expected_version_has_one_winner(session):
+    owner = await mk_user(session)
+    asset = await _vault(session, owner, {"index.md": b"original"})
+    factory = async_sessionmaker(session.bind, expire_on_commit=False)
+    reached, release = asyncio.Event(), asyncio.Event()
+    async with factory() as first, factory() as second:
+        first_asset = await first.get(Asset, asset.id)
+        second_asset = await second.get(Asset, asset.id)
+        first_owner = await first.get(User, owner.id)
+        second_owner = await second.get(User, owner.id)
+        second_pid = await second.scalar(text("SELECT pg_backend_pid()"))
+        assert first_asset.version == second_asset.version == 1
+
+        async def winning_stage(draft):
+            reached.set()
+            await release.wait()
+            return await asset_versions.edit_files(put={"index.md": b"winner"})(draft)
+
+        async def losing_stage(draft):
+            pytest.fail("a stale write must not stage files")
+
+        async def commit(current, current_asset, current_owner, stage):
+            return await asset_versions.commit_new_version(
+                current,
+                current_asset,
+                get_settings(),
+                stage=stage,
+                actor=current_owner,
+                audit_action="expected_version_test",
+                audit_payload=lambda nv: {"version": nv.version},
+                expected_version=1,
+            )
+
+        winner = asyncio.create_task(commit(first, first_asset, first_owner, winning_stage))
+        staged = asyncio.create_task(reached.wait())
+        loser = None
+        try:
+            done, _ = await asyncio.wait(
+                {winner, staged}, timeout=5, return_when=asyncio.FIRST_COMPLETED
+            )
+            if winner in done:
+                await winner
+            assert staged in done, "the first writer must hold the asset row lock"
+            loser = asyncio.create_task(commit(second, second_asset, second_owner, losing_stage))
+            async with asyncio.timeout(5):
+                while not await session.scalar(
+                    text("SELECT cardinality(pg_blocking_pids(:pid)) > 0"),
+                    {"pid": second_pid},
+                ):
+                    if loser.done():
+                        await loser
+                    await asyncio.sleep(0.01)
+            release.set()
+            assert (await winner).version == 2
+            with pytest.raises(ConflictError) as error:
+                await loser
+            assert error.value.code == "version_conflict"
+            await second.rollback()
+        finally:
+            release.set()
+            tasks = [winner, staged] + ([loser] if loser else [])
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    await session.refresh(asset)
+    assert asset.version == 2
+    assert await _versions(session, asset) == [2]
+    assert await _tree(asset, 1) == {"index.md": b"original"}
+    assert await _tree(asset, 2) == {"index.md": b"winner"}
+    assert await _tree(asset, 3) == {}
+    audits = (
+        await session.scalars(select(AuditLog).where(AuditLog.target == f"asset:{asset.id}"))
+    ).all()
+    assert [audit.payload for audit in audits] == [{"version": 2}]
+
+
+@pytest.mark.asyncio
+async def test_expected_version_conflict_precedes_storage_cleanup(session):
+    owner = await mk_user(session)
+    asset = await _vault(session, owner, {"index.md": b"original"})
+    await _commit(session, asset, owner, asset_versions.edit_files(put={"index.md": b"current"}))
+    # Even a leftover staging tree must remain untouched when the precondition fails.
+    await put_blob(asset, "leftover.md", b"untouched", version=3)
+    with pytest.raises(ConflictError) as error:
+        await asset_versions.commit_new_version(
+            session,
+            asset,
+            get_settings(),
+            stage=asset_versions.edit_files(put={"index.md": b"stale"}),
+            actor=owner,
+            audit_action="must_not_be_recorded",
+            audit_payload=lambda nv: {"version": nv.version},
+            expected_version=1,
+        )
+    assert error.value.code == "version_conflict"
+    await session.rollback()
+    await session.refresh(asset)
+    assert asset.version == 2
+    assert await _versions(session, asset) == [2]
+    assert await _tree(asset, 1) == {"index.md": b"original"}
+    assert await _tree(asset, 2) == {"index.md": b"current"}
+    assert await _tree(asset, 3) == {"leftover.md": b"untouched"}
+    audits = (
+        await session.scalars(select(AuditLog).where(AuditLog.target == f"asset:{asset.id}"))
+    ).all()
+    assert [audit.action for audit in audits] == ["test_versioned"]
+
+
+@pytest.mark.asyncio
+async def test_publication_replay_precedes_cas_and_does_not_stage_again(session):
+    owner = await mk_user(session)
+    asset = await _vault(session, owner, {"index.md": b"one"})
+    scope = publications.PublicationScope(owner.id, None, "order", "report", "version-retry")
+    intent = publications.VersionPublication(scope, publications.canonical_hash({"body": "two"}))
+    staged = 0
+
+    async def stage(draft):
+        nonlocal staged
+        staged += 1
+        return await asset_versions.edit_files(put={"index.md": b"two"})(draft)
+
+    async def publish():
+        return await asset_versions.commit_new_version(
+            session,
+            asset,
+            get_settings(),
+            stage=stage,
+            actor=owner,
+            audit_action="test_publication",
+            audit_payload=lambda nv: {"version": nv.version},
+            expected_version=1,
+            publication=intent,
+        )
+
+    first = await publish()
+    second = await publish()
+    assert first.version == second.version == 2
+    assert first.publication_result == second.publication_result
+    assert staged == 1
+    assert await _versions(session, asset) == [2]
+    assert await _tree(asset, 1) == {"index.md": b"one"}
+    assert await _tree(asset, 2) == {"index.md": b"two"}

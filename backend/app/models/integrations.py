@@ -4,6 +4,7 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    BigInteger,
     ForeignKey,
     String,
     Text,
@@ -25,10 +26,13 @@ class GitLabBinding(Base):
     # Wallclock when our server recorded the last successful sync.
     last_sync_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
     last_sync_commit_sha: Mapped[str | None] = mapped_column(String(64))
-    # Commit timestamp from the manifest, used as a monotonic anchor for
-    # replay protection (incoming sync must be > stored value). Not the
-    # same as last_sync_at: clock skew on the CI side is normal.
+    # Last accepted commit timestamp; legacy manifests use it for ordering.
+    # Signed release generations may publish an older commit timestamp.
+    # Not the same as last_sync_at: clock skew on the CI side is normal.
     last_sync_timestamp: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    # Once adopted, signed generations replace commit timestamps as the
+    # ordering authority. Legacy requests cannot bypass this watermark.
+    last_release_generation: Mapped[int | None] = mapped_column(BigInteger)
     # Outbound notification: the (provider, webhook_url) pair is either set
     # together or NULL together. The provider determines the payload schema
     # (e.g. Google Chat Cards v2) and the accepted hosts (allowlist per

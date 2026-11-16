@@ -8,12 +8,13 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Form, Query, UploadFile, status
+from pydantic import Json
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import permissions
 from app.auth import CurrentUser
-from app.collections_io import normalize_collection_path, upload_basename
+from app.collections_io import derive_entry_path, normalize_collection_path, upload_basename
 from app.config import Settings, get_settings
 from app.db import get_session
 from app.errors import ApiError
@@ -23,8 +24,9 @@ from app.html_bundle import (
     normalize_bundle_path,
 )
 from app.models import AssetVersion
+from app.routes._publication import PublicationIn, upload_digests
 from app.routes._version_param import resolve_version_or_404
-from app.services import asset_versions, documents, version_diff
+from app.services import asset_versions, documents, publications, version_diff
 from app.services.versions import version_rows
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
@@ -116,6 +118,8 @@ async def create_version(
         str | None, Form(max_length=asset_versions.CHANGE_NOTE_MAX_CHARS)
     ] = None,
     entry_path: Annotated[str | None, Form()] = None,
+    expected_version: Annotated[int | None, Form(ge=1)] = None,
+    publication: Annotated[Json[PublicationIn] | None, Form()] = None,
 ) -> dict:
     """Replace asset content with a new version. The asset's kind is
     immutable, so uploads must match the existing kind's shape:
@@ -184,6 +188,22 @@ async def create_version(
             )
 
     entry = _requested_entry(asset.kind, entry_path, [p for _, p in pairs])
+    intent = None
+    if publication is not None:
+        if expected_version is None:
+            raise ApiError(422, "validation_error", "publication requires expected_version")
+        intent = publications.VersionPublication(
+            scope=publications.PublicationScope(
+                user.id, asset.project_id, publication.order_id, publication.role, publication.id
+            ),
+            payload_hash=publications.canonical_hash(
+                {
+                    "kind": asset.kind,
+                    "entry_path": entry or derive_entry_path(asset.kind, [p for _, p in pairs]),
+                    "files": await upload_digests(pairs),
+                }
+            ),
+        )
     result = await asset_versions.commit_new_version(
         session,
         asset,
@@ -200,7 +220,11 @@ async def create_version(
             "security": nv.security,
         },
         change_note=change_note,
+        expected_version=expected_version,
+        publication=intent,
     )
+    if result.publication_result is not None:
+        return result.publication_result
     return {
         "id": str(asset.id),
         "version": result.version,
@@ -238,6 +262,7 @@ async def restore_version(
     change_note: Annotated[
         str | None, Query(max_length=asset_versions.CHANGE_NOTE_MAX_CHARS)
     ] = None,
+    expected_version: Annotated[int | None, Query(ge=1)] = None,
 ) -> dict:
     """Roll back to an older version by copying its storage tree forward to
     version N+1. Keeps the history monotonic (no "version going backwards"
@@ -276,6 +301,7 @@ async def restore_version(
             "security": nv.security,
         },
         change_note=change_note,
+        expected_version=expected_version,
     )
     return {
         "id": str(asset.id),
