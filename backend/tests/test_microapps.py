@@ -108,7 +108,9 @@ def bearer(user) -> dict[str, str]:
 
 
 @pytest.mark.parametrize(
-    "root", [EXAMPLES / "requests", EXAMPLES / "equipment", TEMPLATE], ids=lambda p: p.name
+    "root",
+    [*sorted(p for p in EXAMPLES.iterdir() if p.is_dir()), TEMPLATE],
+    ids=lambda p: p.name,
 )
 def test_example_packages_pass_the_contract(root):
     pkg = manifest.load_package(_files(root))

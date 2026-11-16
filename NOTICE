@@ -60,6 +60,15 @@ lightningcss 1.32.0 and 1.33.0, with its platform-specific binary packages
   Used by: vite and @tailwindcss/vite, at build time only
 
 
+Files copied into the repository
+--------------------------------
+
+three.js r170 (examples/microapps/racing/public/three.module.min.js)
+  License: MIT, Copyright 2010-2024 Three.js Authors (header kept in the file)
+  Source:  https://github.com/mrdoob/three.js
+  Used by: the Race Track example micro-application, for its 3D scene
+
+
 Names and logos
 ---------------
 

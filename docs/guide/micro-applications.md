@@ -7,6 +7,14 @@ A micro-application is a small app with its own data that lives in ICS like any 
 
 ![A micro-application in ICS: the App tab of Request register](images/micro-app-overview.png)
 
+## What an app can be
+
+An app's page is any HTML, CSS and JavaScript, libraries included, and its server side is JavaScript handlers with their own rules. Forms and lists are the common case, but not the limit: the Race Track example is a 3D race built with Three.js, with laps timed in the browser, results checked by a handler before they are saved, and a board of the fastest drivers kept in the app's data. A judge role can remove unfair results.
+
+![Race Track: a 3D race with the lap timer, the speed, a map of the track and the board of the fastest drivers](images/micro-app-racing.png)
+
+The repository has three examples to start from, in `examples/microapps`: Request register (requests and approval), Equipment booking (a catalogue and bookings that change two tables in one transaction) and Race Track.
+
 ## How an app differs from a document
 
 - **It runs on its own address.** **Open** takes you to the app, on a domain separate from ICS. You are signed in to it automatically with your ICS account; the app never sees your ICS session.
