@@ -143,8 +143,9 @@ and decides, link by link, who may read them.
   idempotent apply; every release is a version with a readable list of what changed.
 - A schema and a role per app in a separate `ics_apps` database, a shared Node.js broker and
   QuickJS/WASM runners without network: adding an app adds no container.
-- Each app on its own origin under a domain of its own, with its own roles that owners give to
-  people, projects and share links. Agents read an app as Markdown with the records filled in.
+- Each app on its own short origin under a domain of its own (`https://k7m2q9x4.example.net/`,
+  a random name kept for good), with its own roles that owners give to people, projects and share
+  links. Agents read an app as Markdown with the records filled in.
 - Not only forms: the examples in [`examples/microapps`](./examples/microapps) include a 3D race
   built with Three.js, with a leaderboard kept in the app's data.
 

@@ -131,6 +131,11 @@ complete the OAuth login in a headless Chromium with the local password.
 8. Ask an agent (`ics-local`) to change an app: `ics_microapp_plan` with the
    changed package, `ics_microapp_apply`, `ics_microapp_status`. Repeat the
    apply: the same `operation_id` comes back.
+9. The app URL in the panel and in `ics_microapp_status` is
+   `https://<8-character name>.ics-apps.localhost:8443/`. The long
+   `https://a-<asset id hex>-prod.ics-apps.localhost:8443/` opens the same app
+   with a sign-in of its own; a made-up name such as
+   `https://zzzzzzzz.ics-apps.localhost:8443/` answers 404.
 
 ## Limits
 
@@ -146,6 +151,12 @@ complete the OAuth login in a headless Chromium with the local password.
   default 100, bursts of 200). They are checked on the session cookie
   before ICS is asked anything, kept in Redis (`ICS_MICROAPPS_REDIS_URL`) and
   shared by every broker process; without Redis each process counts alone.
+- Host lookups: a short host the broker has not seen yet costs one internal
+  ICS call (parallel requests of a page share it); known names are cached,
+  unknown ones refused with 404 and remembered for 10 s. There is no budget
+  for these lookups in the broker, since anyone can make ICS do the same
+  lookup through the public launch endpoint; limit requests per client at the
+  proxy instead ([DEPLOY.md, Proxy](../DEPLOY.md#proxy)).
 
 ## Fault hooks (local profile only)
 
@@ -193,7 +204,9 @@ ICS_SHARE_BASE_URL=https://<panel tunnel host>
 then `scripts/microapps-local.sh compose up -d backend arq-worker broker`.
 The alias is an exact host mapped to exactly one app; sessions, CSRF and the
 sign-in flow work as on the local origins. The alias replaces the app's
-`app_url` in API answers; its short and long local hosts keep working. Remove the four lines and the
+`app_url` in API answers; its short and long local hosts keep working. The
+acceptance run expects the short host for *Request register* and *Equipment
+booking*, so give the alias to another app while it runs. Remove the four lines and the
 tunnels to stop sharing.
 
 A share link (`/s/<token>`, created in the share dialog or with

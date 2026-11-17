@@ -290,6 +290,22 @@ check the two changes in the main `ics.example.com` block:
 The broker sees the app from the `Host` header, so pass it unchanged. The
 broker's admin port 8081 is never routed. `nginx -t && nginx -s reload`.
 
+A short app host (`k7m2q9x4.example.net`) the broker has not seen yet costs
+one internal lookup in ICS; known names are cached and unknown ones answer
+404. The broker sets no budget for these lookups (a shared one would let
+made-up names lock real visitors out), so limit requests per client on the
+apps server block, with the real client address when behind Cloudflare:
+
+```nginx
+# http {}
+limit_req_zone $binary_remote_addr zone=microapps:10m rate=50r/s;
+# the apps server block on 8443
+limit_req zone=microapps burst=100 nodelay;
+```
+
+Raise the rate when many people reach the apps from one address (an office
+behind NAT).
+
 ### PostgreSQL
 
 Apps keep their data in a separate database, `ics_apps`, one schema and one
