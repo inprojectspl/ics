@@ -31,7 +31,8 @@ from app.models import (
 )
 from app.redis_client import get_redis
 from app.services.micro_applications import access
-from app.services.micro_applications.common import ENVIRONMENT, app_host
+from app.services.micro_applications.common import ENVIRONMENT
+from app.services.micro_applications.hosts import env_for_host
 from app.services.micro_applications.publish import SECRET_PURPOSE
 from app.storage import read_all, storage_from_url
 
@@ -123,24 +124,6 @@ async def authorize(
     }
 
 
-async def _env_for_host(
-    session: AsyncSession, settings: Settings, host: str
-) -> MicroAppEnvironment:
-    """The prod environment served on exactly this app host: a configured
-    public alias (tunnel) of one app, or `a-<hex>-prod.<suffix>`."""
-    host = host.lower()
-    alias_hex = settings.microapps_alias_map.get(host)
-    if alias_hex:
-        return await _env_by_hex(session, alias_hex, ENVIRONMENT)
-    label = host.removesuffix(f".{settings.microapps_app_host_suffix}")
-    if label == host or not label.startswith("a-") or not label.endswith(f"-{ENVIRONMENT}"):
-        raise NotFoundError("not_found", "unknown application")
-    env = await _env_by_hex(session, label[2 : -len(ENVIRONMENT) - 1], ENVIRONMENT)
-    if app_host(settings, env.asset_hex) != host:
-        raise NotFoundError("not_found", "unknown application")
-    return env
-
-
 async def _store_launch_code(
     env: MicroAppEnvironment, host: str, state: str, *, user_id: str | None, share_id: str | None
 ) -> str:
@@ -164,7 +147,7 @@ async def issue_share_launch_code(
 ) -> str:
     """One-time code for a share-link visit of exactly this app host and
     browser start; the link's gate was checked by the caller."""
-    env = await _env_for_host(session, settings, host)
+    env = await env_for_host(session, settings, host)
     if env.asset_id != share.asset_id:
         raise NotFoundError("not_found", "unknown application")
     return await _store_launch_code(env, host, state, user_id=None, share_id=str(share.id))
@@ -174,7 +157,7 @@ async def issue_launch_code(
     session: AsyncSession, settings: Settings, user: User, host: str, state: str
 ) -> str:
     """One-time code for exactly this user, app, host and browser start."""
-    env = await _env_for_host(session, settings, host)
+    env = await env_for_host(session, settings, host)
     asset = await session.get(Asset, env.asset_id)
     if asset is None or not (await access.rights(session, user, asset)).use:
         raise NotFoundError("not_found", "unknown application")

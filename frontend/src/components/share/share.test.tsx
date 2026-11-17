@@ -18,7 +18,7 @@ vi.mock("../../api/microApplications", async (original) => ({
   getMicroAppAccess: vi.fn(async () => ({
     asset_id: "a1",
     title: "App",
-    app_url: "https://a-x-prod.apps.example/",
+    app_url: "https://k7m2q9x4.apps.example/",
     roles: [{ role: "reviewer", label: "Recenzent", description: null, permissions: ["requests.approve"] }],
     permissions: [
       { permission: "requests.approve", label: "Zatwierdzanie", description: null, platform: false, allows: [] },

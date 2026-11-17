@@ -45,6 +45,10 @@ class MicroAppEnvironment(Base):
     # Lower-case hex of the asset id: the label of the app origin and the
     # schema/role names. Derived once, never from manifest input.
     asset_hex: Mapped[str] = mapped_column(String(32), unique=True)
+    # Label of the public app origin; identifies the app, never authorizes.
+    host_name: Mapped[str] = mapped_column(
+        String(8), ForeignKey("microapp_host_names.name"), unique=True
+    )
     desired_state: Mapped[str] = mapped_column(
         String(16), default="enabled", server_default="enabled"
     )

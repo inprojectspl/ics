@@ -9,7 +9,7 @@ import { MicroAppPage } from "./MicroAppPage";
 function app(over: Record<string, unknown> = {}) {
   return {
     asset_id: "a1", slug: "s1", title: "Rejestr wniosków", description: null, environment: "prod",
-    app_url: "https://a-x-prod.apps.example/", owner: { id: "u", display_name: "Alice" }, project: null,
+    app_url: "https://k7m2q9x4.apps.example/", owner: { id: "u", display_name: "Alice" }, project: null,
     desired_state: "enabled", generation: 3, package_version: 2,
     active_release: { id: "r1", package_version: 2, digest: "sha256:abcdef0123456789", activated_at: null, schema: [1, 1] },
     last_publication: null,
@@ -24,7 +24,7 @@ function app(over: Record<string, unknown> = {}) {
 const access = {
   asset_id: "a1",
   title: "Rejestr wniosków",
-  app_url: "https://a-x-prod.apps.example/",
+  app_url: "https://k7m2q9x4.apps.example/",
   roles: [
     { role: "employee", label: "Employee", description: "Files own requests.", permissions: ["requests.read", "requests.write"] },
     { role: "reviewer", label: "Reviewer", description: null, permissions: ["requests.approve"] },
@@ -87,7 +87,7 @@ describe("MicroAppPage, App tab", () => {
     expect(screen.getByText("Sleeping: no resources")).toBeInTheDocument();
     expect(screen.getByText("Active release: package v2")).toBeInTheDocument();
     expect(screen.getByText("≈3 rows in 1 table")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Open/ })).toHaveAttribute("href", "https://a-x-prod.apps.example/");
+    expect(screen.getByRole("link", { name: /Open/ })).toHaveAttribute("href", "https://k7m2q9x4.apps.example/");
     expect(screen.getByRole("button", { name: "Put to sleep" })).toBeInTheDocument();
     for (const name of ["App", "Data", "Access", "Logs"]) expect(screen.getByRole("link", { name })).toBeInTheDocument();
   });

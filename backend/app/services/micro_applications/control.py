@@ -66,7 +66,7 @@ async def control(
                 "idempotency_key_reused", "this idempotency_key was used for a different request"
             )
         _, env = await load_app(session, existing.asset_id)
-        return operation_view(existing, settings, env.asset_hex), False
+        return operation_view(existing, settings, env), False
 
     asset, env = await load_app(session, asset_id, lock=True)
     r = await access.rights(session, user, asset)
@@ -127,7 +127,7 @@ async def control(
     if op.status == "running":
         await finish_runtime_action(session, settings, op.id)
         await session.refresh(op)
-    return operation_view(op, settings, env.asset_hex), True
+    return operation_view(op, settings, env), True
 
 
 async def finish_runtime_action(session: AsyncSession, settings: Settings, op_id: str) -> None:

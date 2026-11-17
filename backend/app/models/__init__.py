@@ -7,6 +7,7 @@ from app.models.audit import AuditLog
 from app.models.doc_types import DocType
 from app.models.external_refs import AssetExternalRef, ProjectExternalRef, ProjectKeyDocument
 from app.models.integrations import CdnAllowlist, GitLabBinding
+from app.models.micro_application_hosts import MicroAppHostName
 from app.models.micro_applications import (
     MicroAppCleanupOrder,
     MicroAppEnvironment,
@@ -47,6 +48,7 @@ __all__ = [
     "MicroAppCleanupOrder",
     "MicroAppEnvironment",
     "MicroAppGrant",
+    "MicroAppHostName",
     "MicroAppLog",
     "MicroAppOperation",
     "MicroAppPlan",

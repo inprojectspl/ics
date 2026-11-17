@@ -33,7 +33,8 @@ from app.models import (
 from app.permissions import effective_role
 from app.services.micro_applications import access
 from app.services.micro_applications.catalog import permission_catalog, role_catalog
-from app.services.micro_applications.common import ENVIRONMENT, app_url, load_app
+from app.services.micro_applications.common import ENVIRONMENT, load_app
+from app.services.micro_applications.hosts import app_url
 
 # ---------- shared checks ----------
 
@@ -229,7 +230,7 @@ async def overview(
     return {
         "asset_id": str(asset.id),
         "title": asset.title,
-        "app_url": app_url(settings, env.asset_hex),
+        "app_url": app_url(settings, env),
         "roles": role_catalog(release),
         "permissions": permission_catalog(release),
         "people": await _people(session, asset, release, persons),

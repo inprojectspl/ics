@@ -201,7 +201,7 @@ def build(settings: Settings) -> dict[str, Any]:
         "profile": manifest.PROFILE,
         "sdk_version": manifest.SDK_VERSION,
         "validator_version": manifest.VALIDATOR_VERSION,
-        "app_url_pattern": f"{settings.microapps_app_scheme}://a-<asset id hex>-prod."
+        "app_url_pattern": f"{settings.microapps_app_scheme}://<8-character app name>."
         f"{settings.microapps_app_host_suffix}/",
         "contract_hash": "sha256:" + canonical_hash(sections),
         "sections": sections,

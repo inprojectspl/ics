@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import json
+import re
 import subprocess
 import sys
 import time
@@ -27,9 +28,9 @@ import localenv as L  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
 APPS = json.loads((L.STATE / "apps.json").read_text())
-# The origin follows the current suffix, not the URL a past seed stored.
-for _app in APPS.values():
-    _app["app_url"] = f"https://a-{uuid.UUID(_app['asset_id']).hex}-prod.{L.APP_SUFFIX}/"
+# app_url is read from ICS when the run starts (mcp_scenarios), never from
+# apps.json: a seed may have stored the app's long a-<hex>-prod address.
+SHORT_HOST_RE = re.compile(r"https://([abcdefghjkmnpqrstuvwxyz23456789]{8})\." + re.escape(L.APP_SUFFIX) + "/")
 REQ, EQ = APPS["requests"], APPS["equipment"]
 RESULTS: list[dict[str, Any]] = []
 SHOTS = L.STATE / "screenshots"
@@ -354,13 +355,56 @@ def browser_scenarios(probe_url: str) -> None:
         check("with a share link the asset page and its tabs stay on /v/<slug>",
               panel_page.url.startswith(f"{L.BASE_URL}/v/{slug}") and "tab=access" in panel_page.url, panel_page.url)
         panel_page.evaluate("async (id) => fetch(`/api/shares/${id}`, { method: 'DELETE' })", link["id"])
+
+        short_host_scenarios(br, bob, panel_page)
         br.close()
+
+
+def short_host_scenarios(br: Any, bob: Any, panel_page: Any) -> None:
+    section("Short addresses: share links, long hosts, host-bound sessions")
+    legacy_url = f"https://a-{uuid.UUID(REQ['asset_id']).hex}-prod.{L.APP_SUFFIX}/"
+    link = panel_page.evaluate("""async (id) => (await (await fetch(`/api/assets/${id}/shares`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ mode: "public", app_roles: ["employee"] }) })).json())""", REQ["asset_id"])
+    guest_ctx = br.new_context()
+    guest = guest_ctx.new_page()
+    guest.goto(f"{L.BASE_URL}/s/{link['token']}")
+    guest.wait_for_url(f"{REQ['app_url']}**", timeout=20000)
+    guest.wait_for_function("() => window.ics !== undefined", timeout=10000)
+    who = call(guest, "GET", "/v1/session")
+    check("/s/TOKEN ends in the running app on its short host, as a guest of the link",
+          guest.url.startswith(REQ["app_url"]) and who["ok"] and who["data"]["user"]["guest"] is True, (guest.url, who))
+    made = coll(guest, "requests", "create", {"title": f"Guest {uuid.uuid4().hex[:8]}"})
+    check("the guest writes through the short host (exact Origin and CSRF)", made["ok"], made)
+
+    # The long host serves the same app; a session of one host is not valid on the other.
+    old = B.open_app(bob, legacy_url)
+    old_who = call(old, "GET", "/v1/session")
+    check("the long a-<hex>-prod host still opens the same app with its own sign-in",
+          old.url.startswith(legacy_url) and old_who["ok"] and old_who["data"]["app"]["id"] == REQ["asset_id"], old_who)
+    wrote = coll(old, "requests", "create", {"title": f"Long host {uuid.uuid4().hex[:8]}"})
+    check("writes keep working on the long host", wrote["ok"], wrote)
+    short_cookie = next(c for c in guest_ctx.cookies() if c["name"] == "__Host-ics-app")
+    moved = br.new_context()
+    moved.add_cookies([{"name": short_cookie["name"], "value": short_cookie["value"], "url": legacy_url, "secure": True}])
+    resp = moved.new_page().goto(legacy_url + "api/v1/session")
+    check("a short-host session cookie is useless on the long host of the same app", resp.status == 401, resp.status)
+    moved.close()
+    unknown = br.new_context().new_page().goto(f"https://zzzzzzzz.{L.APP_SUFFIX}/")
+    check("an unknown short host is refused", unknown.status == 404, unknown.status)
+
+    panel_page.evaluate("async (id) => fetch(`/api/shares/${id}`, { method: 'DELETE' })", link["id"])
+    after = coll(guest, "requests", "list", {"limit": 5})
+    check("revoking the link stops the guest's open session on the short host", not after["ok"] and after["status"] == 403, after)
+    guest_ctx.close()
 
 
 async def mcp_scenarios() -> str:
     section("Local MCP: contract, repeated apply, status")
     for app in (REQ, EQ):
         st = await status("alice", app["asset_id"])
+        app["app_url"] = st["app_url"]
+        check(f"{st['title']} is served on a short host", SHORT_HOST_RE.fullmatch(st["app_url"]) is not None, st["app_url"])
         if st["desired_state"] != "enabled":
             # A previous run stopped after its suspend step: start from enabled.
             await mcp("alice", "ics_microapp_control", {"asset_id": app["asset_id"], "action": "enable",

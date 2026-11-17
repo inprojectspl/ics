@@ -24,16 +24,16 @@ from app.services.micro_applications import access
 from app.services.micro_applications.common import (
     ENVIRONMENT,
     add_log,
-    app_url,
     canonical_hash,
     load_app,
     new_id,
 )
+from app.services.micro_applications.hosts import allocate_host_name, app_url
 from app.slug import generate_slug
 
 
 def operation_view(
-    op: MicroAppOperation, settings: Settings, asset_hex: str | None
+    op: MicroAppOperation, settings: Settings, env: MicroAppEnvironment | None
 ) -> dict[str, Any]:
     terminal = op.status in ("succeeded", "failed")
     return {
@@ -45,7 +45,7 @@ def operation_view(
         "steps": op.steps,
         "asset_id": str(op.asset_id) if op.asset_id else None,
         "release_id": str(op.release_id) if op.release_id else None,
-        "app_url": app_url(settings, asset_hex) if asset_hex else None,
+        "app_url": app_url(settings, env) if env else None,
         "error": {"code": op.error_code, "detail": op.error_detail} if op.error_code else None,
         "result": op.result,
         "attempts": op.attempts,
@@ -80,8 +80,7 @@ async def apply_plan(
             raise ConflictError(
                 "idempotency_key_reused", "this idempotency_key was used for a different request"
             )
-        hex_ = await _asset_hex(session, existing.asset_id)
-        return operation_view(existing, settings, hex_), False
+        return operation_view(existing, settings, await _env(session, existing.asset_id)), False
 
     plan = await session.get(MicroAppPlan, plan_id, with_for_update=True)
     if plan is None or plan.user_id != user.id:
@@ -126,6 +125,7 @@ async def apply_plan(
             asset_id=asset.id,
             environment=ENVIRONMENT,
             asset_hex=asset.id.hex,
+            host_name=await allocate_host_name(session, settings, asset.id),
             desired_state="enabled",
         )
         session.add(env)
@@ -179,14 +179,14 @@ async def apply_plan(
     from app.jobs.tasks.micro_applications import enqueue_operation
 
     await enqueue_operation(op_id)
-    return operation_view(op, settings, env.asset_hex), True
+    return operation_view(op, settings, env), True
 
 
-async def _asset_hex(session: AsyncSession, asset_id: Any) -> str | None:
+async def _env(session: AsyncSession, asset_id: Any) -> MicroAppEnvironment | None:
     if asset_id is None:
         return None
     return await session.scalar(
-        select(MicroAppEnvironment.asset_hex).where(MicroAppEnvironment.asset_id == asset_id)
+        select(MicroAppEnvironment).where(MicroAppEnvironment.asset_id == asset_id)
     )
 
 
@@ -200,4 +200,4 @@ async def get_operation(
         asset = await session.get(Asset, op.asset_id) if op.asset_id else None
         if asset is None or not (await access.rights(session, user, asset)).control:
             raise NotFoundError("operation_not_found", "operation not found")
-    return operation_view(op, settings, await _asset_hex(session, op.asset_id))
+    return operation_view(op, settings, await _env(session, op.asset_id))
