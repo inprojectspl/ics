@@ -113,6 +113,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Signing in from a link to a page that needs an account (a project, the graph, notifications)
+  returns to that page, also with Google; a document link keeps its file and version.
 - OAuth clients can discover the authorization server at the issuer's root; the existing
   discovery URLs under `/api/auth/oauth/` remain supported. Deployments must also forward the
   root discovery paths through their reverse proxy.

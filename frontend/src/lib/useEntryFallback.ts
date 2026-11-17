@@ -54,7 +54,7 @@ export function useEntryFallback(
         // is nowhere to go.
         const target =
           entry.action === "login"
-            ? `/#login?next=${encodeURIComponent(`/v/${entry.slug}`)}`
+            ? `/#login?next=${encodeURIComponent(`/v/${entry.slug}${window.location.search}`)}`
             : entry.action === "redirect"
               ? entry.url
               : null;

@@ -52,6 +52,20 @@ describe("useEntryFallback", () => {
     );
   });
 
+  it("comes back to the same version and file after login", async () => {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...window.location, pathname: "/v/abc123", search: "?p=notes.md&ver=2", replace },
+    });
+    vi.spyOn(api, "getEntry").mockResolvedValue({ action: "login", slug: "abc123" });
+    renderHook(() => useEntryFallback("abc123", 401));
+    await waitFor(() =>
+      expect(replace).toHaveBeenCalledWith(
+        `/#login?next=${encodeURIComponent("/v/abc123?p=notes.md&ver=2")}`,
+      ),
+    );
+  });
+
   it("does not redirect to where it already is", async () => {
     vi.spyOn(api, "getEntry").mockResolvedValue({
       action: "redirect",

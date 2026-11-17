@@ -23,7 +23,7 @@ import {
   NotificationsViewLazy as NotificationsView,
 } from "./views/notifications/lazy";
 import { NotificationSettingsLazy as NotificationSettings } from "./views/accountNotifications/lazy";
-import { safeNextPath } from "./lib/nextPath";
+import { currentNextPath, safeNextPath } from "./lib/nextPath";
 
 // Common entry points (Home for signed-in users, Viewer/ShareView from
 // bookmarks and email links) stay eager. The rest is lazy: admin views see
@@ -306,7 +306,10 @@ function Router() {
     return <NotificationsUnsubscribe token={route.token} />;
 
   if (me === "unknown") return <LoadingFallback />;
-  if (me === null) return <Login onLogged={onLogged} next={route.name === "login" ? route.next : undefined} />;
+  // Any other page asked for without a session comes back after signing in:
+  // a password sign-in keeps the address, but Google's leaves the app.
+  if (me === null)
+    return <Login onLogged={onLogged} next={route.name === "login" ? route.next : currentNextPath()} />;
   // Every signed-in page renders inside the same shell element, so React
   // keeps it (and the sidebar state) mounted across route changes; a lazy
   // page suspends inside it, never above it.
