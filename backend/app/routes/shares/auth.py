@@ -19,7 +19,8 @@ from app.errors import ApiError
 from app.models import MicroAppEnvironment
 from app.routes.micro_applications import callback_redirect, require_enabled
 from app.services.micro_applications import access, runtime
-from app.services.micro_applications.common import ENVIRONMENT, app_url
+from app.services.micro_applications.common import ENVIRONMENT
+from app.services.micro_applications.hosts import app_url
 from app.util import ip_hash
 
 from ._models import MagicClaimIn, PasswordChallengeIn
@@ -168,13 +169,13 @@ async def share_magic_claim(
 async def _app_launch_url(
     session: AsyncSession, settings: Settings, asset, token: str
 ) -> str | None:
-    hex_ = await session.scalar(
-        select(MicroAppEnvironment.asset_hex).where(
+    env = await session.scalar(
+        select(MicroAppEnvironment).where(
             MicroAppEnvironment.asset_id == asset.id,
             MicroAppEnvironment.environment == ENVIRONMENT,
         )
     )
-    return f"{app_url(settings, hex_)}__ics/share?token={token}" if hex_ else None
+    return f"{app_url(settings, env)}__ics/share?token={token}" if env else None
 
 
 @router.get("/api/share/{token}/launch")

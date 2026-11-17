@@ -144,3 +144,4 @@ nav:
       - decisions/0025-graph-explorer.md
       - decisions/0026-unified-document-search.md
       - decisions/0027-micro-applications.md
+      - decisions/0028-short-micro-application-hosts.md

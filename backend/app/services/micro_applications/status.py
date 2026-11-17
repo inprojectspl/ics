@@ -30,7 +30,8 @@ from app.models import (
 from app.permissions import visible_assets_filter
 from app.services.document_search import search_filter
 from app.services.micro_applications import access
-from app.services.micro_applications.common import app_url, load_app
+from app.services.micro_applications.common import load_app
+from app.services.micro_applications.hosts import app_url
 from app.storage import read_all, storage_from_url
 
 # Broker reports arrive every ~10 s; older samples are shown as unknown.
@@ -147,7 +148,7 @@ async def _view(
         # Deferred column: an explicit query, no lazy load in async code.
         "description": await session.scalar(select(Asset.summary).where(Asset.id == asset.id)),
         "environment": env.environment,
-        "app_url": app_url(settings, env.asset_hex),
+        "app_url": app_url(settings, env),
         "owner": {"id": str(owner.id), "display_name": owner.display_name} if owner else None,
         "project": {"id": str(project.id), "name": project.name, "slug": project.slug}
         if project

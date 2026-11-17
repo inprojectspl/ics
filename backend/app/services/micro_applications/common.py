@@ -32,17 +32,6 @@ def canonical_hash(value: Any) -> str:
     ).hexdigest()
 
 
-def app_host(settings: Settings, asset_hex: str, environment: str = ENVIRONMENT) -> str:
-    return f"a-{asset_hex}-{environment}.{settings.microapps_app_host_suffix}"
-
-
-def app_url(settings: Settings, asset_hex: str, environment: str = ENVIRONMENT) -> str:
-    for alias, hex_ in settings.microapps_alias_map.items():
-        if hex_ == asset_hex and environment == ENVIRONMENT:
-            return f"https://{alias}/"
-    return f"{settings.microapps_app_scheme}://{app_host(settings, asset_hex, environment)}/"
-
-
 async def load_app(
     session: AsyncSession, asset_id: Any, *, lock: bool = False
 ) -> tuple[Asset, MicroAppEnvironment]:

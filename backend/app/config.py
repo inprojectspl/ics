@@ -158,7 +158,9 @@ class Settings(BaseSettings):
     vapid_subject: str = ""
 
     # Micro-applications (PoC). The shared Node.js broker serves every app on
-    # its own origin `<scheme>://a-<asset hex>-<env>.<app_host_suffix>`.
+    # its own origin `<scheme>://<name>.<app_host_suffix>`, `name` being a random
+    # 8-character label reserved for good (the long `a-<asset hex>-prod` host
+    # of earlier releases keeps working).
     microapps_enabled: bool = False
     # Trusted provisioner of per-asset schemas and roles in the separate
     # `ics_apps` database; used by the worker only, never by request code.

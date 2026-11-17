@@ -33,6 +33,10 @@ export class IcsClient {
     return this.#call("POST", "/api/internal/microapps/authorize", { asset: assetHex, environment, user_id: userId, share_id: shareId });
   }
 
+  resolveHost(host) {
+    return this.#call("POST", "/api/internal/microapps/hosts/resolve", { host });
+  }
+
   exchangeLaunch(code, host, state) {
     return this.#call("POST", "/api/internal/microapps/launch/exchange", { code, host, state });
   }

@@ -11,6 +11,7 @@ import pytest
 from sqlalchemy import select
 
 from app.config import get_settings
+from app.domain_errors import InvalidInputError
 from app.models import (
     AssetShare,
     MicroAppEnvironment,
@@ -18,6 +19,7 @@ from app.models import (
     MicroAppOperation,
     MicroAppStats,
 )
+from app.slug import generate_slug
 from tests.conftest import login_as, mk_user
 from tests.test_microapps import (  # noqa: F401  (fixtures)
     EXAMPLES,
@@ -345,7 +347,9 @@ async def test_launch_redirects_and_jobs(client, session, monkeypatch):
     owner = await mk_user(session)
     await session.commit()
     op, env = await _published(client, session, owner)
-    host = f"a-{env.asset_hex}-prod.{get_settings().microapps_app_host_suffix}"
+    suffix = get_settings().microapps_app_host_suffix
+    host = f"{env.host_name}.{suffix}"
+    assert op["app_url"] == f"https://{host}/"
     anon = await client.get(
         f"/api/micro-applications/launch?host={host}&state=s1", follow_redirects=False
     )
@@ -354,12 +358,55 @@ async def test_launch_redirects_and_jobs(client, session, monkeypatch):
     r = await client.get(
         f"/api/micro-applications/launch?host={host}&state=s1", follow_redirects=False
     )
-    assert r.status_code == 302 and "/__ics/callback?code=" in r.headers["location"]
-    assert r.headers["referrer-policy"] == "no-referrer"
-    bad = await client.get(
-        "/api/micro-applications/launch?host=evil.example&state=s1", follow_redirects=False
+    assert r.status_code == 302 and r.headers["location"].startswith(
+        f"https://{host}/__ics/callback?code="
     )
-    assert bad.status_code == 404
+    assert r.headers["referrer-policy"] == "no-referrer"
+    from urllib.parse import parse_qs, urlparse
+
+    from app.services.micro_applications import runtime
+
+    def code_of(resp):
+        return parse_qs(urlparse(resp.headers["location"]).query)["code"][0]
+
+    # A code for the short host does not open the long one, and back.
+    legacy = f"a-{env.asset_hex}-prod.{suffix}"
+    with pytest.raises(InvalidInputError):
+        await runtime.exchange_launch_code(code_of(r), legacy, "s1")
+    old = await client.get(
+        f"/api/micro-applications/launch?host={legacy}&state=s2", follow_redirects=False
+    )
+    assert old.headers["location"].startswith(f"https://{legacy}/__ics/callback?code=")
+    ex = await runtime.exchange_launch_code(code_of(old), legacy, "s2")
+    assert ex["asset_hex"] == env.asset_hex and ex["user_id"] == str(owner.id)
+    for bad_host in (
+        "evil.example",
+        f"{generate_slug(8)}.{suffix}",
+        f"{env.host_name}.evil.example",
+    ):
+        bad = await client.get(
+            f"/api/micro-applications/launch?host={bad_host}&state=s1", follow_redirects=False
+        )
+        assert bad.status_code == 404
+
+    # The broker learns which app a short host is; nothing else does.
+    resolve = "/api/internal/microapps/hosts/resolve"
+    known = await client.post(resolve, json={"host": host.upper()}, headers=SVC)
+    assert known.json() == {"host": host, "asset_hex": env.asset_hex, "environment": "prod"}
+    assert (await client.post(resolve, json={"host": legacy}, headers=SVC)).json()[
+        "asset_hex"
+    ] == env.asset_hex
+    unknown = await client.post(resolve, json={"host": f"{generate_slug(8)}.{suffix}"}, headers=SVC)
+    assert unknown.status_code == 404
+    assert (await client.post(resolve, json={"host": host})).status_code == 404
+
+    # A new release keeps the name and the address.
+    _, again = await _plan_and_apply(client, owner, asset_id=op["asset_id"], key="k-host-again1")
+    assert await _publish(session, again.json()["operation_id"]) == "succeeded"
+    await session.refresh(env)
+    assert env.host_name == host.split(".")[0]
+    detail = (await client.get(f"/api/micro-applications/{op['asset_id']}")).json()
+    assert detail["app_url"] == f"https://{host}/"
 
     from app.jobs.tasks import micro_applications as jobs
 
@@ -551,7 +598,8 @@ async def test_share_links_open_the_app_with_the_links_permissions(client, sessi
     aid = op["asset_id"]
     session.add(AssetShare(asset_id=uuid.UUID(aid), user_id=editor.id, role="editor"))
     await session.commit()
-    host = f"a-{env.asset_hex}-prod.{get_settings().microapps_app_host_suffix}"
+    host = f"{env.host_name}.{get_settings().microapps_app_host_suffix}"
+    legacy = f"a-{env.asset_hex}-prod.{get_settings().microapps_app_host_suffix}"
 
     await login_as(client, editor)
     r = await client.post(
@@ -591,9 +639,8 @@ async def test_share_links_open_the_app_with_the_links_permissions(client, sessi
 
     client.cookies.clear()
     info = (await client.get(f"/api/share/{link['token']}/info")).json()
-    assert info["kind"] == "micro_application" and info["app_launch_url"].endswith(
-        f"/__ics/share?token={link['token']}"
-    )
+    assert info["kind"] == "micro_application"
+    assert info["app_launch_url"] == f"https://{host}/__ics/share?token={link['token']}"
     r = await client.get(
         f"/api/share/{link['token']}/launch?host={host}&state=st1", follow_redirects=False
     )
@@ -601,11 +648,26 @@ async def test_share_links_open_the_app_with_the_links_permissions(client, sessi
     code = parse_qs(urlparse(r.headers["location"]).query)["code"][0]
     ex = await runtime.exchange_launch_code(code, host, "st1")
     assert ex["share_id"] == link["id"] and ex["user_id"] is None
+    # A visitor who still has the long address goes through the same gate.
+    old = await client.get(
+        f"/api/share/{link['token']}/launch?host={legacy}&state=st1", follow_redirects=False
+    )
+    old_ex = await runtime.exchange_launch_code(
+        parse_qs(urlparse(old.headers["location"]).query)["code"][0], legacy, "st1"
+    )
+    assert old_ex["share_id"] == link["id"] and old_ex["asset_hex"] == env.asset_hex
     wrong_host = await client.get(
         f"/api/share/{link['token']}/launch?host=a-{'0' * 32}-prod.x&state=st1",
         follow_redirects=False,
     )
     assert wrong_host.status_code == 404
+    # The link of one app never yields a code for another app's host.
+    _, other_env = await _published(client, session, owner)
+    other_host = f"{other_env.host_name}.{get_settings().microapps_app_host_suffix}"
+    crossed = await client.get(
+        f"/api/share/{link['token']}/launch?host={other_host}&state=st1", follow_redirects=False
+    )
+    assert crossed.status_code == 404
     gated = await client.get(
         f"/api/share/{pw_link['token']}/launch?host={host}&state=st2", follow_redirects=False
     )
@@ -620,7 +682,8 @@ async def test_share_links_open_the_app_with_the_links_permissions(client, sessi
     own_ex = await runtime.exchange_launch_code(own_code, host, "st3")
     assert own_ex["user_id"] == str(owner.id) and own_ex["share_id"] is None
     shares = (await client.get(f"/api/assets/{aid}/shares")).json()
-    assert next(s for s in shares if s["id"] == link["id"])["view_count"] == 1
+    # Two visitor launches (short and long host); the member's is not counted.
+    assert next(s for s in shares if s["id"] == link["id"])["view_count"] == 2
     client.cookies.clear()
 
     visitor = str(uuid.uuid4())

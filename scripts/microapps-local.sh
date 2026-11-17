@@ -129,7 +129,7 @@ doctor() {
 
   if python3 - <<'PY' 2>/dev/null; then ok "*.localhost names resolve to loopback (wildcard app origins work)"; else fail "ics.localhost or *.ics-apps.localhost does not resolve to loopback"; fi
 import ipaddress, socket, sys
-for host in ("ics.localhost", "html.ics.localhost", "a-0123456789abcdef0123456789abcdef-prod.ics-apps.localhost"):
+for host in ("ics.localhost", "html.ics.localhost", "k7m2q9x4.ics-apps.localhost", "a-0123456789abcdef0123456789abcdef-prod.ics-apps.localhost"):
     for info in socket.getaddrinfo(host, 8443, proto=socket.IPPROTO_TCP):
         if not ipaddress.ip_address(info[4][0]).is_loopback:
             sys.exit(1)
@@ -300,7 +300,7 @@ up() {
 up: ready
   ICS panel            $BASE_URL            (admin@example.com, password in $ENV_FILE)
   HTML viewer          https://html.ics.localhost:8443
-  Micro-applications   https://a-<asset-id>-prod.ics-apps.localhost:8443
+  Micro-applications   https://<8-character name>.ics-apps.localhost:8443 (app_url in ics_microapp_status)
   Mailpit              https://mail.ics.localhost:8443
   App data (read-only) postgres.ics-microapps-local.orb.local:5432/ics_apps, user ics_apps_reader (OrbStack)
   Local CA             $CA_FILE (trust it explicitly, see docs/development/microapps-local.md)

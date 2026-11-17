@@ -101,7 +101,7 @@ PUT /api/micro-applications/{asset_id}/access
 
 ## App API
 
-Every app runs on its own origin, `https://a-<asset id hex>-<environment>.<ICS_MICROAPPS_APP_HOST_SUFFIX>/`, served by the shared broker. The app's page loads the browser SDK from `/__ics/sdk.js`, which handles the sign-in through ICS (a one-time code exchanged for a host-bound app session) and adds the headers below. Apps should use the SDK; the raw HTTP API is listed for completeness.
+Every app runs on its own origin, `https://<name>.<ICS_MICROAPPS_APP_HOST_SUFFIX>/`, served by the shared broker. `name` is 8 random characters (`a-z` without `i`, `l`, `o`, digits `2-9`) drawn when the app is created and never changed or given to another app; `app_url` in the API answers carries it. The long `https://a-<asset id hex>-prod.<suffix>/` of earlier releases still serves the same app, with a session of its own ([ADR-0028](decisions/0028-short-micro-application-hosts.md)). The app's page loads the browser SDK from `/__ics/sdk.js`, which handles the sign-in through ICS (a one-time code exchanged for a host-bound app session) and adds the headers below. Apps should use the SDK; the raw HTTP API is listed for completeness.
 
 | Request | Purpose |
 |---|---|

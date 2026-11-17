@@ -29,6 +29,7 @@ from app.services.micro_applications import (
     contract,
     control,
     document,
+    hosts,
     operations,
     people,
     plan,
@@ -406,6 +407,10 @@ class ExchangeRequest(BaseModel):
     state: str = Field(max_length=128)
 
 
+class HostRequest(BaseModel):
+    host: str = Field(max_length=200)
+
+
 @internal_router.post("/authorize")
 async def internal_authorize(
     body: AuthorizeRequest, _: Service, session: Session
@@ -413,6 +418,16 @@ async def internal_authorize(
     return await runtime.authorize(
         session, body.asset, body.environment, body.user_id, body.share_id
     )
+
+
+@internal_router.post("/hosts/resolve")
+async def internal_resolve_host(
+    body: HostRequest, _: Service, session: Session, settings: AppSettings
+) -> dict[str, str]:
+    """The app the broker serves on a short host: the label is random, so
+    only this mapping, never the host text, says which app it is."""
+    env = await hosts.env_for_host(session, settings, body.host)
+    return {"host": body.host.lower(), "asset_hex": env.asset_hex, "environment": env.environment}
 
 
 @internal_router.post("/launch/exchange")

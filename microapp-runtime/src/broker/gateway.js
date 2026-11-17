@@ -1,6 +1,6 @@
 // Public HTTP gateway of every micro-application origin
-// (https://a-<asset>-<env>.<suffix>). Serves only the release's public/ files
-// and the app's own data API; it is not a proxy to the ICS API.
+// (https://<name>.<suffix>, see hosts.js). Serves only the release's public/
+// files and the app's own data API; it is not a proxy to the ICS API.
 import crypto from "node:crypto";
 import * as data from "./data.js";
 import { DataError } from "./data.js";
@@ -12,33 +12,23 @@ import { quoteIdent } from "./model.js";
 import { buildOpenApi, publicSchema } from "./describe.js";
 import { invokeHandler } from "./custom.js";
 import { RateLimiter } from "./ratelimit.js";
+import { HostResolver } from "./hosts.js";
 import { HttpError, SECURITY_HEADERS, canonical, etag, parseIfMatch, readJson, send, sendError } from "./http.js";
 
-const HOST_RE = /^a-([0-9a-f]{32})-(prod)$/;
 const LIMITS = { wallMs: 5000, cpuMs: 250, queueMs: 1000, maxDbCalls: 20, maxResponseBytes: 256 * 1024, memoryBytes: 32 * 1024 * 1024, stackBytes: 512 * 1024 };
 const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
 const MIME = { html: "text/html; charset=utf-8", htm: "text/html; charset=utf-8", js: "text/javascript; charset=utf-8", mjs: "text/javascript; charset=utf-8", css: "text/css; charset=utf-8", json: "application/json", svg: "image/svg+xml", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", ico: "image/x-icon", woff2: "font/woff2", txt: "text/plain; charset=utf-8" };
 const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9._:-]{8,128}$/;
 
 export class Gateway {
-  constructor({ config, ics, apps, pools, runners, limiter = new RateLimiter() }) {
+  constructor({ config, ics, apps, pools, runners, limiter = new RateLimiter(), hosts = new HostResolver({ config, ics }) }) {
     this.config = config;
     this.ics = ics;
+    this.hosts = hosts;
     this.apps = apps;
     this.pools = pools;
     this.runners = runners;
     this.limiter = limiter;
-  }
-
-  parseHost(req) {
-    const host = (req.headers.host ?? "").toLowerCase();
-    const aliasHex = this.config.aliases?.get(host);
-    if (aliasHex) return { host, assetHex: aliasHex, environment: "prod", alias: true, icsBaseUrl: this.config.publicIcsUrl ?? undefined };
-    const suffix = `.${this.config.hostSuffix}`;
-    if (!host.endsWith(suffix)) return null;
-    const label = host.slice(0, -suffix.length);
-    const m = HOST_RE.exec(label);
-    return m ? { host, assetHex: m[1], environment: m[2] } : null;
   }
 
   // Runs on the session cookie alone, before ICS is asked anything, so a
@@ -54,15 +44,15 @@ export class Gateway {
 
   async handle(req, res) {
     const requestId = `req_${crypto.randomBytes(9).toString("base64url")}`;
-    const target = this.parseHost(req);
-    if (!target) return send(res, 404, { code: "not_found", detail: "unknown application host", request_id: requestId });
-    let url;
     try {
-      url = new URL(req.url, `https://${target.host}`);
-    } catch {
-      return send(res, 400, { code: "bad_request", detail: "bad URL", request_id: requestId });
-    }
-    try {
+      const target = await this.hosts.resolve(req.headers.host);
+      if (!target) throw new HttpError(404, "not_found", "unknown application host");
+      let url;
+      try {
+        url = new URL(req.url, `https://${target.host}`);
+      } catch {
+        throw new HttpError(400, "bad_request", "bad URL");
+      }
       if (url.pathname === "/__ics/sdk.js") return this.sdk(res);
       if (url.pathname === "/__ics/callback") return await this.callback(req, res, target, url);
       const cookies = parseCookies(req.headers.cookie);

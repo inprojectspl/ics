@@ -7,7 +7,7 @@ import { SESSION_COOKIE, START_COOKIE, issueSession, readSession } from "../src/
 
 const SECRET = "test-secret";
 const HEX = "a".repeat(32);
-const target = { host: `a-${HEX}-prod.apps.test`, assetHex: HEX, environment: "prod" };
+const target = { host: "k7m2q9x4.apps.test", assetHex: HEX, environment: "prod" };
 const TOKEN = "T".repeat(43);
 
 function gateway(ics = {}) {

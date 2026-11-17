@@ -226,7 +226,9 @@ without configuration; the rest needs:
 
 Small apps with their own data (`micro_application` assets), run by a shared
 broker and two runner supervisors from the `microapp-runtime` image. Every
-app gets its own origin `https://a-<asset id hex>-prod.<suffix>`. Off unless
+app gets its own origin `https://<name>.<suffix>`, `name` being 8 random
+characters reserved for that app for good (the long
+`https://a-<asset id hex>-prod.<suffix>` of earlier releases keeps working). Off unless
 `compose.microapps.yaml` is part of the deployment (`ICS_MICROAPPS_ENABLED`
 defaults to false). A lighter ICS leaves the overlay out and needs none of
 this section: no broker or runners, no `ics_apps` database, no second domain;
@@ -243,7 +245,8 @@ registrable domain, not under the ICS domain: `example.net` for an ICS on
 ICS: its script could set cookies for ICS hosts, and same-site requests to
 ICS would carry the visitor's cookies. GitHub and Google keep user content
 on separate domains for the same reason. `ICS_MICROAPPS_APP_HOST_SUFFIX` is
-that domain; an app host is one label under it (`a-<32 hex>-prod.example.net`).
+that domain; an app host is one label under it (`k7m2q9x4.example.net`, or
+the long `a-<32 hex>-prod.example.net`).
 
 ### DNS and certificates with Cloudflare
 
