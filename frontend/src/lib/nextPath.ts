@@ -14,3 +14,10 @@ export function safeNextPath(next: string | null | undefined): string | undefine
     return undefined;
   }
 }
+
+/** The page being shown, to come back to after signing in there; undefined
+ * on the home page, which is where a sign-in lands anyway. */
+export function currentNextPath(): string | undefined {
+  const here = safeNextPath(window.location.pathname + window.location.search);
+  return here === "/" ? undefined : here;
+}
