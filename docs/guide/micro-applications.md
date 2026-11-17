@@ -17,7 +17,7 @@ The repository has three examples to start from, in `examples/microapps`: Reques
 
 ## How an app differs from a document
 
-- **It runs on its own address.** **Open** takes you to the app, on a domain separate from ICS. You are signed in to it automatically with your ICS account; the app never sees your ICS session.
+- **It runs on its own address.** **Open** takes you to the app, on a domain separate from ICS, at a short address such as `https://k7m2q9x4.example.net/` that the app keeps for good. You are signed in to it automatically with your ICS account; the app never sees your ICS session.
 - **It keeps its own data.** Records people add in the app are stored in the app's own database, not in document versions. Publishing a new release keeps the data.
 - **It has its own roles.** The app declares roles such as Employee or Reviewer and the permissions behind them. Your role on the ICS document (viewer, editor, owner) decides what you can do with the document, never what you can do in the app: even the owner of the app has no app role until someone gives one.
 - **Its sources are not content.** The app's code and files are visible only to its publishers, through ics-mcp. Search finds an app by its title and description, not by its code, and links in the code create no [relations](graph.md).
@@ -29,6 +29,14 @@ Open the app's page from the document list, a project or a link, and click **Ope
 ![Request register opened by Alex Morgan, a reviewer: their own request and the queue to approve](images/micro-app-running.png)
 
 What you see inside depends on the roles you have in the app. Without any role you can open it, but the app shows that you have no permissions yet; ask the person who manages the app's access (see [Give people roles](#give-people-roles)).
+
+### Apps with a long address
+
+Apps published before the short addresses opened at `https://a-<32 characters>-prod.<apps domain>/`. That address still works, so bookmarks and links you sent keep opening the same app, and ICS now shows the short one. For the browser the two addresses are different sites:
+
+- On the short address you sign in again; with an ICS session that happens on its own.
+- What the app kept in your browser (a remembered name, a draft, a setting) stays on the old address.
+- If you used the app as a guest through a share link, the short address gives you a new guest identity: records you created as a guest under the old address stay in the app but are not shown as yours there. The old address still shows them as yours while your guest session there lasts (30 days from your last visit through the link).
 
 An app that has not been used for a while (its author sets how long, between one minute and an hour) is put to sleep and frees its resources. The next request wakes it up; you may notice a short delay on the first click.
 

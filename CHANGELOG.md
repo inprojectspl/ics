@@ -62,6 +62,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The example micro-applications (`examples/microapps`) and the template agents start from are in
   English and use the ICS palette: a header, cards, status badges, empty states and light and dark
   themes that follow the system setting.
+- Micro-applications run on short addresses, `https://<name>.<ICS_MICROAPPS_APP_HOST_SUFFIX>/`
+  with an 8-character random name drawn once per app and never given to another app, even after
+  the app is purged (migration 0051, ADR-0028). The API, the panel and share links use it; the
+  long `a-<asset id hex>-prod` host and configured aliases keep serving the same app. The browser
+  treats the short host as a new site: people sign in to the app again, and a share-link guest
+  gets a new anonymous identity there (the old host keeps the old one).
 
 ### Security
 

@@ -25,7 +25,7 @@ Addresses:
 
 - ICS panel: <https://ics.localhost:8443> (micro-applications are in the document list, filter *Type: Micro-applications*; the old `/microapps` link opens it)
 - HTML viewer: <https://html.ics.localhost:8443>
-- Apps: `https://a-<asset id hex>-prod.ics-apps.localhost:8443/`
+- Apps: `https://<8-character name>.ics-apps.localhost:8443/` (`app_url` in `ics_microapp_status`); the long `https://a-<asset id hex>-prod.ics-apps.localhost:8443/` opens the same app
 - Mail: <https://mail.ics.localhost:8443>
 - App data, read-only, for database tools (DBeast, DBeaver, psql): host
   `postgres.ics-microapps-local.orb.local` (OrbStack; the database is not
@@ -192,7 +192,8 @@ ICS_SHARE_BASE_URL=https://<panel tunnel host>
 
 then `scripts/microapps-local.sh compose up -d backend arq-worker broker`.
 The alias is an exact host mapped to exactly one app; sessions, CSRF and the
-sign-in flow work as on the local origins. Remove the four lines and the
+sign-in flow work as on the local origins. The alias replaces the app's
+`app_url` in API answers; its short and long local hosts keep working. Remove the four lines and the
 tunnels to stop sharing.
 
 A share link (`/s/<token>`, created in the share dialog or with

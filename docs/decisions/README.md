@@ -63,3 +63,4 @@ Numbers start at `0001`. Numbers are never reused (not even from deleted ADRs). 
 - [ADR-0025](0025-graph-explorer.md): Graph explorer: an incremental walk through the document graph from projects or one document.
 - [ADR-0026](0026-unified-document-search.md): Unified document search: one PostgreSQL full-text query for the web app and MCP.
 - [ADR-0027](0027-micro-applications.md): Micro-applications: agent-published apps with their own data, run by a shared broker and QuickJS/WASM runners on origins of their own.
+- [ADR-0028](0028-short-micro-application-hosts.md): Short micro-application hosts: a random 8-character name per app, reserved for good; long hosts keep working.

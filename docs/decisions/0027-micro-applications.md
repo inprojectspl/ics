@@ -35,7 +35,9 @@ described by a manifest (`ics.microapp/v1alpha1`).
   call, with limits on time, CPU, memory and database calls. Adding an app adds
   rows, not containers or processes; an idle app sleeps.
 - **An origin per app on a domain of its own.** Every app runs on
-  `a-<asset id>-<environment>.<suffix>`, under a registrable domain separate
+  `a-<asset id>-<environment>.<suffix>` (since
+  [ADR-0028](0028-short-micro-application-hosts.md) on a short random name,
+  `<name>.<suffix>`), under a registrable domain separate
   from ICS, so an app's script cannot set cookies for ICS or ride on its
   same-site requests. The app session is host-bound and obtained through ICS
   with a one-time code.
