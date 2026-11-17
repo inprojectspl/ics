@@ -47,8 +47,11 @@ alphabet of `app/slug.py` (31 characters, about 8.5e11 names):
 - **Trusted mapping.** A short label carries no id. The broker asks ICS
   (`POST /api/internal/microapps/hosts/resolve`, service token) which app and
   environment a short host is, checks the answer, and caches it (a name never
-  moves to another app); unknown names are refused with 404 and remembered for
-  ten seconds. ICS checks the exact host and the configured suffix. The name
+  moves to another app); parallel requests for a new host share one call, and
+  unknown names are refused with 404 and remembered for ten seconds. The
+  broker puts no budget on these lookups: a shared one would let made-up
+  names lock out real visitors, and the public launch endpoint of ICS makes
+  the same lookup anyway. Floods are limited per client at the proxy. ICS checks the exact host and the configured suffix. The name
   identifies the app, it never authorizes anything: the host-bound session,
   the one-time launch code, Origin and CSRF checks and the per-request
   authorization stay as they were.
