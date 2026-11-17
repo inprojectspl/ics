@@ -16,7 +16,11 @@ const sockets = [path.join(dir, "1.sock"), path.join(dir, "2.sock")];
 const procs = [];
 let pool;
 
-const LIMITS = { memoryBytes: 32 << 20, cpuMs: 250, wallMs: 3000, stackBytes: 512 * 1024 };
+// The CPU budget is time spent in the interpreter, so a busy shared CI host
+// can push a small handler past the production 250 ms. Only the test of that
+// budget runs at 250 ms; the others get room to stay deterministic.
+const BUDGET_MS = 250;
+const LIMITS = { memoryBytes: 32 << 20, cpuMs: 2000, wallMs: 3000, stackBytes: 512 * 1024 };
 
 async function waitFor(file) {
   for (let i = 0; i < 100; i += 1) {
@@ -102,7 +106,7 @@ test("a rejected RPC surfaces as a catchable guest error with its status", async
 
 test("an endless loop is interrupted by the CPU budget", async () => {
   const started = Date.now();
-  const { result } = await invoke("app-a", "export default async function () { for (;;) {} }");
+  const { result } = await invoke("app-a", "export default async function () { for (;;) {} }", { limits: { ...LIMITS, cpuMs: BUDGET_MS } });
   assert.equal(result.ok, false);
   assert.equal(result.error.code, "cpu_budget");
   assert.ok(Date.now() - started < 2000);
