@@ -367,7 +367,7 @@ async def test_admin_sees_and_empties_the_organisation_trash_only_on_request(
 
 
 @pytest.mark.asyncio
-async def test_the_organisation_trash_is_the_own_trash_for_a_non_admin(client, session):
+async def test_the_organisation_trash_is_the_own_trash_for_a_non_admin(client, session, fs_storage):
     user = await mk_user(session)
     other = await mk_user(session)
     mine = await mk_asset(session, user)
