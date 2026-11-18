@@ -45,6 +45,7 @@ export function adminHandler({ config, apps, runners, gateway, incarnation }) {
         // restart: drain in-flight work, close pools, recycle runner processes
         const idle = await apps.waitIdle(app, 5000);
         await apps.sleep(app, "restart");
+        apps.resetBreaker(app);
         app.blocked = false;
         return json(res, 200, { drained: idle, inflight: app.inflight });
       }

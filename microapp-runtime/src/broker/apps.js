@@ -7,6 +7,10 @@ const BREAKER_WINDOW_MS = 60_000;
 const BREAKER_THRESHOLD = 3;
 const BREAKER_OPEN_MS = 30_000;
 const BUNDLE_CACHE = 32;
+const COUNTED_REQUESTS = 64;
+// Failures that say the handler itself cannot finish; other errors only
+// update the last error shown in the panel.
+export const BREAKER_CODES = new Set(["execution_deadline", "cpu_budget", "memory_limit", "runner_crashed", "runner_killed"]);
 
 export class AppRegistry {
   constructor({ ics, pools, runners, idleSeconds }) {
@@ -39,6 +43,7 @@ export class AppRegistry {
         binding: null,
         blocked: false,
         failures: [],
+        countedRequests: [],
         breakerOpenUntil: 0,
         lastErrorCode: null,
         lastErrorAt: null,
@@ -53,7 +58,9 @@ export class AppRegistry {
   async sync(app, auth) {
     app.assetId = auth.asset_id;
     if (app.controlGeneration !== null && app.controlGeneration !== auth.control_generation) {
-      // restart / enable / policy change from ICS: start from a clean context
+      // restart / enable / policy change from ICS: start from a clean context,
+      // including the breaker, so a restart lets the app run again at once
+      this.resetBreaker(app);
       await this.sleep(app, "control_generation_changed");
     }
     app.controlGeneration = auth.control_generation;
@@ -94,11 +101,17 @@ export class AppRegistry {
     }
   }
 
-  recordFailure(app, releaseId, code) {
+  /** `requestId` makes a request count once, however many layers report it. */
+  recordFailure(app, releaseId, code, requestId) {
     const now = Date.now();
     app.lastErrorCode = code;
     app.lastErrorAt = new Date(now).toISOString();
-    if (!["execution_deadline", "cpu_budget", "memory_limit", "runner_crashed", "runner_killed"].includes(code)) return;
+    if (!BREAKER_CODES.has(code)) return;
+    if (requestId) {
+      if (app.countedRequests.includes(requestId)) return;
+      app.countedRequests.push(requestId);
+      if (app.countedRequests.length > COUNTED_REQUESTS) app.countedRequests.shift();
+    }
     app.failures = app.failures.filter((f) => now - f.at < BREAKER_WINDOW_MS && f.release === releaseId);
     app.failures.push({ at: now, release: releaseId });
     if (app.failures.length >= BREAKER_THRESHOLD) {
@@ -106,6 +119,11 @@ export class AppRegistry {
       app.failures = [];
       this.log(app, "error", "runtime", null, releaseId, "circuit breaker opened after repeated failures", { code });
     }
+  }
+
+  resetBreaker(app) {
+    app.failures = [];
+    app.breakerOpenUntil = 0;
   }
 
   breakerOpen(app) {

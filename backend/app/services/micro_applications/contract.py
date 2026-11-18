@@ -139,7 +139,8 @@ ERRORS = {
         "429 rate_limited": "Retry-After",
         "507 app_data_quota_exceeded": "owner's data limit is full; reads and deletes still work",
         "503 app_suspended / capacity_exhausted": "",
-        "504 execution_deadline / commit_unknown": "retry with the same Idempotency-Key",
+        "503 circuit_open": "the app failed repeatedly; wait for Retry-After",
+        "504 execution_deadline / cpu_budget / commit_unknown": "retry with the same Idempotency-Key",
     },
 }
 

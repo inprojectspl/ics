@@ -15,7 +15,7 @@ import { RateLimiter } from "./ratelimit.js";
 import { HostResolver } from "./hosts.js";
 import { HttpError, SECURITY_HEADERS, canonical, etag, parseIfMatch, readJson, send, sendError } from "./http.js";
 
-const LIMITS = { wallMs: 5000, cpuMs: 250, queueMs: 1000, maxDbCalls: 20, maxResponseBytes: 256 * 1024, memoryBytes: 32 * 1024 * 1024, stackBytes: 512 * 1024 };
+const LIMITS = { wallMs: 5000, cpuMs: 1000, queueMs: 1000, maxDbCalls: 20, maxResponseBytes: 256 * 1024, memoryBytes: 32 * 1024 * 1024, stackBytes: 512 * 1024 };
 const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
 const MIME = { html: "text/html; charset=utf-8", htm: "text/html; charset=utf-8", js: "text/javascript; charset=utf-8", mjs: "text/javascript; charset=utf-8", css: "text/css; charset=utf-8", json: "application/json", svg: "image/svg+xml", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", ico: "image/x-icon", woff2: "font/woff2", txt: "text/plain; charset=utf-8" };
 const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9._:-]{8,128}$/;
@@ -306,7 +306,7 @@ export class Gateway {
       if (outcome.replay) headers["idempotent-replayed"] = "true";
       send(rc.res, outcome.status, outcome.status === 204 ? undefined : outcome.body, headers);
     } catch (err) {
-      if (err?.code === "execution_deadline" || err?.code === "commit_unknown") this.apps.recordFailure(rc.app, ctx.releaseId, err.code);
+      if (err?.code === "execution_deadline" || err?.code === "commit_unknown") this.apps.recordFailure(rc.app, ctx.releaseId, err.code, rc.requestId);
       throw err;
     } finally {
       clearTimeout(timer);

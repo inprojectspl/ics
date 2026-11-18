@@ -69,6 +69,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A micro-application handler gets 1000 ms of JavaScript CPU instead of 250 ms, and a spent budget
+  answers `504 cpu_budget` instead of `504 execution_deadline`, so the panel shows which limit
+  stopped the handler.
 - An administrator's **Trash** shows their own and their projects' documents, like everyone's; the
   **Whole organisation** switch (`scope=admin:trash`) shows every user's, and **Empty trash** there
   (`everyone: true`) is the only way to purge other people's documents in bulk.
@@ -130,6 +133,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A micro-application request stopped by its deadline counted twice towards the circuit breaker,
+  so two failed requests already blocked the app for 30 seconds. A restart, enable or policy change
+  from ICS now also closes the breaker.
 - Signing in from a link to a page that needs an account (a project, the graph, notifications)
   returns to that page, also with Google; a document link keeps its file and version.
 - OAuth clients can discover the authorization server at the issuer's root; the existing

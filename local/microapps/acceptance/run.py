@@ -306,7 +306,7 @@ def browser_scenarios(probe_url: str) -> None:
         t0 = time.time()
         spin = call(pp, "GET", "/v1/custom/spin")
         took = time.time() - t0
-        check("an endless loop ends with 504 execution_deadline within the budget", not spin["ok"] and spin["status"] == 504 and took < 6, (spin, round(took, 2)))
+        check("an endless loop ends with 504 cpu_budget within the budget", not spin["ok"] and spin["status"] == 504 and spin["code"] == "cpu_budget" and took < 6, (spin, round(took, 2)))
         alloc = call(pp, "GET", "/v1/custom/alloc")
         # 507 memory_limit when the guest heap limit answers first, 504
         # runner_killed when the runner's OS memory limit kills the child.
