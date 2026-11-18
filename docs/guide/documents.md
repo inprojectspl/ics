@@ -62,6 +62,8 @@ The sidebar's **Documents** group chooses which documents the list shows:
 | **Mine** | Documents you own. |
 | **Shared with me** | Documents other people shared with you, directly or through a project you are a member of. |
 | **Favourites** | Documents you starred. |
+| **Archive** | Documents moved to the archive (see [below](#archive-a-document)). |
+| **Trash** | Deleted documents you can restore (see [below](#restore-a-deleted-document)). |
 
 ![The document list with the search field, Filters, the sort menu and the document rows](images/documents-list.png)
 
@@ -78,7 +80,8 @@ Click **Filters**. The popover offers groups, each with a count of how many docu
 - **Types**: Markdown, Collections, HTML bundles, PDF files, Documents (Word and OpenDocument);
 - **Status**: Public, Password protected, No link;
 - **Source**: Synced from GitLab, Manual;
-- **Projects**, **Document type**, **Freshness** (Current, Review overdue, Superseded) and **Tags**.
+- **Projects**, **Document type**, **Freshness** (Current, Review overdue, Superseded) and **Tags**;
+- **Archive**: Active, Archived. Without a choice the list shows the active documents; **Archived** shows the archive alone, both show everything.
 
 ![The Filters popover with the Types, Status and Projects groups](images/documents-filters.png)
 
@@ -102,7 +105,7 @@ Type in **Search documents…**. The search covers titles, descriptions, tags an
 
 Click **…** at the end of a row. What you see depends on your role on the document:
 
-![The row menu of Architecture overview with every action an owner has](images/documents-row-actions.png)
+![The row menu of Architecture overview with every action an owner has, ending with Move to archive and Move to trash](images/documents-row-actions.png)
 
 | Action | Who sees it | What it does |
 |---|---|---|
@@ -115,7 +118,8 @@ Click **…** at the end of a row. What you see depends on your role on the docu
 | **Assign to project** | Owners | Moves the document to a project (see [below](#move-a-document-to-a-project)). |
 | **Connect a GitLab repo** | Owners | Publishes a new version on every push, see [GitLab](gitlab.md). |
 | **Share** | Owners | The share dialog, see [Sharing](sharing.md). |
-| **Delete** | Owners | Deletes the document. |
+| **Move to archive** / **Restore from archive** | Owners | Takes the document off lists and search, or brings it back (see [below](#archive-a-document)). |
+| **Move to trash** | Owners | Deletes the document; it waits in the trash (see [below](#delete-a-document)). |
 
 "Owners" here means the document's owner, the owner of its project, and administrators.
 
@@ -261,18 +265,38 @@ A document belongs to at most one project, its home project. Project members get
 
 Only projects where you are an owner or an editor are offered. Moving a document is reserved for its owner, the owner of its current project and administrators. To show one document in several projects, use the **Projects** tab of the share dialog, see [Sharing](sharing.md#show-a-document-in-other-projects).
 
+## Archive a document
+
+The archive is for documents you are done with but want to keep. Pick **Move to archive** in the **…** menu, or in the reader. An archived document:
+
+- is left out of every list, search, the command palette and project upkeep;
+- still opens from its links, shares, relations and the graph, with a note above it saying it is in the archive;
+- keeps its links, shares, versions and its place in its project.
+
+![The Archive view: two archived documents, each with an Archived chip](images/documents-archive.png)
+
+![An archived document in the reader, with the note that it is in the archive and Restore from archive](images/document-archived-banner.png)
+
+To see the archive, click **Archive** in the sidebar, or use the **Archive** group of **Filters**; a project's archive is in the project's **…** menu. Archived rows carry an **Archived** chip. **Restore from archive**, in the **…** menu or on the note in the reader, brings the document back. The message after archiving has **Undo**.
+
+Archiving is reserved for the document's owner, the owner of its project and administrators.
+
 ## Delete a document
 
-1. Pick **Delete** in the **…** menu.
-2. Confirm. "All active links will stop working (HTTP 410)."
+1. Pick **Move to trash** in the **…** menu.
+2. Confirm. The confirmation says how long the trash keeps the document.
 
-Deleting is reserved for the document's owner, the owner of its project and administrators. Deletion revokes every share link and removes every personal grant. The document disappears from all lists and from search.
+Deleting is reserved for the document's owner, the owner of its project and administrators. Deletion revokes every share link and removes every personal grant. The document disappears from all lists and from search, and nobody can open it. The message after deleting has **Undo**.
 
 ### Restore a deleted document
 
-Deletion is soft: the document and its versions are kept. The web app has no restore button, but the owner can restore a deleted document through the ICS API, for example by asking an AI assistant connected through ics-mcp, see [AI agents](ai-agents.md).
+![The Trash view: two deleted documents, each with when and by whom it was deleted, the days left and Restore](images/documents-trash.png)
 
-A restored document comes back with its content and history, but without its old links and grants: they stay revoked. Create new links and grants after restoring.
+Click **Trash** in the sidebar. It lists the deleted documents you may restore: your own and those of projects you own, newest first. Each row says when and by whom the document was deleted and when it will be gone for good (30 days after deletion by default). A project's trash is in the project's **…** menu.
+
+- **Restore** brings the document back to its place, with its content and history, but without its old links and grants: they stay revoked. Create new links and grants after restoring. The document counts against its owner's storage again, so the owner needs the room.
+- **Delete forever**, in the row's **…** menu, removes the document and all its versions at once. It cannot be undone.
+- **Empty trash** deletes everything in the trash, or in one project's trash, for good.
 
 ## Related
 

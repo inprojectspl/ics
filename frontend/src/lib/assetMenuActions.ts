@@ -1,10 +1,13 @@
 import {
+  Archive,
+  ArchiveRestore,
   Bot,
   FolderInput,
   GitCompare,
   GitMerge,
   History,
   Pencil,
+  RotateCcw,
   Share2,
   Trash2,
   Upload,
@@ -23,12 +26,12 @@ interface Options {
    * title field in the viewer toolbar). */
   onRename: () => void;
   /**
-   * Whether content may be changed. `false` when previewing an archived
+   * Whether content may be changed. `false` when previewing an earlier
    * version: a write would hit the current version, so updating while on v1
    * would silently overwrite v5. Promoting old content is what restore is for.
    */
   allowContentEdits?: boolean;
-  /** Archived version in view; the agent view opens the same version. */
+  /** Earlier version in view; the agent view opens the same version. */
   previewVersion?: number | null;
 }
 
@@ -51,6 +54,13 @@ export function buildAssetMenuActions(
   // on it (`microapp_requires_agent_api`, `microapp_source_restricted`).
   const content = a.kind !== "micro_application";
   const out: MenuAction[] = [];
+
+  // In the trash only the way back and the way out remain.
+  if (a.deleted_at)
+    return [
+      { key: "restore", label: t("assetActions.restore"), icon: RotateCcw, onClick: () => actions.onRestore(a) },
+      { key: "purge", label: t("assetActions.purge"), icon: Trash2, danger: true, onClick: () => actions.onPurge(a) },
+    ];
 
   if (canEd)
     out.push({ key: "rename", label: t("assetMenu.rename"), icon: Pencil, onClick: onRename });
@@ -114,8 +124,23 @@ export function buildAssetMenuActions(
       disabled: shareBlocked,
       disabledHint: t("assetMenu.shareBlocked"),
     });
+  // Archive and trash are structural, like moving and sharing: owners only.
   if (canMgr)
-    out.push({ key: "delete", label: t("common.delete"), icon: Trash2, danger: true, onClick: () => actions.onDelete(a) });
+    out.push(
+      {
+        key: "archive",
+        label: t(a.archived_at ? "assetMenu.unarchive" : "assetMenu.archive"),
+        icon: a.archived_at ? ArchiveRestore : Archive,
+        onClick: () => actions.onArchive(a),
+      },
+      {
+        key: "delete",
+        label: t("assetActions.moveToTrash"),
+        icon: Trash2,
+        danger: true,
+        onClick: () => actions.onDelete(a),
+      },
+    );
 
   return out;
 }

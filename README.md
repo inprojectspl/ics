@@ -129,7 +129,7 @@ and decides, link by link, who may read them.
 
 - Untrusted HTML runs on a separate origin with a strict CSP; risky bundles and documents wait
   for administrator review.
-- Append-only audit log, per-user storage quotas, rate limiting and soft delete.
+- Append-only audit log, per-user storage quotas, rate limiting, an archive and a 30-day trash.
 - English and Polish interface, light and dark themes, a layout that works on a phone.
 
 </td>

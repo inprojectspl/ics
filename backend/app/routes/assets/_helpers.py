@@ -360,6 +360,7 @@ async def _doc_payload_for(
             "preview_version": None,
             "current_version": asset.version,
             "version_created_at": None,
+            "archived_at": asset.archived_at.isoformat() if asset.archived_at else None,
         }
     v = resolve_version_or_404(asset, version)
     stale = v != asset.version
@@ -372,6 +373,8 @@ async def _doc_payload_for(
         "preview_version": v if stale else None,
         "current_version": asset.version,
         "version_created_at": created.isoformat() if created else None,
+        # The reader's archive banner (ADR-0029).
+        "archived_at": asset.archived_at.isoformat() if asset.archived_at else None,
     }
 
     html_out: str | None = None

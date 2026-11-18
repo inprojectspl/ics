@@ -7,6 +7,7 @@ small.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 from uuid import UUID
 
@@ -70,6 +71,34 @@ async def record(
             client_id=client_uuid,
             transport=transport,
         )
+    )
+
+
+async def record_many(
+    session: AsyncSession,
+    request: Any,
+    *,
+    actor: User | str | None,
+    action: str,
+    entries: Sequence[tuple[str, dict[str, Any] | None]],
+) -> None:
+    """One action on many targets (`(target, payload)` pairs), with the
+    client and transport of `request` when there is one, looked up once."""
+    client_id_external = (
+        getattr(request.state, "oauth_client_id_external", None) if request else None
+    )
+    client_uuid = await _resolve_client_uuid(session, client_id_external)
+    transport = request_transport(request) if request else None
+    session.add_all(
+        AuditLog(
+            actor=actor_label(actor),
+            action=action,
+            target=target,
+            payload=payload,
+            client_id=client_uuid,
+            transport=transport,
+        )
+        for target, payload in entries
     )
 
 

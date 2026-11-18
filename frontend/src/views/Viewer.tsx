@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { api, type AssetDoc } from "../api";
+import { ArchivedBanner } from "../components/ArchivedBanner";
 import { HtmlBundleView } from "../components/HtmlBundleView";
 import { InlineEditor } from "../components/InlineEditor";
 import { NewFileDialog } from "../components/NewFileDialog";
@@ -145,6 +146,15 @@ export function Viewer({ slug, path, version, basePath, tab }: Props) {
     relationsHref: tab === "relations" ? undefined : `${base}?tab=relations`,
   });
   const onRendered = useCallback((root: HTMLElement) => setOutline(readOutline(root)), []);
+  const archivedAt = doc?.archived_at;
+  const banner = archivedAt ? (
+    <>
+      <ArchivedBanner archivedAt={archivedAt} onUnarchive={reader.unarchive ?? undefined} />
+      {staleNotice}
+    </>
+  ) : (
+    staleNotice
+  );
 
   if (error || !doc) {
     return (
@@ -254,7 +264,7 @@ export function Viewer({ slug, path, version, basePath, tab }: Props) {
               graphHref={graph}
             />
           }
-          banner={staleNotice}
+          banner={banner}
           inspector={inspector}
           // No preview history: releases are published through ICS-MCP; their
           // history and comparison are in the menu (Versions), as for any asset.
@@ -315,7 +325,7 @@ export function Viewer({ slug, path, version, basePath, tab }: Props) {
       <>
         {context([{ label: title }])}
         <ReaderLayout
-          banner={staleNotice}
+          banner={banner}
           toolbar={
             <ReaderToolbar
               start={facts}
@@ -390,7 +400,7 @@ export function Viewer({ slug, path, version, basePath, tab }: Props) {
     >
       {context(crumbs)}
       <ReaderLayout
-        banner={staleNotice}
+        banner={banner}
         toolbar={
           <ReaderToolbar
             start={isVault ? <VaultModeToggle mode={vaultMode} onChange={setVaultMode} /> : facts}

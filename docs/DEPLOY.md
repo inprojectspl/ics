@@ -411,6 +411,11 @@ Document files:
   `/var/lib/docker/volumes/ics_asset_storage/_data`.
 - `s3://`: use the provider's versioning and replication.
 
+Deleted documents wait in the trash for `ICS_TRASH_RETENTION_DAYS` (30 by
+default); the worker then deletes them with their files every hour
+([ADR-0029](decisions/0029-asset-archive-and-trash.md)). After that only a
+backup brings a document back, so keep backups at least that long.
+
 ## Updates
 
 Every deployment pulls new images and recreates the containers. The

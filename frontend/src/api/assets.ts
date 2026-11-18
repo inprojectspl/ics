@@ -143,8 +143,29 @@ export const renameAsset = (assetId: string, title: string) =>
     body: JSON.stringify({ title }),
   });
 
+/** Moves the asset to the trash (ADR-0029). */
 export const deleteAsset = (assetId: string) =>
   req<void>(`/api/assets/${assetId}`, { method: "DELETE" });
+
+type ArchiveState = { id: string; slug: string; archived_at: string | null; noop: boolean };
+
+export const archiveAsset = (assetId: string) =>
+  postJson<ArchiveState>(`/api/assets/${assetId}/archive`, {});
+
+export const unarchiveAsset = (assetId: string) =>
+  req<ArchiveState>(`/api/assets/${assetId}/archive`, { method: "DELETE" });
+
+/** Takes the asset out of the trash; shares and links are not restored. */
+export const restoreAsset = (assetId: string) =>
+  postJson<{ id: string; slug: string; noop: boolean }>(`/api/assets/${assetId}/undelete`, {});
+
+/** Deletes an asset from the trash for good. */
+export const purgeAsset = (assetId: string) =>
+  postJson<{ id: string; purged: boolean }>(`/api/assets/${assetId}/purge`, {});
+
+/** Purges the caller's trash, or one project's; `remaining` waits for another call. */
+export const emptyTrash = (projectId?: string) =>
+  postJson<{ purged: number; remaining: number }>("/api/assets/trash/purge", { project_id: projectId ?? null });
 
 // ---------- Document metadata (ADR-0015) ----------
 

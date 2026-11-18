@@ -6,15 +6,17 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends, Query, status
-from sqlalchemy import and_, func, select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import audit
 from app.auth import CurrentUser
 from app.db import get_session
 from app.models import Asset, AssetPin, Project, ProjectMember, User
+from app.services import asset_lifecycle
 from app.services import project_links as project_links_svc
 from app.services import project_shares as project_shares_svc
+from app.services.asset_lifecycle import ArchiveView
 from app.services.asset_listing import build_asset_summaries
 from app.services.asset_sort import AssetSortKey, SortOrder, asset_order_by
 from app.slug import generate_slug
@@ -164,6 +166,10 @@ async def get_project(
     session: Annotated[AsyncSession, Depends(get_session)],
     sort: Annotated[AssetSortKey, Query()] = "updated",
     order: Annotated[SortOrder | None, Query()] = None,
+    archive: Annotated[
+        ArchiveView,
+        Query(description="`active` (default) leaves the project's archive out."),
+    ] = "active",
 ) -> dict:
     project, my_role = await _project_with_min_role(session, slug, user, "viewer")
     members_rows = (
@@ -175,16 +181,28 @@ async def get_project(
         )
     ).all()
     members = [_member_row(m, user=u) for m, u in members_rows]
-    in_project = and_(project_shares_svc.in_project_filter(project.id), Asset.deleted_at.is_(None))
-    asset_count_total = int(
-        await session.scalar(select(func.count(Asset.id)).where(in_project)) or 0
-    )
+    in_project = project_shares_svc.in_project_filter(project.id)
+    # The header counts the project's active documents and the filter offers
+    # the archive by its size, whatever the current view.
+    active_count, archived_count = (
+        await session.execute(
+            select(
+                func.count(Asset.id).filter(asset_lifecycle.archive_predicate("active")),
+                func.count(Asset.id).filter(asset_lifecycle.archive_predicate("archived")),
+            ).where(in_project, *asset_lifecycle.listed("all"))
+        )
+    ).one()
+    listed_total = {
+        "active": active_count,
+        "archived": archived_count,
+        "all": active_count + archived_count,
+    }[archive]
     # Pins are per user, so join the caller's own.
     asset_rows = (
         await session.execute(
             select(Asset, AssetPin.pinned_at)
             .outerjoin(AssetPin, AssetPin.for_user(user.id))
-            .where(in_project)
+            .where(in_project, *asset_lifecycle.listed(archive))
             .order_by(*asset_order_by(sort, order))
             .limit(ASSETS_PAGE_LIMIT)
         )
@@ -207,11 +225,12 @@ async def get_project(
             project,
             my_role=my_role,
             member_count=sum(1 for m, _ in members_rows if m.accepted_at is not None),
-            asset_count=asset_count_total,
+            asset_count=int(active_count),
         ),
         "members": members,
         "assets": asset_list,
-        "assets_truncated": asset_count_total > len(asset_list),
+        "assets_truncated": listed_total > len(asset_list),
+        "archived_count": int(archived_count),
     }
 
 

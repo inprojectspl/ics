@@ -103,7 +103,17 @@ class Asset(Base):
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    # In the trash: hidden from everyone, purged after the retention period
+    # (ADR-0029). Only its managers see it, in the trash.
     deleted_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    deleted_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    # Fixed when the asset enters the trash, so a later change of the
+    # retention setting never shortens what the trash promised.
+    purge_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    # In the archive: left out of lists and search unless asked for, still
+    # opened by link, share or slug.
+    archived_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    archived_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     # When and by whom the content last changed (v1 or a new version).
     # `updated_at` also moves on tags, renames, outline and scan writes.
     # Every insert creates content, hence the default.

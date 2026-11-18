@@ -1,4 +1,4 @@
-import { Files, Inbox, ListFilter, Search, ShieldAlert, Star, Users } from "lucide-react";
+import { Archive, Files, Inbox, ListFilter, Search, ShieldAlert, Star, Trash2, Users } from "lucide-react";
 import { t } from "../lib/i18n";
 import type { AssetScope } from "../lib/useAssetFilter";
 import { EmptyState } from "./EmptyState";
@@ -9,12 +9,14 @@ interface Props {
   search: string;
   /** Toolbar filters are on: the way out is clearing them. */
   filtered: boolean;
+  /** The filters ask for the archive alone. */
+  archiveOnly?: boolean;
   onClearFilters: () => void;
 }
 
 /** Empty document list: the most concrete reason first (search, filters,
  * then the scope), each with the action that gets the person further. */
-export function HomeEmptyState({ scope, search, filtered, onClearFilters }: Props) {
+export function HomeEmptyState({ scope, search, filtered, archiveOnly = false, onClearFilters }: Props) {
   const q = search.trim();
   if (q.length >= 2)
     return (
@@ -26,6 +28,10 @@ export function HomeEmptyState({ scope, search, filtered, onClearFilters }: Prop
     );
   if (q.length > 0)
     return <EmptyState icon={Search} title={t("homeEmpty.noMatchesTitle")} description={t("homeEmpty.noMatchesBody")} />;
+  if (scope === "state:trash" && !filtered)
+    return <EmptyState icon={Trash2} title={t("homeEmpty.trashTitle")} description={t("homeEmpty.trashBody")} />;
+  if (archiveOnly && scope === "all")
+    return <EmptyState icon={Archive} title={t("homeEmpty.archiveTitle")} description={t("homeEmpty.archiveBody")} />;
   if (filtered)
     return (
       <EmptyState

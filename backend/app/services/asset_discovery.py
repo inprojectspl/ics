@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import permissions
 from app.models import Asset, AssetPin, User
+from app.services import asset_lifecycle
 from app.services.asset_filters import (
     AssetScope,
     facet_counts,
@@ -35,17 +36,27 @@ async def discover_assets(
     filters: Sequence[str] = (),
     facets: bool = False,
 ) -> dict:
-    base = [permissions.visible_assets_filter(user)]
+    trash = scope == "state:trash"
+    base = [
+        asset_lifecycle.trash_filter(user) if trash else permissions.visible_assets_filter(user)
+    ]
     if q is not None:
         base.append(search_filter(q, match))
-    fixed = fixed_filter_predicates(user)
+    # Sharing, source, freshness and the archive say nothing about a deleted
+    # asset, so the trash neither filters nor counts by them.
+    fixed = {} if trash else fixed_filter_predicates(user)
     groups = filter_predicates(filters, fixed)
-    conditions = [*base, scope_predicates(user)[scope], *groups.values()]
-    ordering = (
-        relevance_order(q, user, match)
-        if q is not None and sort is None
-        else asset_order_by(sort or "updated", order)
-    )
+    if not trash and "archive" not in groups:
+        # The archive stays out until a filter asks for it (ADR-0029).
+        groups["archive"] = asset_lifecycle.archive_predicate("active")
+    scope_clause = true() if trash else scope_predicates(user)[scope]
+    conditions = [*base, scope_clause, *groups.values()]
+    if q is not None and sort is None:
+        ordering = relevance_order(q, user, match)
+    elif trash and sort is None:
+        ordering = [Asset.deleted_at.desc(), Asset.id.desc()]
+    else:
+        ordering = asset_order_by(sort or "updated", order)
     # A window count keeps the rows and their total on the same DB snapshot.
     stmt = (
         select(Asset, AssetPin.pinned_at, func.count().over().label("total"))
@@ -67,6 +78,9 @@ async def discover_assets(
         [a for a, _, _ in rows],
         pin_at_by_asset={a.id: pin for a, pin, _ in rows},
     )
+    if trash:
+        extra = await asset_lifecycle.trash_fields(session, [a for a, _, _ in rows])
+        items = [{**item, **extra[a.id]} for item, (a, _, _) in zip(items, rows, strict=True)]
     result = {"items": items, "total": total}
     if facets:
         result.update(await facet_counts(session, user, base, scope, groups, fixed))

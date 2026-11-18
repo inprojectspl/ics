@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import type { Me } from "../../api";
 import type { MessageKey } from "../../lib/i18n";
-import { scopeHref, type AssetScope } from "../../lib/useAssetFilter";
+import { ARCHIVE_ONLY, isArchiveOnly, scopeHref, type AssetFilter, type AssetScope } from "../../lib/useAssetFilter";
 
 /** Top-level area of the app; decides the active sidebar group. */
 export type NavSection = "documents" | "projects" | "admin" | "account" | "notifications";
@@ -28,16 +28,27 @@ export interface NavGroup {
 }
 
 function scopeOf(search: URLSearchParams): AssetScope {
-  const scopes: AssetScope[] = ["state:pinned", "state:mine", "state:shared-with-me", "admin:review"];
+  const scopes: AssetScope[] = ["state:pinned", "state:mine", "state:shared-with-me", "admin:review", "state:trash"];
   return scopes.find((s) => search.getAll("f").includes(s)) ?? "all";
+}
+
+function archiveOnly(search: URLSearchParams): boolean {
+  return isArchiveOnly(scopeOf(search), search.getAll("f") as AssetFilter[]);
 }
 
 const docLeaf = (scope: AssetScope, label: MessageKey): NavLeaf => ({
   id: `documents:${scope}`,
   href: scopeHref(scope),
   label,
-  match: ({ pathname, search }) => pathname === "/" && scopeOf(search) === scope,
+  match: ({ pathname, search }) => pathname === "/" && scopeOf(search) === scope && !archiveOnly(search),
 });
+
+const archiveLeaf: NavLeaf = {
+  id: "documents:archive",
+  href: scopeHref("all", [ARCHIVE_ONLY]),
+  label: "sidebarNav.archive",
+  match: ({ pathname, search }) => pathname === "/" && archiveOnly(search),
+};
 
 const pathLeaf = (id: string, href: string, label: MessageKey): NavLeaf => ({
   id,
@@ -86,6 +97,8 @@ export function navTree(me: Me, projects: readonly ProjectLink[]): NavGroup[] {
       children: [
         ...DOCUMENT_SCOPES.map(({ scope, label }) => docLeaf(scope, label)),
         pathLeaf("documents:graph", "/graph", "sidebarNav.graph"),
+        archiveLeaf,
+        docLeaf("state:trash", "sidebarNav.trash"),
       ],
     },
     {

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Sequence
-from typing import Literal
+from typing import Literal, get_args
 from uuid import UUID
 
 from sqlalchemy import (
@@ -32,12 +32,14 @@ from app.models import (
     ShareLink,
     User,
 )
-from app.services import graph_signals
+from app.services import asset_lifecycle, graph_signals
 from app.services.freshness import freshness_filter
 from app.services.project_shares import in_project_filter
 from app.util import now as utc_now
 
-AssetScope = Literal["all", "state:mine", "state:shared-with-me", "state:pinned", "admin:review"]
+AssetScope = Literal[
+    "all", "state:mine", "state:shared-with-me", "state:pinned", "admin:review", "state:trash"
+]
 Clauses = dict[str, ColumnElement[bool]]
 
 
@@ -79,6 +81,10 @@ def fixed_filter_predicates(user: User) -> Clauses:
             f"fresh:{value}": freshness_filter([value], now, superseded=superseded)
             for value in ("current", "review_overdue", "superseded")
         },
+        **{
+            f"archive:{state}": asset_lifecycle.archive_predicate(state)
+            for state in get_args(asset_lifecycle.ArchiveState)
+        },
     }
 
 
@@ -90,13 +96,14 @@ def filter_predicates(values: Sequence[str], fixed: Clauses) -> Clauses:
         if (
             not sep
             or not term
-            or kind not in {"type", "state", "source", "project", "doctype", "fresh", "tag"}
+            or kind
+            not in {"type", "state", "source", "project", "doctype", "fresh", "tag", "archive"}
         ):
             raise InvalidInputError("validation_error", "Invalid document filter")
         groups[kind].append(term)
     predicates: Clauses = {}
     for kind, terms in groups.items():
-        if kind in {"state", "source", "fresh"}:
+        if kind in {"state", "source", "fresh", "archive"}:
             if any(f"{kind}:{term}" not in fixed for term in terms):
                 raise InvalidInputError("validation_error", "Invalid document filter value")
             predicates[kind] = or_(*(fixed[f"{kind}:{term}"] for term in terms))
@@ -126,9 +133,12 @@ async def facet_counts(
     """Counts over the authorized matching corpus, independent of LIMIT.
 
     Disjunctive facets omit their own group's constraint, so another value
-    in that group remains selectable. All aggregates run in one round trip.
+    in that group remains selectable. Scope counts ignore the filters except
+    the archive, so the sidebar counts what the scope lists. All aggregates
+    run in one round trip.
     """
-    scopes = scope_predicates(user)
+    # The trash has its own base query, so it counts as one scope of its own.
+    scopes = {scope: true()} if scope == "state:trash" else scope_predicates(user)
     scope_columns = {key: f"scope_{i}" for i, key in enumerate(scopes)}
     fixed_columns = {key: f"fixed_{i}" for i, key in enumerate(fixed)}
     group_columns = {key: f"group_{i}" for i, key in enumerate(groups)}
@@ -156,10 +166,11 @@ async def facet_counts(
             *(eligible.c[column] for key, column in group_columns.items() if key != skip),
         ]
 
+    archive = [eligible.c[group_columns["archive"]]] if "archive" in group_columns else []
     counts = (
         select(
             *(
-                func.count().filter(eligible.c[column]).label(column)
+                func.count().filter(eligible.c[column], *archive).label(column)
                 for column in scope_columns.values()
             ),
             *(

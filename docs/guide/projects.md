@@ -53,7 +53,7 @@ The header shows the project name, your role badge, the number of documents and 
 
 - **Invite** (owner) opens the invitation dialog.
 - **Upload** (owner and editor) adds documents straight into this project. You can also drag files onto the page.
-- **…** holds **Edit name and description** and **Delete project** (owner), or **Leave project** (any member who is not the owner).
+- **…** holds **Project archive** (every member: the project's archived documents), **Project trash**, **Edit name and description** and **Delete project** (owner), or **Leave project** (any member who is not the owner). See [Archive a document](documents.md#archive-a-document).
 
 On the right of the breadcrumb bar, **Watch** / **Watching** turns notifications about the project on or off. See [Notifications](notifications.md).
 
@@ -80,7 +80,7 @@ A project has exactly one **Owner**. Everyone else is an **Editor** or a **Viewe
 | Change documents: new versions, rename, metadata, relations, restore a version | yes | yes | no |
 | Use the **Hygiene** tab | yes | yes | no |
 | Create share links and share documents with people | yes | no | no |
-| Delete a document of the project | yes | no | no |
+| Archive a document of the project, delete it, restore it from the trash | yes | no | no |
 | Move a document to another project, or show it in other projects | yes | no | no |
 | Invite members, change their role, remove them | yes | no | no |
 | Edit the key documents and the OpenProject link (**Settings**) | yes | no | no |

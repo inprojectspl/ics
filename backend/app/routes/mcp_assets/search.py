@@ -19,6 +19,7 @@ from app.json_response import ORJSONResponse
 from app.models import Asset, User
 from app.pdf_markdown import snippet_probe
 from app.services import doc_types, graph_signals
+from app.services.asset_lifecycle import ArchiveView, listed
 from app.services.asset_projection import preview_summary
 from app.services.document_search import (
     SEARCH_CONFIG,
@@ -109,6 +110,7 @@ async def search_with_snippets(
     doc_type: Annotated[list[str] | None, Query()] = None,
     freshness: Annotated[list[FilterableFreshness] | None, Query()] = None,
     maintainer: UUID | None = None,
+    archive: ArchiveView = "active",
 ) -> ORJSONResponse:
     """Shared document matching and relevance, with page-local snippets.
 
@@ -131,6 +133,7 @@ async def search_with_snippets(
             now=utc_now(),
             viewer=user,
         )
+        filters = [*filters, *listed(archive)]
         matching = _matching_assets_select(user, q, match, kind, project_id, filters)
         visible = matching.cte("visible")
 
@@ -177,6 +180,7 @@ async def search_with_snippets(
                 Asset.entry_path,
                 Asset.read_tokens,
                 Asset.size_bytes,
+                Asset.archived_at,
                 graph_signals.visible_successor_exists(user, page.c.id).label("superseded"),
             )
             .join_from(page, Asset, Asset.id == page.c.id)
@@ -230,6 +234,7 @@ async def search_with_snippets(
                 freshness=freshness_of(row, now, superseded=bool(row.superseded)),
                 latest=ends[row.id].slug if row.id in ends else None,
                 estimated_tokens=estimated_tokens(row),
+                archived=row.archived_at is not None,
                 snippets=snippets,
             )
         )

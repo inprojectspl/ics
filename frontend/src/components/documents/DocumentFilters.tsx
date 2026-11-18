@@ -4,6 +4,8 @@ import { ListFilter, X } from "lucide-react";
 import type { ProjectSummary } from "../../api";
 import { intlLocale, t, type MessageKey } from "../../lib/i18n";
 import {
+  ARCHIVE_ACTIVE,
+  ARCHIVE_ONLY,
   FRESHNESS_VALUES,
   filterKind,
   type AssetFilter,
@@ -56,6 +58,10 @@ const FIXED: Partial<Record<FilterKind, ReadonlyArray<{ value: AssetFilter; labe
     { value: "source:gitlab", label: "sidebarNav.gitlab" },
     { value: "source:manual", label: "sidebarNav.manual" },
   ],
+  archive: [
+    { value: ARCHIVE_ACTIVE, label: "filters.archiveActive" },
+    { value: ARCHIVE_ONLY, label: "filters.archiveArchived" },
+  ],
 };
 
 const TITLES: Record<FilterKind, MessageKey> = {
@@ -66,9 +72,10 @@ const TITLES: Record<FilterKind, MessageKey> = {
   doctype: "sidebarNav.docTypes",
   fresh: "sidebarNav.freshness",
   tag: "sidebarNav.tags",
+  archive: "sidebarNav.archive",
 };
 
-const ALL_KINDS: readonly FilterKind[] = ["type", "state", "source", "project", "doctype", "fresh", "tag"];
+const ALL_KINDS: readonly FilterKind[] = ["type", "state", "source", "project", "doctype", "fresh", "tag", "archive"];
 
 /** Filter groups with at least one option that would show something (or is on). */
 function useGroups({ active, counts, projects, docTypeLabels, kinds = ALL_KINDS }: Props): Group[] {

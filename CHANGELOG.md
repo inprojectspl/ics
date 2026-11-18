@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - First public release.
+- Archive and trash of documents ([ADR-0029](docs/decisions/0029-asset-archive-and-trash.md)).
+  An archived document leaves lists, search and project upkeep but still opens by link, share and
+  slug: **Move to archive** in the `…` menu, **Archive** in the sidebar and in **Filters**, a
+  banner in the reader, `POST`/`DELETE /api/assets/{id}/archive`, `archive=` on `/api/assets/index`,
+  `/api/assets/search-mcp` and `/api/projects/{slug}`. A deleted document goes to the trash for
+  `ICS_TRASH_RETENTION_DAYS` (30): **Trash** in the sidebar and the project's `…` menu, **Restore**,
+  **Delete forever** and **Empty trash**, undo from the toast; `GET /api/assets/trash`,
+  `POST /api/assets/{id}/purge`, `POST /api/assets/trash/purge`. The hourly `purge_trash` job then
+  deletes the document with its files. Migration `0052` adds `archived_at`, `archived_by`,
+  `deleted_by` and `purge_at`; documents already deleted get the full period from the upgrade.
+  The project owner may now restore a project document from the trash, and a restore needs room in
+  the owner's quota.
 - Documentation site at <https://inprojectspl.github.io/ics/>, built with MkDocs from `docs/`.
 - `GET /api/assets/by-id/{id}/meta`: the asset meta by id for any viewer, as
   `/by-slug/{slug}/meta` (`/api/assets/{id}` answers editors only).
@@ -57,6 +69,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- An older version of a document is an "earlier version" in the web app ("archived" now means the
+  archive of documents), and **Delete** in the `…` menu reads **Move to trash**.
 - `format=markdown` on a file that is neither HTML nor Markdown answers `format_unsupported`
   instead of `html_only`.
 - The example micro-applications (`examples/microapps`) and the template agents start from are in

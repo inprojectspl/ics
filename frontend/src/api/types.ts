@@ -55,6 +55,8 @@ export type AuthConfig = {
   sync_image: string;
   /** Micro-applications (and their admin settings) exist only where the server enables them. */
   microapps_enabled?: boolean;
+  /** Days a deleted document stays in the trash. */
+  trash_retention_days?: number;
 };
 
 export type UploadShareMode = "org_sso" | "public";
@@ -111,6 +113,12 @@ export type AssetSummary = Partial<AssetMetadata> & {
   history_readable?: boolean;
   access_source?: "owned" | "direct" | "project";
   owner?: { id: string; email: string; display_name: string | null } | null;
+  /** In the archive: off lists and search, still opens (ADR-0029). */
+  archived_at?: string | null;
+  /** Trash rows only: when and by whom it was deleted, when it goes for good. */
+  deleted_at?: string | null;
+  deleted_by?: { id: string; email: string; display_name: string | null } | null;
+  purge_at?: string | null;
 };
 
 export type ReviewItem = {
@@ -255,6 +263,8 @@ export type AssetDoc = Partial<AssetMetadata> & {
    * current version the backend returns null so the UI does not draw an
    * "outdated" warning above current content. */
   preview_version?: number | null;
+  /** In the archive since then (ADR-0029). */
+  archived_at?: string | null;
   current_version?: number;
   /** Creation date of the version being read. */
   version_created_at?: string | null;
@@ -395,6 +405,10 @@ export type ProjectMemberRow = {
   invited_by: string | null;
 };
 
+/** Which part of a list the archive filter covers (ADR-0029): the active
+ * documents (default), the archive alone, or both. */
+export type ArchiveView = "active" | "archived" | "all";
+
 export type ProjectDetail = ProjectSummary & {
   members: ProjectMemberRow[];
   // Full AssetSummary rows (backend uses the shared serializer) so the
@@ -402,6 +416,8 @@ export type ProjectDetail = ProjectSummary & {
   assets: AssetSummary[];
   // True when the project has more files than the response cap (200).
   assets_truncated?: boolean;
+  /** Documents in the project's archive, left out of `assets` by default. */
+  archived_count?: number;
 };
 
 export type AssetShareRow = {

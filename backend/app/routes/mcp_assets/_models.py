@@ -41,6 +41,8 @@ class AssetIndexItem(BaseModel):
     project_id: UUID | None
     tags: list[str]
     has_versions: bool
+    # Set when the asset is in the archive (ADR-0029).
+    archived_at: datetime | None = None
     access_role: Literal["owner_file", "project_owner", "editor", "viewer"]
     # With a project filter: the asset's home is another project (ADR-0017).
     shared_in: bool = False
@@ -162,6 +164,8 @@ class SearchHit(BaseModel):
     # the hit is superseded; token size of its default read.
     latest: str | None = None
     estimated_tokens: int | None = None
+    # In the archive: found only with `archive=archived|all` (ADR-0029).
+    archived: bool = False
     snippets: list[SearchSnippet]
 
 

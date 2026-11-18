@@ -1,5 +1,6 @@
 import { postJson, putJson, req, sortQuery } from "./_core";
 import type {
+  ArchiveView,
   AssetSort,
   HygieneList,
   KeyDocument,
@@ -28,8 +29,11 @@ export const listProjects = (params: { page?: number; page_size?: number } = {})
 export const createProject = (name: string, description?: string) =>
   postJson<ProjectSummary>("/api/projects", { name, description: description ?? null });
 
-export const getProject = (slug: string, sort?: AssetSort) =>
-  req<ProjectDetail>(`/api/projects/${slug}${sortQuery(sort, "?")}`);
+export const getProject = (slug: string, sort?: AssetSort, archive: ArchiveView = "active") => {
+  const qs = sortQuery(sort, "?");
+  if (archive === "active") return req<ProjectDetail>(`/api/projects/${slug}${qs}`);
+  return req<ProjectDetail>(`/api/projects/${slug}${qs}${qs ? "&" : "?"}archive=${archive}`);
+};
 
 export const patchProject = (
   slug: string,

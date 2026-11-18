@@ -1,13 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AssetSummary, Freshness } from "../api";
+import { AssetSummary, Freshness, type ArchiveView } from "../api";
 import { replaceUrl } from "./navigate";
 
 /**
  * Which documents a view shows. Chosen in the sidebar (Documents -> All,
- * Mine, Shared with me, Favourites); an administrator also has the review
- * queue. One scope at a time.
+ * Mine, Shared with me, Favourites, Trash); an administrator also has the
+ * review queue. One scope at a time. The trash lists deleted documents the
+ * user may restore, so it is a scope of its own, not a filter.
  */
-export type AssetScope = "all" | "state:pinned" | "state:mine" | "state:shared-with-me" | "admin:review";
+export type AssetScope =
+  | "all"
+  | "state:pinned"
+  | "state:mine"
+  | "state:shared-with-me"
+  | "admin:review"
+  | "state:trash";
 
 const SCOPES: readonly AssetScope[] = [
   "all",
@@ -15,6 +22,7 @@ const SCOPES: readonly AssetScope[] = [
   "state:mine",
   "state:shared-with-me",
   "admin:review",
+  "state:trash",
 ];
 
 /**
@@ -30,11 +38,21 @@ export type AssetFilter =
   | `project:${string}`
   | `doctype:${string}`
   | `fresh:${Freshness}`
-  | `tag:${string}`;
+  | `tag:${string}`
+  | ArchiveFilter;
 
-export type FilterKind = "type" | "state" | "source" | "project" | "doctype" | "fresh" | "tag";
+/**
+ * Lists leave the archive out until asked: `archive:archived` shows only
+ * the archive, both values show everything (ADR-0029).
+ */
+export type ArchiveFilter = `archive:${"active" | "archived"}`;
 
-const FILTER_KINDS: readonly FilterKind[] = ["type", "state", "source", "project", "doctype", "fresh", "tag"];
+export const ARCHIVE_ONLY: ArchiveFilter = "archive:archived";
+export const ARCHIVE_ACTIVE: ArchiveFilter = "archive:active";
+
+export type FilterKind = "type" | "state" | "source" | "project" | "doctype" | "fresh" | "tag" | "archive";
+
+const FILTER_KINDS: readonly FilterKind[] = ["type", "state", "source", "project", "doctype", "fresh", "tag", "archive"];
 
 export const FRESHNESS_VALUES: readonly Freshness[] = ["current", "review_overdue", "superseded"];
 
@@ -80,9 +98,31 @@ function writeToUrl({ scope, filters }: FilterState) {
   replaceUrl(`${window.location.pathname}${qs ? "?" + qs : ""}${window.location.hash}`);
 }
 
-/** Link to the document list in `scope` (the sidebar entries). */
-export function scopeHref(scope: AssetScope): string {
-  return scope === "all" ? "/" : `/?${URL_PARAM}=${encodeURIComponent(scope)}`;
+/** `path` with these `?f=` values: a filtered list to link to. */
+export function filterHref(path: string, values: readonly string[]): string {
+  if (values.length === 0) return path;
+  return `${path}?${values.map((v) => `${URL_PARAM}=${encodeURIComponent(v)}`).join("&")}`;
+}
+
+/** Link to the document list in `scope` (the sidebar entries), optionally filtered. */
+export function scopeHref(scope: AssetScope, filters: readonly AssetFilter[] = []): string {
+  return filterHref("/", [...(scope === "all" ? [] : [scope]), ...filters]);
+}
+
+/** What follows the kind: the project id of `project:<id>`. */
+export function filterValue(f: AssetFilter): string {
+  return f.slice(f.indexOf(":") + 1);
+}
+
+/** Which part of the archive the filters ask for (none: the active documents). */
+export function archiveView(filters: readonly AssetFilter[]): ArchiveView {
+  if (!filters.includes(ARCHIVE_ONLY)) return "active";
+  return filters.includes(ARCHIVE_ACTIVE) ? "all" : "archived";
+}
+
+/** The list is the archive itself: every document, only the archived ones. */
+export function isArchiveOnly(scope: AssetScope, filters: readonly AssetFilter[]): boolean {
+  return scope === "all" && archiveView(filters) === "archived";
 }
 
 function inScope(a: AssetSummary, scope: AssetScope): boolean {
@@ -97,6 +137,8 @@ function inScope(a: AssetSummary, scope: AssetScope): boolean {
       return Boolean(a.pinned_at);
     case "admin:review":
       return a.security_status === "critical" && !a.security_bypass;
+    case "state:trash":
+      return Boolean(a.deleted_at);
   }
 }
 
@@ -120,6 +162,8 @@ function valuesOf(a: AssetSummary, kind: FilterKind): readonly string[] {
       return a.freshness ? [a.freshness] : [];
     case "tag":
       return a.tags ?? [];
+    case "archive":
+      return [a.archived_at ? "archived" : "active"];
   }
 }
 

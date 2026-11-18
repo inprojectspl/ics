@@ -145,3 +145,4 @@ nav:
       - decisions/0026-unified-document-search.md
       - decisions/0027-micro-applications.md
       - decisions/0028-short-micro-application-hosts.md
+      - decisions/0029-asset-archive-and-trash.md

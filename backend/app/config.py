@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     # a max-size asset upload.
     max_request_bytes: int = 110 * 1024 * 1024
     max_files_per_bundle: int = 500
+    # Days a deleted asset stays in the trash before it is purged for good
+    # (ADR-0029). Applies to assets deleted after a change.
+    trash_retention_days: int = 30
 
     # PDF assets (ADR-0013). The cap is per file; text extraction runs in a
     # child process that is killed after the timeout.

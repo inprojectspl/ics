@@ -376,10 +376,17 @@ async def get_owned_binding(session: AsyncSession, binding_id: UUID, user: User)
     return binding
 
 
+def can_manage(role: EffectiveRole | None) -> bool:
+    """Structural changes to an asset: sharing it, archiving it, moving it
+    to the trash and back. Owner of the file OR project owner; editors only
+    collaborate on content."""
+    return role in ("owner_file", "project_owner")
+
+
 def can_share_externally(role: EffectiveRole | None) -> bool:
     """Allowed to create public ShareLinks or per-user AssetShares of
-    someone else's file: owner of the file OR project owner."""
-    return role in ("owner_file", "project_owner")
+    someone else's file."""
+    return can_manage(role)
 
 
 async def project_role(session: AsyncSession, user: User, project: Project) -> str | None:
@@ -408,6 +415,20 @@ async def assert_project_contributor(
             "you must be an owner or editor of the target project",
         )
     return project
+
+
+async def get_managed_asset(
+    session: AsyncSession, user: User, asset_id: UUID, *, in_trash: bool | None = False
+) -> Asset:
+    """An asset `user` may archive, delete, restore or purge (`can_manage`):
+    live (`in_trash=False`), in the trash (`True`) or either (`None`).
+    Anything else is not found, so nobody learns that it exists."""
+    asset = await session.get(Asset, asset_id)
+    if asset is None or (in_trash is not None and (asset.deleted_at is not None) != in_trash):
+        raise NotFoundError("asset_not_found", "asset not found")
+    if not can_manage(await effective_role(session, user, asset)):
+        raise NotFoundError("asset_not_found", "asset not found")
+    return asset
 
 
 async def get_shareable_asset(

@@ -155,7 +155,7 @@ describe("AgentView", () => {
 
     expect(await screen.findByLabelText("Raw text")).toHaveTextContent("<p>x</p>");
     expect(screen.queryByRole("radio", { name: "Preview" })).not.toBeInTheDocument();
-    expect(screen.getByText("archived version v1")).toBeInTheDocument();
+    expect(screen.getByText("earlier version v1")).toBeInTheDocument();
     expect(screen.getByText(/The preview shows the start of the file/)).toBeInTheDocument();
     expect(
       screen.getByText(

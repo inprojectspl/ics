@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import permissions
 from app.errors import ApiError
 from app.models import Asset, Project, ProjectMember, User
+from app.services import asset_lifecycle
 
 
 def _utcnow() -> datetime:
@@ -112,7 +113,7 @@ async def _count_assets(session: AsyncSession, project_id: UUID) -> int:
             await session.execute(
                 select(func.count(Asset.id)).where(
                     Asset.project_id == project_id,
-                    Asset.deleted_at.is_(None),
+                    *asset_lifecycle.listed(),
                 )
             )
         ).scalar_one()
@@ -142,7 +143,7 @@ async def _bulk_counts(
             select(Asset.project_id, func.count(Asset.id))
             .where(
                 Asset.project_id.in_(project_ids),
-                Asset.deleted_at.is_(None),
+                *asset_lifecycle.listed(),
             )
             .group_by(Asset.project_id)
         )

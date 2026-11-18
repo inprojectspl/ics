@@ -39,7 +39,7 @@ vi.mock("../lib/useVersionPreview", () => ({
   }),
 }));
 vi.mock("../components/reader/useReaderActions", () => ({
-  useReaderActions: () => ({ asset: null, project: null, menu: [], share: null, dialogs: null, onChanged: vi.fn(), assignProject: null }),
+  useReaderActions: () => ({ asset: null, project: null, menu: [], share: null, dialogs: null, onChanged: vi.fn(), assignProject: null, unarchive: null }),
 }));
 vi.mock("../lib/useVaultFileActions", () => ({
   useVaultFileActions: () => ({ fileInputRef: { current: null } }),
