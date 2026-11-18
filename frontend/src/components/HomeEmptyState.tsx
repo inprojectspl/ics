@@ -1,6 +1,6 @@
 import { Archive, Files, Inbox, ListFilter, Search, ShieldAlert, Star, Trash2, Users } from "lucide-react";
 import { t } from "../lib/i18n";
-import type { AssetScope } from "../lib/useAssetFilter";
+import { isTrashScope, type AssetScope } from "../lib/useAssetFilter";
 import { EmptyState } from "./EmptyState";
 import { Button } from "./ui/Button";
 
@@ -28,7 +28,7 @@ export function HomeEmptyState({ scope, search, filtered, archiveOnly = false, o
     );
   if (q.length > 0)
     return <EmptyState icon={Search} title={t("homeEmpty.noMatchesTitle")} description={t("homeEmpty.noMatchesBody")} />;
-  if (scope === "state:trash" && !filtered)
+  if (isTrashScope(scope) && !filtered)
     return <EmptyState icon={Trash2} title={t("homeEmpty.trashTitle")} description={t("homeEmpty.trashBody")} />;
   if (archiveOnly && scope === "all")
     return <EmptyState icon={Archive} title={t("homeEmpty.archiveTitle")} description={t("homeEmpty.archiveBody")} />;

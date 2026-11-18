@@ -13,7 +13,7 @@ from app.models import Asset, AuditLog, Project, ProjectMember, ShareLink
 from app.services import asset_lifecycle
 from app.slug import generate_slug, generate_token
 from app.storage import storage_from_url
-from tests.conftest import login_as, mk_asset, mk_user, put_blob
+from tests.conftest import login_as, mk_admin, mk_asset, mk_user, put_blob
 
 
 @pytest.fixture(autouse=True)
@@ -333,3 +333,51 @@ async def test_trash_route_is_not_taken_for_an_asset_id(client, session):
     r = await client.get("/api/assets/trash")
     assert r.status_code == 200
     assert r.json() == {"items": [], "total": 0, "next_offset": None}
+
+
+@pytest.mark.asyncio
+async def test_admin_sees_and_empties_the_organisation_trash_only_on_request(
+    client, session, fs_storage
+):
+    admin = await mk_admin(session)
+    other = await mk_user(session)
+    mine = await mk_asset(session, admin)
+    theirs = await mk_asset(session, other)
+    for a in (mine, theirs):
+        a.deleted_at = datetime.now(UTC)
+    await session.commit()
+    await login_as(client, admin)
+
+    own = await _slugs(client, ("scope", "state:trash"))
+    assert mine.slug in own and theirs.slug not in own
+    everyone = await _slugs(client, ("scope", "admin:trash"))
+    assert {mine.slug, theirs.slug} <= everyone
+
+    # Emptying the own trash leaves other people's documents alone.
+    r = await client.post("/api/assets/trash/purge", json={})
+    assert r.status_code == 200
+    session.expunge_all()
+    assert await session.get(Asset, mine.id) is None
+    assert await session.get(Asset, theirs.id) is not None
+
+    r = await client.post("/api/assets/trash/purge", json={"everyone": True})
+    assert r.status_code == 200
+    session.expunge_all()
+    assert await session.get(Asset, theirs.id) is None
+
+
+@pytest.mark.asyncio
+async def test_the_organisation_trash_is_the_own_trash_for_a_non_admin(client, session):
+    user = await mk_user(session)
+    other = await mk_user(session)
+    mine = await mk_asset(session, user)
+    theirs = await mk_asset(session, other)
+    for a in (mine, theirs):
+        a.deleted_at = datetime.now(UTC)
+    await session.commit()
+    await login_as(client, user)
+
+    assert await _slugs(client, ("scope", "admin:trash")) == {mine.slug}
+    await client.post("/api/assets/trash/purge", json={"everyone": True})
+    session.expunge_all()
+    assert await session.get(Asset, theirs.id) is not None

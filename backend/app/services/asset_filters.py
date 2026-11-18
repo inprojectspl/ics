@@ -38,7 +38,13 @@ from app.services.project_shares import in_project_filter
 from app.util import now as utc_now
 
 AssetScope = Literal[
-    "all", "state:mine", "state:shared-with-me", "state:pinned", "admin:review", "state:trash"
+    "all",
+    "state:mine",
+    "state:shared-with-me",
+    "state:pinned",
+    "admin:review",
+    "state:trash",
+    "admin:trash",
 ]
 Clauses = dict[str, ColumnElement[bool]]
 
@@ -138,7 +144,7 @@ async def facet_counts(
     run in one round trip.
     """
     # The trash has its own base query, so it counts as one scope of its own.
-    scopes = {scope: true()} if scope == "state:trash" else scope_predicates(user)
+    scopes = {scope: true()} if scope in asset_lifecycle.TRASH_SCOPES else scope_predicates(user)
     scope_columns = {key: f"scope_{i}" for i, key in enumerate(scopes)}
     fixed_columns = {key: f"fixed_{i}" for i, key in enumerate(fixed)}
     group_columns = {key: f"group_{i}" for i, key in enumerate(groups)}

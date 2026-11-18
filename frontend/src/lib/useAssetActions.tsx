@@ -256,17 +256,21 @@ export function useAssetActions(
 }
 
 /**
- * "Empty trash" of the trash list: the whole trash or one project's. The
- * server purges in batches, so this repeats until nothing is left.
+ * "Empty trash" of the trash list: one's own trash or one project's, or with
+ * `everyone` an administrator's whole-organisation trash, which the
+ * confirmation names as such. The server purges in batches, so this repeats
+ * until nothing is left.
  */
 export function useEmptyTrash(onChanged: () => void | Promise<void>) {
   const { toast } = useToast();
   const confirm = useConfirm();
   return useCallback(
-    async (count: number, projectId?: string) => {
+    async (count: number, { projectId, everyone = false }: { projectId?: string; everyone?: boolean } = {}) => {
       const ok = await confirm({
-        title: t(projectId ? "trash.emptyProjectTitle" : "trash.emptyTitle"),
-        message: tn("trash.emptyMessage", count),
+        title: t(
+          everyone ? "trash.emptyEveryoneTitle" : projectId ? "trash.emptyProjectTitle" : "trash.emptyTitle",
+        ),
+        message: tn(everyone ? "trash.emptyEveryoneMessage" : "trash.emptyMessage", count),
         confirmLabel: t("trash.empty"),
         destructive: true,
       });
@@ -274,7 +278,7 @@ export function useEmptyTrash(onChanged: () => void | Promise<void>) {
       let purged = 0;
       try {
         for (let round = 0; round < 20; round++) {
-          const r = await api.emptyTrash(projectId);
+          const r = await api.emptyTrash(projectId, everyone);
           purged += r.purged;
           if (r.remaining === 0 || r.purged === 0) break;
         }

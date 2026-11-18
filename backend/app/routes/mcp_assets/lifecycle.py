@@ -89,6 +89,9 @@ async def undelete_asset(
 
 class EmptyTrash(BaseModel):
     project_id: UUID | None = None
+    # An administrator empties the whole organisation's trash only when
+    # asking for it; anyone else always empties their own.
+    everyone: bool = False
 
 
 # Static paths before `/{asset_id}/...`, which would take `trash` for an id.
@@ -105,7 +108,7 @@ async def empty_trash(
     purged, remaining = await asset_lifecycle.purge_batch(
         session,
         settings,
-        asset_lifecycle.trash_filter(user, body.project_id),
+        asset_lifecycle.trash_filter(user, body.project_id, everyone=body.everyone),
         limit=_EMPTY_TRASH_MAX,
         actor=user,
         request=request,

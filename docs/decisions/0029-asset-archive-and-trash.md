@@ -45,6 +45,10 @@ moving and sharing: the document's owner, the owner of its project, and
 administrators (`permissions.can_manage`). Editors work on content. Anyone
 who can see a document can browse the archive it is in. The trash lists
 what the caller manages: their own documents and those of projects they own.
+An administrator's trash is the same by default; the whole organisation's
+trash is a view they switch to explicitly (`admin:trash`, `everyone` when
+emptying), so emptying their own trash never removes other people's
+documents.
 
 ### Where
 
@@ -75,7 +79,8 @@ they are now *earlier versions* (the version history). API names:
 `archived_at`, `archived_by`, `deleted_by`, `purge_at`; `POST/DELETE
 /api/assets/{id}/archive`, `POST /api/assets/{id}/undelete`, `POST
 /api/assets/{id}/purge`, `POST /api/assets/trash/purge`, `GET
-/api/assets/trash` (MCP) and the `state:trash` scope of `GET /api/assets`.
+/api/assets/trash` (MCP) and the `state:trash` and `admin:trash` scopes of
+`GET /api/assets`.
 ICS-MCP: `ics_asset_archive`, `ics_trash_list`, `ics_asset_purge`, and
 `archive` on `ics_assets_list` and `ics_assets_search`.
 

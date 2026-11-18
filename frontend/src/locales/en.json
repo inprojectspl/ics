@@ -1950,6 +1950,11 @@
     "other": "Deleted {count} documents forever"
   },
   "trash.empty": "Empty trash",
+  "trash.emptyEveryoneMessage": {
+    "one": "{count} document of every user goes for good, with all its versions. This cannot be undone.",
+    "other": "{count} documents of every user go for good, with all their versions. This cannot be undone."
+  },
+  "trash.emptyEveryoneTitle": "Empty the whole organisation's trash?",
   "trash.emptyFailed": "Could not empty the trash",
   "trash.emptyMessage": {
     "one": "{count} document goes for good, with all its versions. This cannot be undone.",
@@ -1957,7 +1962,11 @@
   },
   "trash.emptyProjectTitle": "Empty the project's trash?",
   "trash.emptyTitle": "Empty the trash?",
+  "trash.everyone": "Whole organisation",
+  "trash.everyoneNote": "Deleted documents of every user. Each is gone for good on the date shown next to it. A restored document goes back to its owner without its links and shares.",
+  "trash.mine": "My trash",
   "trash.note": "Deleted documents you can restore. Each is gone for good on the date shown next to it. A restored document comes back without its links and shares.",
+  "trash.whose": "Whose trash",
   "trashRow.daysLeft": {
     "one": "gone for good in {count} day",
     "other": "gone for good in {count} days"

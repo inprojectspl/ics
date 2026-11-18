@@ -298,6 +298,8 @@ Click **Trash** in the sidebar. It lists the deleted documents you may restore: 
 - **Delete forever**, in the row's **…** menu, removes the document and all its versions at once. It cannot be undone.
 - **Empty trash** deletes everything in the trash, or in one project's trash, for good.
 
+Administrators see their own trash too, like everyone. The **My trash** / **Whole organisation** switch above the list shows the deleted documents of every user; **Empty trash** there removes all of them, and its confirmation says so.
+
 ## Related
 
 - [Document formats](formats.md): what each format offers and how it is processed

@@ -205,10 +205,28 @@ describe("useAssetActions", () => {
     }
     render(<EmptyProbe />);
     emptyTrash.mockResolvedValueOnce({ purged: 500, remaining: 3 }).mockResolvedValueOnce({ purged: 3, remaining: 0 });
-    await act(() => empty(503, "p1"));
+    await act(() => empty(503, { projectId: "p1" }));
     expect(emptyTrash).toHaveBeenCalledTimes(2);
-    expect(emptyTrash).toHaveBeenCalledWith("p1");
+    expect(emptyTrash).toHaveBeenCalledWith("p1", false);
     expect(toast).toHaveBeenCalledWith(expect.stringContaining("503"), "success");
+  });
+
+  it("names the whole organisation when an administrator empties everyone's trash", async () => {
+    let empty: ReturnType<typeof useEmptyTrash> = async () => {};
+    const expose = (next: typeof empty) => {
+      empty = next;
+    };
+    function EmptyProbe() {
+      const next = useEmptyTrash(vi.fn());
+      useEffect(() => expose(next));
+      return null;
+    }
+    render(<EmptyProbe />);
+    emptyTrash.mockResolvedValue({ purged: 7, remaining: 0 });
+    await act(() => empty(7, { everyone: true }));
+    expect(confirm.mock.calls.at(-1)?.[0].title).toBe("Empty the whole organisation's trash?");
+    expect(confirm.mock.calls.at(-1)?.[0].message).toContain("of every user");
+    expect(emptyTrash).toHaveBeenCalledWith(undefined, true);
   });
 
   it("opens the share dialog for the picked asset", async () => {

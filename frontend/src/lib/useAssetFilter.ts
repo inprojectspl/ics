@@ -14,7 +14,8 @@ export type AssetScope =
   | "state:mine"
   | "state:shared-with-me"
   | "admin:review"
-  | "state:trash";
+  | "state:trash"
+  | "admin:trash";
 
 const SCOPES: readonly AssetScope[] = [
   "all",
@@ -23,7 +24,14 @@ const SCOPES: readonly AssetScope[] = [
   "state:shared-with-me",
   "admin:review",
   "state:trash",
+  "admin:trash",
 ];
+
+/** The trash: one's own (and one's projects'), or for an administrator the
+ * whole organisation's, asked for explicitly (ADR-0029). */
+export function isTrashScope(scope: AssetScope): boolean {
+  return scope === "state:trash" || scope === "admin:trash";
+}
 
 /**
  * Filters over the scope, chosen in the toolbar popover. Values of one kind
@@ -138,6 +146,7 @@ function inScope(a: AssetSummary, scope: AssetScope): boolean {
     case "admin:review":
       return a.security_status === "critical" && !a.security_bypass;
     case "state:trash":
+    case "admin:trash":
       return Boolean(a.deleted_at);
   }
 }

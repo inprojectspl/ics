@@ -163,9 +163,13 @@ export const restoreAsset = (assetId: string) =>
 export const purgeAsset = (assetId: string) =>
   postJson<{ id: string; purged: boolean }>(`/api/assets/${assetId}/purge`, {});
 
-/** Purges the caller's trash, or one project's; `remaining` waits for another call. */
-export const emptyTrash = (projectId?: string) =>
-  postJson<{ purged: number; remaining: number }>("/api/assets/trash/purge", { project_id: projectId ?? null });
+/** Purges the caller's trash, or one project's; `everyone`: an administrator's
+ * whole-organisation trash. `remaining` waits for another call. */
+export const emptyTrash = (projectId?: string, everyone = false) =>
+  postJson<{ purged: number; remaining: number }>("/api/assets/trash/purge", {
+    project_id: projectId ?? null,
+    everyone,
+  });
 
 // ---------- Document metadata (ADR-0015) ----------
 
