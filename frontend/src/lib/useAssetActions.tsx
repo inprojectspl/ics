@@ -267,10 +267,11 @@ export function useEmptyTrash(onChanged: () => void | Promise<void>) {
   return useCallback(
     async (count: number, { projectId, everyone = false }: { projectId?: string; everyone?: boolean } = {}) => {
       const ok = await confirm({
+        // A project's trash is one project's, whoever empties it.
         title: t(
-          everyone ? "trash.emptyEveryoneTitle" : projectId ? "trash.emptyProjectTitle" : "trash.emptyTitle",
+          projectId ? "trash.emptyProjectTitle" : everyone ? "trash.emptyEveryoneTitle" : "trash.emptyTitle",
         ),
-        message: tn(everyone ? "trash.emptyEveryoneMessage" : "trash.emptyMessage", count),
+        message: tn(everyone && !projectId ? "trash.emptyEveryoneMessage" : "trash.emptyMessage", count),
         confirmLabel: t("trash.empty"),
         destructive: true,
       });

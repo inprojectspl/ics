@@ -105,7 +105,9 @@ export function ProjectDetail({ me, slug }: Props) {
       key: "trash",
       label: t("projectDetail.trash"),
       icon: Trash,
-      onClick: () => navigate(scopeHref("state:trash", [`project:${project.id}`])),
+      // An administrator manages every project, but their own trash holds
+      // only their documents: the project's trash is everyone's view of it.
+      onClick: () => navigate(scopeHref(admin ? "admin:trash" : "state:trash", [`project:${project.id}`])),
     });
   if (project?.my_role && project.my_role !== "owner")
     more.push({ key: "leave", label: t("projectDetail.leave"), icon: LogOut, danger: true, onClick: () => void mutations.leave() });
