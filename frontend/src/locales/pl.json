@@ -2050,6 +2050,13 @@
     "other": "Usunięto na zawsze {count} dokumentu"
   },
   "trash.empty": "Opróżnij kosz",
+  "trash.emptyEveryoneMessage": {
+    "one": "{count} dokument wszystkich użytkowników zniknie na zawsze razem ze wszystkimi wersjami. Tego nie da się cofnąć.",
+    "few": "{count} dokumenty wszystkich użytkowników znikną na zawsze razem ze wszystkimi wersjami. Tego nie da się cofnąć.",
+    "many": "{count} dokumentów wszystkich użytkowników zniknie na zawsze razem ze wszystkimi wersjami. Tego nie da się cofnąć.",
+    "other": "{count} dokumentu wszystkich użytkowników zniknie na zawsze razem ze wszystkimi wersjami. Tego nie da się cofnąć."
+  },
+  "trash.emptyEveryoneTitle": "Opróżnić kosz całej organizacji?",
   "trash.emptyFailed": "Nie udało się opróżnić kosza",
   "trash.emptyMessage": {
     "one": "{count} dokument zniknie na zawsze razem ze wszystkimi wersjami. Tego nie da się cofnąć.",
@@ -2059,7 +2066,11 @@
   },
   "trash.emptyProjectTitle": "Opróżnić kosz projektu?",
   "trash.emptyTitle": "Opróżnić kosz?",
+  "trash.everyone": "Cała organizacja",
+  "trash.everyoneNote": "Usunięte dokumenty wszystkich użytkowników. Każdy znika na zawsze w terminie podanym przy nim. Przywrócony dokument wraca do właściciela bez linków i udostępnień.",
+  "trash.mine": "Mój kosz",
   "trash.note": "Usunięte dokumenty, które możesz przywrócić. Każdy znika na zawsze w terminie podanym przy nim. Przywrócony dokument wraca bez linków i udostępnień.",
+  "trash.whose": "Czyj kosz",
   "trashRow.daysLeft": {
     "one": "zniknie na zawsze za {count} dzień",
     "few": "zniknie na zawsze za {count} dni",

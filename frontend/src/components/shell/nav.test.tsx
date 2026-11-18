@@ -67,6 +67,7 @@ describe("navModel", () => {
     // Archived and active together is the whole list, not the archive.
     expect(archive?.match(at("f=archive:archived&f=archive:active"))).toBe(false);
     expect(trash?.match(at("f=state:trash"))).toBe(true);
+    expect(trash?.match(at("f=admin:trash"))).toBe(true);
     expect(all?.match(at("f=state:trash"))).toBe(false);
   });
 

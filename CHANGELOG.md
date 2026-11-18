@@ -69,6 +69,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- An administrator's **Trash** shows their own and their projects' documents, like everyone's; the
+  **Whole organisation** switch (`scope=admin:trash`) shows every user's, and **Empty trash** there
+  (`everyone: true`) is the only way to purge other people's documents in bulk.
 - An older version of a document is an "earlier version" in the web app ("archived" now means the
   archive of documents), and **Delete** in the `…` menu reads **Move to trash**.
 - `format=markdown` on a file that is neither HTML nor Markdown answers `format_unsupported`

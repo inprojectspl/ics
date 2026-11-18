@@ -284,7 +284,7 @@ describe("Home", () => {
     expect(opts.scope).toBe("state:trash");
 
     fireEvent.click(screen.getByRole("button", { name: "Empty trash" }));
-    await waitFor(() => expect(emptyTrash).toHaveBeenCalledWith(undefined));
+    await waitFor(() => expect(emptyTrash).toHaveBeenCalledWith(undefined, false));
   });
 
   it("titles the archive and marks its rows", async () => {
@@ -296,5 +296,25 @@ describe("Home", () => {
     expect(await screen.findByText("Archived")).toBeInTheDocument();
     expect(screen.getByText(/left out of lists and search/)).toBeInTheDocument();
     expect(listAssets.mock.calls.at(-1)![3].filters).toEqual(["archive:archived"]);
+  });
+
+  it("lets an administrator switch the trash to the whole organisation", async () => {
+    window.history.replaceState({}, "", "/?f=state:trash");
+    listAssets.mockResolvedValue(page([]));
+    renderHome({ ...user, role: "admin" } as Me);
+
+    const everyone = await screen.findByRole("radio", { name: "Whole organisation" });
+    expect(screen.getByRole("radio", { name: "My trash" })).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(everyone);
+    await waitFor(() => expect(listAssets.mock.calls.at(-1)![3].scope).toBe("admin:trash"));
+    expect(screen.getByText(/Deleted documents of every user/)).toBeInTheDocument();
+  });
+
+  it("gives a non-administrator no choice of whose trash", async () => {
+    window.history.replaceState({}, "", "/?f=state:trash");
+    listAssets.mockResolvedValue(page([]));
+    renderHome();
+    expect(await screen.findByRole("heading", { name: "Trash" })).toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "Whole organisation" })).toBeNull();
   });
 });

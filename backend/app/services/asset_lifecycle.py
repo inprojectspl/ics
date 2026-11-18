@@ -61,11 +61,18 @@ def listed(view: ArchiveView = "active", model: Any = Asset) -> list[ColumnEleme
     return out
 
 
-def trash_filter(user: User, project_id: UUID | None = None) -> ColumnElement[bool]:
+TRASH_SCOPES = ("state:trash", "admin:trash")
+
+
+def trash_filter(
+    user: User, project_id: UUID | None = None, *, everyone: bool = False
+) -> ColumnElement[bool]:
     """Assets in the trash that `user` may restore or purge: their own, and
-    those of projects they own; `project_id` narrows it to one project."""
+    those of projects they own; `project_id` narrows it to one project. An
+    administrator gets the whole organisation's trash only by asking for it
+    (`everyone`), so emptying their own trash never reaches other people's."""
     clauses: list[ColumnElement[bool]] = [Asset.deleted_at.is_not(None)]
-    if not user.acts_as_admin:
+    if not (everyone and user.acts_as_admin):
         owned_projects = select(ProjectMember.project_id).where(
             ProjectMember.user_id == user.id,
             ProjectMember.role == "owner",

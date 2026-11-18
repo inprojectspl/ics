@@ -7,6 +7,7 @@ import { AssetSortControl } from "../components/AssetSortControl";
 import { HomeEmptyState } from "../components/HomeEmptyState";
 import { Pagination } from "../components/Pagination";
 import { SearchInput } from "../components/SearchInput";
+import { SegmentedToggle } from "../components/SegmentedToggle";
 import { useToast } from "../components/Toast";
 import { ActiveFilterChips, DocumentFilters } from "../components/documents/DocumentFilters";
 import { DocumentList } from "../components/documents/DocumentList";
@@ -18,12 +19,15 @@ import { Button } from "../components/ui/Button";
 import { PageHeader } from "../components/ui/PageHeader";
 import { PageToolbar } from "../components/ui/PageToolbar";
 import { formatApiError } from "../lib/apiError";
+import { navigate } from "../lib/navigate";
 import { t, tn, type MessageKey } from "../lib/i18n";
 import { qk, projectListQuery } from "../lib/queries";
 import {
   filterKind,
   filterValue,
   isArchiveOnly,
+  isTrashScope,
+  scopeHref,
   useAssetFilterState,
   type AssetFilter,
   type AssetScope,
@@ -49,6 +53,7 @@ const SCOPE_TITLE: Record<AssetScope, MessageKey> = {
   "state:pinned": "sidebarNav.pinned",
   "admin:review": "home.filterReview",
   "state:trash": "sidebarNav.trash",
+  "admin:trash": "sidebarNav.trash",
 };
 
 // The trash lists what was deleted: sharing, freshness or the archive say
@@ -88,7 +93,7 @@ export function Home({ me }: Props) {
   const debounced = useDebouncedValue(query, 250);
   const waiting = searching && query !== debounced;
   // The trash keeps the server's order: most recently deleted first.
-  const activeSort = scope === "state:trash" ? undefined : searching ? searchSort ?? undefined : sort;
+  const activeSort = isTrashScope(scope) ? undefined : searching ? searchSort ?? undefined : sort;
   const [page, setPage] = useResettablePage(JSON.stringify([scope, filters, query, activeSort]));
   const assetsQuery = useQuery({
     queryKey: [...qk.assets(), "list", me.id, query, scope, filters, activeSort, page, PAGE_SIZE],
@@ -136,7 +141,8 @@ export function Home({ me }: Props) {
   const projectsById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
   const { uploading, onDrop, onPicked } = useAssetUpload({ uploadMode, onUploaded: refresh });
 
-  const trash = scope === "state:trash";
+  const trash = isTrashScope(scope);
+  const everyone = scope === "admin:trash";
   const archiveOnly = isArchiveOnly(scope, filters);
   // Emptying follows what is on screen: the whole trash or one project's.
   const trashProjects = filters.filter((f) => filterKind(f) === "project");
@@ -177,7 +183,12 @@ export function Home({ me }: Props) {
                 <Button
                   variant="danger"
                   icon={<Trash2 size={16} aria-hidden />}
-                  onClick={() => void emptyTrash(scopeTotal, trashProjects[0] && filterValue(trashProjects[0]))}
+                  onClick={() =>
+                    void emptyTrash(scopeTotal, {
+                      projectId: trashProjects[0] && filterValue(trashProjects[0]),
+                      everyone,
+                    })
+                  }
                 >
                   {t("trash.empty")}
                 </Button>
@@ -191,7 +202,7 @@ export function Home({ me }: Props) {
         />
         {(trash || archiveOnly) && (
           <p className="-mt-2 mb-4 max-w-prose text-ui text-text-secondary">
-            {t(trash ? "trash.note" : "archive.note")}
+            {t(everyone ? "trash.everyoneNote" : trash ? "trash.note" : "archive.note")}
           </p>
         )}
 
@@ -209,8 +220,19 @@ export function Home({ me }: Props) {
               <DocumentFilters {...filterProps} />
             </>
           }
-          // The trash is ordered by deletion, newest first.
-          end={trash ? undefined : <AssetSortControl
+          // The trash is ordered by deletion, newest first; an administrator
+          // picks whose trash it is, their own being the default.
+          end={trash ? (me.role === "admin" ? (
+            <SegmentedToggle
+              ariaLabel={t("trash.whose")}
+              value={scope}
+              onChange={(next) => navigate(scopeHref(next, filters))}
+              options={[
+                { value: "state:trash", label: t("trash.mine") },
+                { value: "admin:trash", label: t("trash.everyone") },
+              ]}
+            />
+          ) : undefined) : <AssetSortControl
             sort={activeSort ?? sort}
             onChange={searching ? setSearchSort : setSort}
             relevance={searching ? { active: searchSort === null, onSelect: () => setSearchSort(null) } : undefined}

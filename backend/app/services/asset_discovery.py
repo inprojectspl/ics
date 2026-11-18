@@ -36,9 +36,11 @@ async def discover_assets(
     filters: Sequence[str] = (),
     facets: bool = False,
 ) -> dict:
-    trash = scope == "state:trash"
+    trash = scope in asset_lifecycle.TRASH_SCOPES
     base = [
-        asset_lifecycle.trash_filter(user) if trash else permissions.visible_assets_filter(user)
+        asset_lifecycle.trash_filter(user, everyone=scope == "admin:trash")
+        if trash
+        else permissions.visible_assets_filter(user)
     ]
     if q is not None:
         base.append(search_filter(q, match))

@@ -6,7 +6,14 @@ import {
 } from "lucide-react";
 import type { Me } from "../../api";
 import type { MessageKey } from "../../lib/i18n";
-import { ARCHIVE_ONLY, isArchiveOnly, scopeHref, type AssetFilter, type AssetScope } from "../../lib/useAssetFilter";
+import {
+  ARCHIVE_ONLY,
+  isArchiveOnly,
+  isTrashScope,
+  scopeHref,
+  type AssetFilter,
+  type AssetScope,
+} from "../../lib/useAssetFilter";
 
 /** Top-level area of the app; decides the active sidebar group. */
 export type NavSection = "documents" | "projects" | "admin" | "account" | "notifications";
@@ -28,7 +35,14 @@ export interface NavGroup {
 }
 
 function scopeOf(search: URLSearchParams): AssetScope {
-  const scopes: AssetScope[] = ["state:pinned", "state:mine", "state:shared-with-me", "admin:review", "state:trash"];
+  const scopes: AssetScope[] = [
+    "state:pinned",
+    "state:mine",
+    "state:shared-with-me",
+    "admin:review",
+    "state:trash",
+    "admin:trash",
+  ];
   return scopes.find((s) => search.getAll("f").includes(s)) ?? "all";
 }
 
@@ -42,6 +56,12 @@ const docLeaf = (scope: AssetScope, label: MessageKey): NavLeaf => ({
   label,
   match: ({ pathname, search }) => pathname === "/" && scopeOf(search) === scope && !archiveOnly(search),
 });
+
+// One entry for both trash views; an administrator switches inside it.
+const trashLeaf: NavLeaf = {
+  ...docLeaf("state:trash", "sidebarNav.trash"),
+  match: ({ pathname, search }) => pathname === "/" && isTrashScope(scopeOf(search)),
+};
 
 const archiveLeaf: NavLeaf = {
   id: "documents:archive",
@@ -98,7 +118,7 @@ export function navTree(me: Me, projects: readonly ProjectLink[]): NavGroup[] {
         ...DOCUMENT_SCOPES.map(({ scope, label }) => docLeaf(scope, label)),
         pathLeaf("documents:graph", "/graph", "sidebarNav.graph"),
         archiveLeaf,
-        docLeaf("state:trash", "sidebarNav.trash"),
+        trashLeaf,
       ],
     },
     {
