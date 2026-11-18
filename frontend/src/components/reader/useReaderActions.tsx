@@ -40,6 +40,8 @@ export interface ReaderActions {
   onChanged: () => Promise<void>;
   /** Opens the project dialog (details panel). */
   assignProject: (() => void) | null;
+  /** Takes the document out of the archive; its managers only. */
+  unarchive: (() => void) | null;
 }
 
 const NO_PROJECTS: ProjectSummary[] = [];
@@ -84,7 +86,8 @@ export function useReaderActions({ slug, role, previewVersion, reload, downloadH
       : []),
   ];
 
-  if (!asset) return { asset: null, project: null, menu: reading, share: null, dialogs: null, onChanged, assignProject: null };
+  if (!asset)
+    return { asset: null, project: null, menu: reading, share: null, dialogs: null, onChanged, assignProject: null, unarchive: null };
 
   const pinned = Boolean(asset.pinned_at);
   const managed = buildAssetMenuActions(asset, actions, {
@@ -105,6 +108,7 @@ export function useReaderActions({ slug, role, previewVersion, reload, downloadH
     project,
     menu,
     share: canManage(asset) && shareAction && !shareAction.disabled ? () => actions.onShare(asset) : null,
+    unarchive: canManage(asset) && asset.archived_at ? () => actions.onArchive(asset) : null,
     dialogs: (
       <>
         {dialogs}

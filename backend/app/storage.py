@@ -1,7 +1,7 @@
 import asyncio
 import shutil
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Collection
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -387,3 +387,17 @@ def _build_storage(url: str, settings=None) -> Storage:
             region=s.s3_region,
         )
     raise ValueError(f"unsupported storage scheme: {parsed.scheme}")
+
+
+async def delete_prefixes(
+    storage: Storage, prefixes: Collection[str], *, concurrency: int = 8
+) -> None:
+    """Delete several prefixes, a few at a time (each may list and delete
+    many objects)."""
+    gate = asyncio.Semaphore(concurrency)
+
+    async def drop(prefix: str) -> None:
+        async with gate:
+            await storage.delete_prefix(prefix)
+
+    await asyncio.gather(*(drop(p) for p in prefixes))

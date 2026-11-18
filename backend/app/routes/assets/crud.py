@@ -12,8 +12,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Form, Query, UploadFile, status
 from pydantic import BaseModel, Field
-from sqlalchemy import delete as _delete
-from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import audit, microapp_guard, permissions, quota, search
@@ -32,16 +30,15 @@ from app.html_bundle import (
     normalize_bundle_path,
     pick_html_entry,
 )
-from app.models import Asset, AssetShare, AssetVersion, MicroAppGrant, Project, ShareLink
+from app.models import Asset, AssetVersion, Project, ShareLink
 from app.routes.assets._create_metadata import CreateMetadataForm
 from app.routes.assets._helpers import UploadShareMode
-from app.services import asset_security, read_size, relation_extraction
+from app.services import asset_lifecycle, asset_security, read_size, relation_extraction
 from app.services.notifications import events as notification_events
 from app.services.sharing import build_share_url
 from app.services.upload import ByteBudget, chunked, stage_asset_files, validate_pairs_count
 from app.slug import generate_slug, generate_token
 from app.storage import storage_from_url
-from app.util import now as utc_now
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
 
@@ -398,36 +395,13 @@ async def delete_asset(
     asset_id: UUID,
     user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> None:
-    asset = await session.get(Asset, asset_id)
-    if asset is None or asset.deleted_at is not None:
-        raise ApiError(status.HTTP_404_NOT_FOUND, "asset_not_found", "asset not found")
-    role = await permissions.effective_role(session, user, asset)
-    # Tighter than the default editor gate: only the file's owner or the
-    # project's owner (or sys-admin) can soft-delete. Editors collaborate
-    # on content; removing the file is a structural change.
-    if role not in ("owner_file", "project_owner"):
-        raise ApiError(status.HTTP_404_NOT_FOUND, "asset_not_found", "asset not found")
-
-    now = utc_now()
-    asset.deleted_at = now
-    # Soft cascade: keeps historical share IDs in the audit trail.
-    await session.execute(
-        update(ShareLink)
-        .where(ShareLink.asset_id == asset.id, ShareLink.revoked_at.is_(None))
-        .values(revoked_at=now)
-    )
-    # Per-user shares and an app's roles get dropped: restoring on undelete
-    # would re-create "zombie" grants the original sharer might no longer want.
-    await session.execute(_delete(AssetShare).where(AssetShare.asset_id == asset.id))
-    await session.execute(_delete(MicroAppGrant).where(MicroAppGrant.asset_id == asset.id))
-    await audit.record(
-        session,
-        actor=user,
-        action="asset_deleted",
-        target=f"asset:{asset.id}",
-        payload={"slug": asset.slug, "kind": asset.kind},
-    )
+    """Move the asset to the trash (ADR-0029). Only the file's owner or the
+    project's owner (or sys-admin): editors collaborate on content, removing
+    the file is a structural change."""
+    asset = await permissions.get_managed_asset(session, user, asset_id)
+    await asset_lifecycle.move_to_trash(session, settings, user, asset)
     await session.commit()
     await notification_events.emit_deleted(asset, user)
 

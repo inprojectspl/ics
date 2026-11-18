@@ -13,16 +13,23 @@ import { t } from "../lib/i18n";
 
 type ToastKind = "success" | "error" | "info";
 
+/** One follow-up a toast offers, e.g. undoing what just happened. */
+interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 interface ToastItem {
   id: number;
   kind: ToastKind;
   message: string;
+  action?: ToastAction;
   /** Stage drives the slide+fade animation. "enter" -> "shown" -> "exit". */
   stage: "enter" | "shown" | "exit";
 }
 
 interface ToastContextValue {
-  toast: (message: string, kind?: ToastKind) => void;
+  toast: (message: string, kind?: ToastKind, action?: ToastAction) => void;
 }
 
 const ToastCtx = createContext<ToastContextValue | null>(null);
@@ -42,6 +49,8 @@ export function useErrorToast(): (err: unknown) => void {
 }
 
 const TTL_MS = 3500;
+// Long enough to read the message and reach its button.
+const ACTION_TTL_MS = 8000;
 const EXIT_MS = 180;
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -56,16 +65,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const toast = useCallback<ToastContextValue["toast"]>(
-    (message, kind = "info") => {
+    (message, kind = "info", action) => {
       const id = ++idRef.current;
-      setItems((prev) => [...prev, { id, kind, message, stage: "enter" }]);
+      setItems((prev) => [...prev, { id, kind, message, action, stage: "enter" }]);
       // Next frame: flip stage to "shown" so the CSS transition kicks in.
       requestAnimationFrame(() => {
         setItems((prev) =>
           prev.map((t) => (t.id === id ? { ...t, stage: "shown" } : t)),
         );
       });
-      window.setTimeout(() => dismiss(id), TTL_MS);
+      window.setTimeout(() => dismiss(id), action ? ACTION_TTL_MS : TTL_MS);
     },
     [dismiss],
   );
@@ -93,7 +102,7 @@ function ToastCard({
   item: ToastItem;
   onDismiss: () => void;
 }) {
-  const { kind, message, stage } = item;
+  const { kind, message, action, stage } = item;
   const Icon = kind === "success" ? CheckCircle2 : kind === "error" ? AlertCircle : Info;
 
   // Only the icon chip is tinted; the icon shape repeats the signal for
@@ -128,6 +137,18 @@ function ToastCard({
       <p className="text-ui text-text-primary leading-snug flex-1 min-w-0">
         {message}
       </p>
+      {action && (
+        <button
+          type="button"
+          onClick={() => {
+            action.onClick();
+            onDismiss();
+          }}
+          className="shrink-0 -my-0.5 rounded-control px-2 py-0.5 text-ui font-semibold text-accent hover:bg-accent/10 focus-visible:outline-2 focus-visible:outline-accent transition-colors"
+        >
+          {action.label}
+        </button>
+      )}
       <button
         type="button"
         onClick={onDismiss}

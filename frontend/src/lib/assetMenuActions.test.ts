@@ -12,6 +12,9 @@ const noopActions: AssetRowActions = {
   onBinding: vi.fn(),
   onShare: vi.fn(),
   onDelete: vi.fn(),
+  onArchive: vi.fn(),
+  onRestore: vi.fn(),
+  onPurge: vi.fn(),
 };
 
 function mkAsset(over: Partial<AssetSummary> = {}): AssetSummary {
@@ -41,6 +44,7 @@ describe("buildAssetMenuActions", () => {
       "project",
       "binding",
       "share",
+      "archive",
       "delete",
     ]);
   });
@@ -52,6 +56,7 @@ describe("buildAssetMenuActions", () => {
       "diff",
       "project",
       "share",
+      "archive",
       "delete",
     ]);
     // A user of the app has no right to its package history.
@@ -137,7 +142,8 @@ describe("buildAssetMenuActions in English", () => {
       "Assign to project",
       "Connect a GitLab repo",
       "Share",
-      "Delete",
+      "Move to archive",
+      "Move to trash",
     ]);
   });
 

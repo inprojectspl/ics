@@ -166,7 +166,7 @@ describe("ProjectDetail states", () => {
     resolve(proj());
     expect(await screen.findByRole("heading", { name: "Alpha" })).toBeInTheDocument();
     await screen.findByText(t("projectDetail.emptyTitle"));
-    expect(getProject).toHaveBeenCalledWith("alpha", { key: "updated", order: "desc" });
+    expect(getProject).toHaveBeenCalledWith("alpha", { key: "updated", order: "desc" }, "active");
   });
 
   it("shows the no-access screen when loading fails", async () => {

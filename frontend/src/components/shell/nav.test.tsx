@@ -53,6 +53,23 @@ describe("navModel", () => {
     expect(abc?.match({ pathname: "/projects/abcd", search: new URLSearchParams() })).toBe(false);
   });
 
+  it("ends the documents with the archive and the trash, each its own entry", () => {
+    const [docs] = navTree(user, []);
+    const ids = docs?.children.map((c) => c.id);
+    expect(ids?.slice(-2)).toEqual(["documents:archive", "documents:state:trash"]);
+    const archive = docs?.children.find((c) => c.id === "documents:archive");
+    const all = docs?.children.find((c) => c.id === "documents:all");
+    const trash = docs?.children.find((c) => c.id === "documents:state:trash");
+    const at = (q: string) => ({ pathname: "/", search: new URLSearchParams(q) });
+    expect(archive?.href).toBe("/?f=archive%3Aarchived");
+    expect(archive?.match(at("f=archive:archived"))).toBe(true);
+    expect(all?.match(at("f=archive:archived"))).toBe(false);
+    // Archived and active together is the whole list, not the archive.
+    expect(archive?.match(at("f=archive:archived&f=archive:active"))).toBe(false);
+    expect(trash?.match(at("f=state:trash"))).toBe(true);
+    expect(all?.match(at("f=state:trash"))).toBe(false);
+  });
+
   it("lists the graph explorer under documents, whatever its start point", () => {
     const [docs] = navTree(user, []);
     const graph = docs?.children.find((c) => c.id === "documents:graph");

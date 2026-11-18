@@ -27,7 +27,7 @@ When nothing matches, the list shows **No results for "*query*"** with the note 
 | HTML bundles | Only the title, address, description and tags, not the page content. |
 | Micro-applications | Only the title, address, description and tags, not the app's code or its records. |
 
-Only the current version of each document is searched. Documents you cannot open never appear in results, and neither do deleted ones.
+Only the current version of each document is searched. Documents you cannot open never appear in results, and neither do deleted ones. Archived documents appear only when the **Archive** filter asks for them; the command palette leaves them out.
 
 ## How matching works
 

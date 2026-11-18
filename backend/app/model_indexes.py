@@ -66,6 +66,32 @@ INDEXES = (
         postgresql_where=_LIVE_ASSET,
     ),
     Index("ix_asset_slug_active", Asset.slug, postgresql_where=_LIVE_ASSET),
+    # The trash (ADR-0029): the purge of expired entries, and the listing
+    # of an owner's or a project's trash, most recently deleted first.
+    Index(
+        "ix_assets_purge_at",
+        Asset.purge_at,
+        postgresql_where=text("deleted_at IS NOT NULL"),
+    ),
+    Index(
+        "ix_assets_trash_owner",
+        Asset.owner_id,
+        Asset.deleted_at.desc(),
+        postgresql_where=text("deleted_at IS NOT NULL"),
+    ),
+    Index(
+        "ix_assets_trash_project",
+        Asset.project_id,
+        Asset.deleted_at.desc(),
+        postgresql_where=text("deleted_at IS NOT NULL"),
+    ),
+    # The archive view walks only archived rows, not every live one.
+    Index(
+        "ix_assets_archived_owner",
+        Asset.owner_id,
+        Asset.updated_at.desc(),
+        postgresql_where=text("archived_at IS NOT NULL AND deleted_at IS NULL"),
+    ),
     Index(
         "ix_asset_owner_updated",
         Asset.owner_id,

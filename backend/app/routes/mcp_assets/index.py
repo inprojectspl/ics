@@ -20,6 +20,7 @@ from app.errors import ApiError
 from app.json_response import ORJSONResponse
 from app.models import Asset, AssetPin, AssetShare, ProjectMember, User
 from app.services import doc_types, ocr
+from app.services.asset_lifecycle import ArchiveView, listed
 from app.services.asset_projection import (
     AssetMetadataRow,
     detail_fields,
@@ -69,6 +70,7 @@ def _index_item(
             "project_id": asset.project_id,
             "tags": list(asset.tags or []),
             "has_versions": asset.version > 1,
+            "archived_at": asset.archived_at,
             "access_role": role,
             "shared_in": shared_in,
             **metadata_fields(asset, metadata, now, preview=preview),
@@ -101,6 +103,10 @@ async def assets_index(
         Query(description="Assets whose row changed at or after this time, metadata included."),
     ] = None,
     q: Annotated[str | None, Query(max_length=200)] = None,
+    archive: Annotated[
+        ArchiveView,
+        Query(description="`active` (default) leaves the archive out, `archived` lists only it."),
+    ] = "active",
 ) -> Response:
     # `shared_with_me`/`owned=False` narrow to assets reached through someone
     # else; admins ignore them.
@@ -136,7 +142,7 @@ async def assets_index(
         # Pins are per user: the join is scoped to the caller, and the filter and
         # the `pinned` flag come from asset_pins (shared ON clause: AssetPin.for_user).
         .outerjoin(AssetPin, AssetPin.for_user(user.id))
-        .where(base_filter)
+        .where(base_filter, *listed(archive))
     )
 
     if doc_type:

@@ -82,6 +82,14 @@ export const qk = {
  * The caller's projects (first 200), shared by the sidebar, palette, lists
  * and pickers: one definition, so every consumer reads the same cache entry.
  */
+/** Public server settings (sign-in methods, trash retention); they change
+ * only with a deploy. */
+export const authConfigQuery = queryOptions({
+  queryKey: qk.authConfig(),
+  queryFn: () => api.authConfig(),
+  staleTime: Infinity,
+});
+
 export const projectListQuery = queryOptions({
   queryKey: qk.projects(),
   queryFn: () => api.listProjects({ page_size: 200 }),

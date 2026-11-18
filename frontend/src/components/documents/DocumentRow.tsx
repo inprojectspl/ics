@@ -1,11 +1,11 @@
 import { memo, useMemo, useState } from "react";
 import { clsx } from "clsx";
-import { GitBranch, Star } from "lucide-react";
+import { Archive, GitBranch, RotateCcw, Star } from "lucide-react";
 import type { AssetSummary, ProjectSummary } from "../../api";
 import { buildAssetMenuActions } from "../../lib/assetMenuActions";
 import { type AssetSortKey, lastChange } from "../../lib/assetSort";
-import { formatBytes, formatDateTime, formatRelative, formatShortDate, versionCountLabel } from "../../lib/format";
-import { t } from "../../lib/i18n";
+import { daysUntil, formatBytes, formatDateTime, formatRelative, formatShortDate, versionCountLabel } from "../../lib/format";
+import { t, tn } from "../../lib/i18n";
 import { PROJECT_ROLE_LABEL } from "../../lib/roles";
 import { togglePin, type AssetRowActions } from "../../lib/useAssetActions";
 import { DocTypeBadge, FreshnessBadge } from "../AssetMetaBadges";
@@ -13,6 +13,7 @@ import { AppLink } from "../ui/AppLink";
 import { iconButtonClass } from "../ui/IconButton";
 import { Menu } from "../ui/Menu";
 import { Badge } from "../ui/Badge";
+import { Button } from "../ui/Button";
 import { dataRow } from "../ui/DataList";
 import { KIND_LABEL, KindTile } from "./kindIcon";
 import { SecurityStatusBadge, ShareStatus } from "./ShareStatus";
@@ -49,18 +50,26 @@ function DocumentRowImpl({
   const project = !hideProject && a.project_id ? projectsById.get(a.project_id) : undefined;
   const owner = a.owner ? a.owner.display_name || a.owner.email : null;
 
-  // One action list for the dropdown, the phone sheet and the reader toolbar.
+  // A trash entry no longer opens; it can be restored or purged.
+  const trash = Boolean(a.deleted_at);
+
+  // One action list for the dropdown, the phone sheet and the reader toolbar;
+  // a trash entry is nobody's favourite.
   const menu = useMemo(
     () => [
-      {
-        key: "pin",
-        label: t(pinned ? "pinButton.remove" : "pinButton.add"),
-        icon: Star,
-        onClick: () => void togglePin(a.id, pinned, onPinChanged),
-      },
+      ...(trash
+        ? []
+        : [
+            {
+              key: "pin",
+              label: t(pinned ? "pinButton.remove" : "pinButton.add"),
+              icon: Star,
+              onClick: () => void togglePin(a.id, pinned, onPinChanged),
+            },
+          ]),
       ...buildAssetMenuActions(a, actions, { onRename: () => setRenaming(title) }),
     ],
-    [a, actions, pinned, title, onPinChanged],
+    [a, actions, pinned, title, onPinChanged, trash],
   );
 
   return (
@@ -90,6 +99,10 @@ function DocumentRowImpl({
               className="w-full rounded-control border border-accent bg-surface px-2 py-1 text-item font-semibold text-text-primary outline-none ring-2 ring-accent/25"
             />
           </form>
+        ) : trash ? (
+          <span title={title} className="line-clamp-2 text-item font-semibold text-text-primary [overflow-wrap:anywhere]">
+            {title}
+          </span>
         ) : (
           <AppLink
             href={`/v/${a.slug}`}
@@ -117,7 +130,7 @@ function DocumentRowImpl({
             v{a.version}
           </span>
           <Sep />
-          <RowDate asset={a} sortKey={sortKey} />
+          {trash ? <TrashDates asset={a} /> : <RowDate asset={a} sortKey={sortKey} />}
           <span className="hidden items-center gap-x-2 sm:inline-flex">
             <Sep />
             <span className="tabular-nums">{formatBytes(a.size_bytes)}</span>
@@ -153,33 +166,54 @@ function DocumentRowImpl({
             </>
           )}
           {a.doc_type && <DocTypeBadge docType={a.doc_type} />}
-          <FreshnessBadge freshness={a.freshness} />
+          {!trash && <FreshnessBadge freshness={a.freshness} />}
           {a.shared_in && <Badge tone="accent">{t("projectShares.sharedIn")}</Badge>}
-          <span className="contents sm:hidden">
-            <ShareStatus modes={a.active_share_modes} />
-          </span>
+          {a.archived_at && (
+            <Badge icon={<Archive size={12} aria-hidden />} title={formatDateTime(a.archived_at) ?? undefined}>
+              {t("assetRow.archived")}
+            </Badge>
+          )}
+          {!trash && (
+            <span className="contents sm:hidden">
+              <ShareStatus modes={a.active_share_modes} />
+            </span>
+          )}
           <SecurityStatusBadge status={a.security_status} bypassed={a.security_bypass} />
         </div>
       </div>
 
       <div className="relative z-10 flex shrink-0 items-center gap-1 self-center sm:gap-2">
-        <span className="hidden sm:inline-flex">
-          <ShareStatus modes={a.active_share_modes} />
-        </span>
-        <button
-          type="button"
-          onClick={() => void togglePin(a.id, pinned, onPinChanged)}
-          aria-pressed={pinned}
-          aria-label={t(pinned ? "pinButton.remove" : "pinButton.add")}
-          title={t(pinned ? "pinButton.remove" : "pinButton.add")}
-          className={clsx(
-            iconButtonClass("ghost", "sm"),
-            "max-sm:hidden",
-            pinned ? "text-accent" : HOVER_REVEAL,
-          )}
-        >
-          <Star size={16} aria-hidden className={pinned ? "fill-current" : undefined} />
-        </button>
+        {trash ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<RotateCcw size={14} aria-hidden />}
+            onClick={() => actions.onRestore(a)}
+            className="max-sm:hidden"
+          >
+            {t("assetActions.restore")}
+          </Button>
+        ) : (
+          <>
+            <span className="hidden sm:inline-flex">
+              <ShareStatus modes={a.active_share_modes} />
+            </span>
+            <button
+              type="button"
+              onClick={() => void togglePin(a.id, pinned, onPinChanged)}
+              aria-pressed={pinned}
+              aria-label={t(pinned ? "pinButton.remove" : "pinButton.add")}
+              title={t(pinned ? "pinButton.remove" : "pinButton.add")}
+              className={clsx(
+                iconButtonClass("ghost", "sm"),
+                "max-sm:hidden",
+                pinned ? "text-accent" : HOVER_REVEAL,
+              )}
+            >
+              <Star size={16} aria-hidden className={pinned ? "fill-current" : undefined} />
+            </button>
+          </>
+        )}
         <Menu label={t("documentRow.actions", { title })} actions={menu} />
       </div>
     </li>
@@ -211,5 +245,30 @@ function RowDate({ asset: a, sortKey }: { asset: AssetSummary; sortKey: AssetSor
         ? t("assetRow.createdOn", { date: formatShortDate(iso) })
         : t("assetRow.changed", { when: formatRelative(iso) })}
     </time>
+  );
+}
+
+/** When a trash entry was deleted, by whom, and how long it has left. */
+function TrashDates({ asset: a }: { asset: AssetSummary }) {
+  const by = a.deleted_by ? a.deleted_by.display_name || a.deleted_by.email : null;
+  const left = a.purge_at ? daysUntil(a.purge_at) : null;
+  return (
+    <>
+      {a.deleted_at && (
+        <time dateTime={a.deleted_at} title={formatDateTime(a.deleted_at) ?? undefined} className="whitespace-nowrap">
+          {by
+            ? t("trashRow.deletedBy", { when: formatRelative(a.deleted_at), name: by })
+            : t("trashRow.deleted", { when: formatRelative(a.deleted_at) })}
+        </time>
+      )}
+      {left !== null && a.purge_at && (
+        <>
+          <Sep />
+          <time dateTime={a.purge_at} title={formatDateTime(a.purge_at) ?? undefined} className="whitespace-nowrap font-medium text-text-primary">
+            {left > 0 ? tn("trashRow.daysLeft", left) : t("trashRow.purgeSoon")}
+          </time>
+        </>
+      )}
+    </>
   );
 }

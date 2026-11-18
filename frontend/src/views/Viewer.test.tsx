@@ -90,6 +90,7 @@ vi.mock("../components/reader/useReaderActions", () => ({
       dialogs: null,
       onChanged: vi.fn(),
       assignProject: null,
+      unarchive: null,
     };
   },
 }));

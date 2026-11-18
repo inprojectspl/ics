@@ -10,6 +10,7 @@ const page = (items: unknown[], total = items.length) => ({ items, total, page: 
 const myQuota = vi.fn();
 const listProjects = vi.fn();
 const searchAssets = vi.fn();
+const emptyTrash = vi.fn();
 const toast = vi.fn();
 
 vi.mock("../api", () => ({
@@ -23,6 +24,8 @@ vi.mock("../api", () => ({
     pinAsset: vi.fn(),
     unpinAsset: vi.fn(),
     listDocTypes: () => Promise.resolve([]),
+    emptyTrash: (...a: unknown[]) => emptyTrash(...a),
+    authConfig: () => Promise.resolve({ trash_retention_days: 30 }),
   },
 }));
 vi.mock("../components/Toast", () => ({ useToast: () => ({ toast }) }));
@@ -255,5 +258,43 @@ describe("Home", () => {
     expect(screen.getByText("Drop to upload to Documents")).toBeInTheDocument();
     act(() => drag("dragleave"));
     expect(screen.queryByText("Drop to upload to Documents")).toBeNull();
+  });
+
+  it("shows the trash: deletion order, restore on each row, no upload, and empties it", async () => {
+    window.history.replaceState({}, "", "/?f=state:trash");
+    const deleted = mkAsset(1, {
+      deleted_at: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+      deleted_by: { id: "u2", email: "b@example.com", display_name: "Bea" },
+      purge_at: new Date(Date.now() + 28 * 86_400_000).toISOString(),
+    });
+    listAssets.mockResolvedValue({ ...page([deleted]), scope_counts: { "state:trash": 1 } });
+    emptyTrash.mockResolvedValue({ purged: 1, remaining: 0 });
+    renderHome();
+
+    expect(await screen.findByRole("heading", { name: "Trash" })).toBeInTheDocument();
+    expect(await screen.findByText("Doc 1")).toBeInTheDocument();
+    // A deleted document no longer opens.
+    expect(screen.queryByRole("link", { name: "Doc 1" })).toBeNull();
+    expect(screen.getByText(/deleted .* by Bea/)).toBeInTheDocument();
+    expect(screen.getByText("gone for good in 28 days")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Restore" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Upload" })).toBeNull();
+    const [, , sort, opts] = listAssets.mock.calls.at(-1)!;
+    expect(sort).toBeUndefined();
+    expect(opts.scope).toBe("state:trash");
+
+    fireEvent.click(screen.getByRole("button", { name: "Empty trash" }));
+    await waitFor(() => expect(emptyTrash).toHaveBeenCalledWith(undefined));
+  });
+
+  it("titles the archive and marks its rows", async () => {
+    window.history.replaceState({}, "", "/?f=archive:archived");
+    listAssets.mockResolvedValue(page([mkAsset(1, { archived_at: "2026-11-01T00:00:00Z" })]));
+    renderHome();
+
+    expect(await screen.findByRole("heading", { name: "Archive" })).toBeInTheDocument();
+    expect(await screen.findByText("Archived")).toBeInTheDocument();
+    expect(screen.getByText(/left out of lists and search/)).toBeInTheDocument();
+    expect(listAssets.mock.calls.at(-1)![3].filters).toEqual(["archive:archived"]);
   });
 });

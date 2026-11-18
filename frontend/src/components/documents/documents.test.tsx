@@ -92,7 +92,7 @@ describe("ShareStatus", () => {
 });
 
 describe("DocumentRow", () => {
-  const actions = { onUpdate: vi.fn(), onVersions: vi.fn(), onProject: vi.fn(), onBinding: vi.fn(), onShare: vi.fn(), onDelete: vi.fn() };
+  const actions = { onUpdate: vi.fn(), onVersions: vi.fn(), onProject: vi.fn(), onBinding: vi.fn(), onShare: vi.fn(), onDelete: vi.fn(), onArchive: vi.fn(), onRestore: vi.fn(), onPurge: vi.fn() };
 
   it("the title is the link to the document; metadata and the project are shown", () => {
     wrap(
@@ -124,7 +124,7 @@ describe("DocumentRow", () => {
     const menu = screen.getByRole("menu");
     const labels = within(menu).getAllByRole("menuitem").map((b) => b.textContent);
     expect(labels[0]).toBe(t("pinButton.add"));
-    expect(labels).toEqual(expect.arrayContaining([t("assetMenu.rename"), t("common.share"), t("common.delete")]));
+    expect(labels).toEqual(expect.arrayContaining([t("assetMenu.rename"), t("common.share"), t("assetMenu.archive"), t("assetActions.moveToTrash")]));
     fireEvent.click(within(menu).getByRole("menuitem", { name: t("common.share") }));
     expect(actions.onShare).toHaveBeenCalled();
 
@@ -143,7 +143,7 @@ describe("DocumentRow", () => {
       </ul>,
     );
     fireEvent.click(screen.getByRole("button", { name: t("documentRow.actions", { title: "Rollout plan" }) }));
-    expect(screen.queryByRole("menuitem", { name: t("common.delete") })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: t("assetActions.moveToTrash") })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: t("assetMenu.rename") })).not.toBeInTheDocument();
   });
 

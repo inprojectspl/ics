@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { UploadCloud } from "lucide-react";
+import { Trash2, UploadCloud } from "lucide-react";
 import { api, type AssetSort, Me, ProjectSummary } from "../api";
 import { AssetListSkeleton } from "../components/AssetListSkeleton";
 import { AssetSortControl } from "../components/AssetSortControl";
@@ -20,7 +20,16 @@ import { PageToolbar } from "../components/ui/PageToolbar";
 import { formatApiError } from "../lib/apiError";
 import { t, tn, type MessageKey } from "../lib/i18n";
 import { qk, projectListQuery } from "../lib/queries";
-import { useAssetFilterState, type AssetFilter, type AssetScope } from "../lib/useAssetFilter";
+import {
+  filterKind,
+  filterValue,
+  isArchiveOnly,
+  useAssetFilterState,
+  type AssetFilter,
+  type AssetScope,
+  type FilterKind,
+} from "../lib/useAssetFilter";
+import { useEmptyTrash } from "../lib/useAssetActions";
 import { useAssetSort } from "../lib/useAssetSort";
 import { useAssetUpload } from "../lib/useAssetUpload";
 import { useDocTypeLabels } from "../lib/useDocTypes";
@@ -39,7 +48,12 @@ const SCOPE_TITLE: Record<AssetScope, MessageKey> = {
   "state:shared-with-me": "sidebarNav.sharedWithMe",
   "state:pinned": "sidebarNav.pinned",
   "admin:review": "home.filterReview",
+  "state:trash": "sidebarNav.trash",
 };
+
+// The trash lists what was deleted: sharing, freshness or the archive say
+// nothing about it any more.
+const TRASH_FILTER_KINDS: readonly FilterKind[] = ["type", "project", "doctype", "tag"];
 
 type Props = { me: Me };
 
@@ -73,7 +87,8 @@ export function Home({ me }: Props) {
   const shortQuery = searching && !canSearchDocuments(query);
   const debounced = useDebouncedValue(query, 250);
   const waiting = searching && query !== debounced;
-  const activeSort = searching ? searchSort ?? undefined : sort;
+  // The trash keeps the server's order: most recently deleted first.
+  const activeSort = scope === "state:trash" ? undefined : searching ? searchSort ?? undefined : sort;
   const [page, setPage] = useResettablePage(JSON.stringify([scope, filters, query, activeSort]));
   const assetsQuery = useQuery({
     queryKey: [...qk.assets(), "list", me.id, query, scope, filters, activeSort, page, PAGE_SIZE],
@@ -121,14 +136,23 @@ export function Home({ me }: Props) {
   const projectsById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
   const { uploading, onDrop, onPicked } = useAssetUpload({ uploadMode, onUploaded: refresh });
 
+  const trash = scope === "state:trash";
+  const archiveOnly = isArchiveOnly(scope, filters);
+  // Emptying follows what is on screen: the whole trash or one project's.
+  const trashProjects = filters.filter((f) => filterKind(f) === "project");
+  const emptiable = trash && !searching && filters.length === trashProjects.length && trashProjects.length <= 1;
+  const emptyTrash = useEmptyTrash(refresh);
+
   const scopeTotal = data?.scope_counts?.[scope] ?? total;
-  const narrowed = filters.length > 0 || search.trim().length > 0;
+  // The archive's own filter makes the list, it does not narrow it.
+  const narrowing = archiveOnly ? filters.length - 1 : filters.length;
+  const narrowed = narrowing > 0 || search.trim().length > 0;
   const description = initialLoading
     ? " "
     : narrowed
       ? t("documents.countOf", { shown: total, total: tn("documents.count", scopeTotal) })
       : tn("documents.count", scopeTotal);
-  const title = t(SCOPE_TITLE[scope]);
+  const title = archiveOnly ? t("sidebarNav.archive") : t(SCOPE_TITLE[scope]);
 
   const filterProps = {
     active: filters,
@@ -137,21 +161,39 @@ export function Home({ me }: Props) {
     onClear: clearFilters,
     projects,
     docTypeLabels,
+    kinds: trash ? TRASH_FILTER_KINDS : undefined,
   };
 
   return (
     <>
-      {scope !== "all" && <PageContext crumbs={[{ label: t("nav.documents"), href: "/" }, { label: title }]} />}
+      {(scope !== "all" || archiveOnly) && <PageContext crumbs={[{ label: t("nav.documents"), href: "/" }, { label: title }]} />}
       <Page>
         <PageHeader
           title={title}
           description={description}
           actions={
-            <Button icon={<UploadCloud size={16} aria-hidden />} onClick={() => setUploadOpen(true)}>
-              {t("upload.action")}
-            </Button>
+            trash ? (
+              emptiable && total > 0 ? (
+                <Button
+                  variant="danger"
+                  icon={<Trash2 size={16} aria-hidden />}
+                  onClick={() => void emptyTrash(scopeTotal, trashProjects[0] && filterValue(trashProjects[0]))}
+                >
+                  {t("trash.empty")}
+                </Button>
+              ) : null
+            ) : (
+              <Button icon={<UploadCloud size={16} aria-hidden />} onClick={() => setUploadOpen(true)}>
+                {t("upload.action")}
+              </Button>
+            )
           }
         />
+        {(trash || archiveOnly) && (
+          <p className="-mt-2 mb-4 max-w-prose text-ui text-text-secondary">
+            {t(trash ? "trash.note" : "archive.note")}
+          </p>
+        )}
 
         <PageToolbar
           start={
@@ -167,7 +209,8 @@ export function Home({ me }: Props) {
               <DocumentFilters {...filterProps} />
             </>
           }
-          end={<AssetSortControl
+          // The trash is ordered by deletion, newest first.
+          end={trash ? undefined : <AssetSortControl
             sort={activeSort ?? sort}
             onChange={searching ? setSearchSort : setSort}
             relevance={searching ? { active: searchSort === null, onSelect: () => setSearchSort(null) } : undefined}
@@ -189,11 +232,17 @@ export function Home({ me }: Props) {
             <HomeEmptyState
               scope={scope}
               search={search}
-              filtered={filters.length > 0}
+              filtered={narrowing > 0}
+              archiveOnly={archiveOnly}
               onClearFilters={clearFilters}
             />
           ) : (
-            <DocumentList assets={visible} projectsById={projectsById} onChanged={refresh} sortKey={activeSort?.key ?? "updated"} />
+            <DocumentList
+              assets={visible}
+              projectsById={projectsById}
+              onChanged={refresh}
+              sortKey={activeSort?.key ?? "updated"}
+            />
           )}
           {data && !error && <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />}
         </section>
@@ -203,7 +252,7 @@ export function Home({ me }: Props) {
         target={t("nav.documents")}
         audience={t(uploadMode === "public" ? "upload.modePublicBody" : "upload.modeOrgBody")}
         onDrop={(dt) => void onDrop(dt)}
-        disabled={uploadOpen}
+        disabled={uploadOpen || trash}
       />
       {uploadOpen && (
         <UploadDialog

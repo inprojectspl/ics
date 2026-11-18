@@ -162,6 +162,7 @@ async def build_asset_summaries(
             "has_binding": str(a.id) in bound_ids,
             "pinned_at": (p.isoformat() if (p := pin_at_by_asset.get(a.id)) else None),
             "project_id": str(a.project_id) if a.project_id else None,
+            "archived_at": a.archived_at.isoformat() if a.archived_at else None,
             "created_at": a.created_at.isoformat(),
             "updated_at": a.updated_at.isoformat(),
             "content_updated_at": (

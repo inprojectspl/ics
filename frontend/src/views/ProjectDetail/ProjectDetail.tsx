@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { LogOut, MoreHorizontal, Pencil, ShieldOff, Trash2, UploadCloud, UserPlus } from "lucide-react";
+import { Archive, LogOut, MoreHorizontal, Pencil, ShieldOff, Trash, Trash2, UploadCloud, UserPlus } from "lucide-react";
 import { api, Me, ProjectDetail as P } from "../../api";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingListSkeleton } from "../../components/LoadingListSkeleton";
@@ -16,6 +16,8 @@ import { Menu } from "../../components/ui/Menu";
 import type { MenuAction } from "../../components/ui/menuAction";
 import { formatApiError } from "../../lib/apiError";
 import { t } from "../../lib/i18n";
+import { navigate } from "../../lib/navigate";
+import { ARCHIVE_ONLY, archiveView, filterHref, scopeHref, type AssetFilter } from "../../lib/useAssetFilter";
 import { useAssetSort } from "../../lib/useAssetSort";
 import { useAssetUpload } from "../../lib/useAssetUpload";
 import { useLocation } from "../../lib/useLocation";
@@ -51,13 +53,16 @@ export function ProjectDetail({ me, slug }: Props) {
   const [dialog, setDialog] = useState<"upload" | "invite" | "edit" | null>(null);
   const [uploadMode, setUploadMode] = useUploadMode();
   const { sort, setSort } = useAssetSort("project", me.id);
-  const tab = localTab(useLocation().search);
+  const { search } = useLocation();
+  const tab = localTab(search);
+  // The archive filter decides what the server sends; the rest filters here.
+  const archive = archiveView(search.getAll("f") as AssetFilter[]);
 
   // The server applies the sort too, so a project over the 200-row cap
   // returns the right first rows for the chosen order.
   const refresh = useCallback(
-    () => api.getProject(slug, sort).then(setProject, (e) => setError(formatApiError(e))),
-    [slug, sort],
+    () => api.getProject(slug, sort, archive).then(setProject, (e) => setError(formatApiError(e))),
+    [slug, sort, archive],
   );
   useEffect(() => {
     void refresh();
@@ -86,6 +91,22 @@ export function ProjectDetail({ me, slug }: Props) {
 
   const more: MenuAction[] = [];
   if (project && isOwner) more.push({ key: "edit", label: t("projectHeader.editTitle"), icon: Pencil, onClick: () => setDialog("edit") });
+  // The project's archive is its document list filtered; its trash is the
+  // trash narrowed to the project, which only its owners manage.
+  if (project && member && archive !== "archived")
+    more.push({
+      key: "archive",
+      label: t("projectDetail.archive"),
+      icon: Archive,
+      onClick: () => navigate(filterHref(`/projects/${project.slug}`, [ARCHIVE_ONLY])),
+    });
+  if (project && isOwner)
+    more.push({
+      key: "trash",
+      label: t("projectDetail.trash"),
+      icon: Trash,
+      onClick: () => navigate(scopeHref("state:trash", [`project:${project.id}`])),
+    });
   if (project?.my_role && project.my_role !== "owner")
     more.push({ key: "leave", label: t("projectDetail.leave"), icon: LogOut, danger: true, onClick: () => void mutations.leave() });
   if (project && isOwner)

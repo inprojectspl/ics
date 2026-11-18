@@ -9,7 +9,7 @@ from arq import cron
 
 from app.config import get_settings
 from app.jobs.queue import worker_redis_settings
-from app.jobs.tasks.cleanup import cleanup_oauth_artifacts, cleanup_old_email_outbox
+from app.jobs.tasks.cleanup import cleanup_oauth_artifacts, cleanup_old_email_outbox, purge_trash
 from app.jobs.tasks.micro_applications import (
     microapp_control_retry,
     microapp_process_operation,
@@ -28,6 +28,7 @@ class WorkerSettings:
         outline_stale_sweeper,
         cleanup_oauth_artifacts,
         cleanup_old_email_outbox,
+        purge_trash,
         ocr_sweeper,
         notify_asset_event,
         notifications_sweeper,
@@ -40,6 +41,8 @@ class WorkerSettings:
         cron(cleanup_oauth_artifacts, minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55}),
         # Retention: once a day at 03:00, when load is low.
         cron(cleanup_old_email_outbox, hour={3}, minute={0}),
+        # The trash keeps an asset to its purge date, not to the next night.
+        cron(purge_trash, minute={17}),
         cron(ocr_sweeper, minute=set(range(0, 60))),
         # Debounced version events and e-mail / Chat batches (ADR-0023).
         cron(notifications_sweeper, second=set(range(0, 60, 5)), timeout=60),

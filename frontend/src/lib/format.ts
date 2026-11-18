@@ -113,6 +113,11 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY_MS = 24 * HOUR;
 
+/** Whole days from now until `iso`, rounded up (0 or less: due). */
+export function daysUntil(iso: string, now: number = Date.now()): number {
+  return Math.ceil((Date.parse(iso) - now) / DAY_MS);
+}
+
 /** "5 minutes ago", "yesterday"; past a week the numeric date, because
  * "23 days ago" is harder to place than the date itself. */
 export function formatRelative(iso: string, now: number = Date.now()): string {

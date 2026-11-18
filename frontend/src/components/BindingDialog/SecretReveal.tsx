@@ -1,9 +1,9 @@
 import { ReactNode } from "react";
 import { clsx } from "clsx";
 import { useQuery } from "@tanstack/react-query";
-import { api, AssetSummary, BindingWithSecret } from "../../api";
+import { AssetSummary, BindingWithSecret } from "../../api";
 import { t } from "../../lib/i18n";
-import { qk } from "../../lib/queries";
+import { authConfigQuery } from "../../lib/queries";
 import { useClipboard } from "../../lib/useClipboard";
 import { fill } from "./_rich";
 
@@ -12,7 +12,7 @@ import { fill } from "./_rich";
 export const SYNC_IMAGE_PLACEHOLDER = "<registry>/ics-sync:<tag>";
 
 function useSyncImage(): string {
-  const { data } = useQuery({ queryKey: qk.authConfig(), queryFn: api.authConfig });
+  const { data } = useQuery(authConfigQuery);
   return data?.sync_image || SYNC_IMAGE_PLACEHOLDER;
 }
 

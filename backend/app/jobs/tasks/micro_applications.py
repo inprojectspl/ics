@@ -4,7 +4,6 @@ written before any enqueue, so a lost job is found again by the sweeper."""
 
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, datetime, timedelta
 
 import structlog
@@ -22,7 +21,7 @@ from app.models import (
 )
 from app.services.micro_applications import control as control_svc
 from app.services.micro_applications import provisioning, publish
-from app.storage import storage_from_url
+from app.storage import delete_prefixes, storage_from_url
 
 log = structlog.get_logger(__name__)
 
@@ -143,14 +142,9 @@ async def _drop_expired_plans(settings, batch: int = 50) -> int:
         ).all()
     if not expired:
         return 0
-    storage = storage_from_url(settings.storage_url)
-    gate = asyncio.Semaphore(8)
-
-    async def drop_files(prefix: str) -> None:
-        async with gate:
-            await storage.delete_prefix(f"{prefix}/")
-
-    await asyncio.gather(*(drop_files(prefix) for _, prefix in expired))
+    await delete_prefixes(
+        storage_from_url(settings.storage_url), [f"{prefix}/" for _, prefix in expired]
+    )
     async with SessionLocal() as session:
         await session.execute(
             delete(MicroAppPlan).where(MicroAppPlan.id.in_([plan_id for plan_id, _ in expired]))

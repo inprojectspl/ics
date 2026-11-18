@@ -13,13 +13,13 @@ import { PageToolbar } from "../../components/ui/PageToolbar";
 import { sortAssets, type AssetSort } from "../../lib/assetSort";
 import { t } from "../../lib/i18n";
 import { qk } from "../../lib/queries";
-import { useAssetFilter, type FilterKind } from "../../lib/useAssetFilter";
+import { ARCHIVE_ACTIVE, ARCHIVE_ONLY, useAssetFilter, type FilterKind } from "../../lib/useAssetFilter";
 import { useDocTypeLabels } from "../../lib/useDocTypes";
 import { useResettablePage } from "../../lib/useResettablePage";
 import { KeyDocumentsList } from "./KeyDocuments";
 
 const PAGE_SIZE = 25;
-const KINDS: readonly FilterKind[] = ["type", "state", "source", "doctype", "fresh", "tag"];
+const KINDS: readonly FilterKind[] = ["type", "state", "source", "doctype", "fresh", "tag", "archive"];
 const NO_PROJECTS = new Map<string, ProjectSummary>();
 
 interface Props {
@@ -34,7 +34,15 @@ interface Props {
  * reading list on top when the project has one, then the whole list. */
 export function ProjectDocuments({ project, sort, onSortChange, canContribute, onChanged }: Props) {
   const [search, setSearch] = useState("");
-  const { filters, toggleFilter, clearFilters, counts, visible: filtered } = useAssetFilter(project.assets, search);
+  const { filters, toggleFilter, clearFilters, counts: listed, visible: filtered } = useAssetFilter(project.assets, search);
+  // The server sends one part of the archive at a time, so the archive
+  // filter is offered by the project's own totals.
+  const counts = useMemo(() => {
+    const out = new Map(listed);
+    out.set(ARCHIVE_ACTIVE, project.asset_count);
+    out.set(ARCHIVE_ONLY, project.archived_count ?? 0);
+    return out;
+  }, [listed, project.asset_count, project.archived_count]);
   const docTypeLabels = useDocTypeLabels();
   const visible = useMemo(() => sortAssets(filtered, sort), [filtered, sort]);
   const keyDocs = useQuery({ queryKey: qk.keyDocuments(project.slug), queryFn: () => api.getKeyDocuments(project.slug) });
@@ -45,7 +53,7 @@ export function ProjectDocuments({ project, sort, onSortChange, canContribute, o
   const rows = visible.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
   const filterProps = { active: filters, counts, onToggle: toggleFilter, onClear: clearFilters, docTypeLabels, kinds: KINDS };
 
-  if (project.assets.length === 0)
+  if (project.assets.length === 0 && filters.length === 0)
     return (
       <EmptyState
         icon={FileText}

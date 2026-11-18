@@ -4,9 +4,19 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import type { AssetSummary } from "../api";
-import { togglePin, useAssetActions } from "./useAssetActions";
+import { navigate } from "./navigate";
+import { qk } from "./queries";
+import { togglePin, useAssetActions, useEmptyTrash } from "./useAssetActions";
+
+vi.mock("./navigate", () => ({ navigate: vi.fn() }));
 
 const deleteAsset = vi.fn();
+const restoreAsset = vi.fn();
+const archiveAsset = vi.fn();
+const unarchiveAsset = vi.fn();
+const purgeAsset = vi.fn();
+const emptyTrash = vi.fn();
+const authConfig = vi.fn();
 const renameAsset = vi.fn();
 const pinAsset = vi.fn();
 const unpinAsset = vi.fn();
@@ -15,6 +25,12 @@ const toast = vi.fn();
 vi.mock("../api", () => ({
   api: {
     deleteAsset: (...a: unknown[]) => deleteAsset(...a),
+    restoreAsset: (...a: unknown[]) => restoreAsset(...a),
+    archiveAsset: (...a: unknown[]) => archiveAsset(...a),
+    unarchiveAsset: (...a: unknown[]) => unarchiveAsset(...a),
+    purgeAsset: (...a: unknown[]) => purgeAsset(...a),
+    emptyTrash: (...a: unknown[]) => emptyTrash(...a),
+    authConfig: () => authConfig(),
     renameAsset: (...a: unknown[]) => renameAsset(...a),
     pinAsset: (...a: unknown[]) => pinAsset(...a),
     unpinAsset: (...a: unknown[]) => unpinAsset(...a),
@@ -27,8 +43,9 @@ vi.mock("../api", () => ({
   },
 }));
 vi.mock("../components/Toast", () => ({ useToast: () => ({ toast }) }));
+const confirm = vi.fn();
 vi.mock("../components/ConfirmDialog", () => ({
-  useConfirm: () => vi.fn().mockResolvedValue(true),
+  useConfirm: () => confirm,
 }));
 
 const asset = {
@@ -51,7 +68,7 @@ function exposeApi(next: Api) {
   api = next;
 }
 
-function Probe({
+function ProbeImpl({
   onChanged,
   onDeleted,
 }: {
@@ -63,7 +80,27 @@ function Probe({
   return <div data-testid="dialogs">{actions.dialogs}</div>;
 }
 
-beforeEach(() => vi.clearAllMocks());
+// The trash retention comes from the server config through TanStack Query.
+function Probe({ client = new QueryClient(), ...props }: { onChanged: () => void; onDeleted?: () => void; client?: QueryClient }) {
+  return (
+    <QueryClientProvider client={client}>
+      <ProbeImpl {...props} />
+    </QueryClientProvider>
+  );
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  confirm.mockResolvedValue(true);
+  authConfig.mockResolvedValue({ trash_retention_days: 14 });
+});
+
+/** The undo of the last toast that offered one. */
+function undoOfLastToast(): () => void {
+  const call = [...toast.mock.calls].reverse().find((c: unknown[]) => c[2]);
+  if (!call) throw new Error("no toast with an action");
+  return call[2].onClick;
+}
 
 describe("useAssetActions", () => {
   it("renames through the api and refetches", async () => {
@@ -100,13 +137,83 @@ describe("useAssetActions", () => {
     expect(onChanged).toHaveBeenCalled();
   });
 
+  it("says how long the trash keeps a document and undoes the delete", async () => {
+    const onChanged = vi.fn();
+    const client = new QueryClient();
+    render(<Probe onChanged={onChanged} client={client} />);
+    await waitFor(() => expect(client.getQueryData(qk.authConfig())).toBeDefined());
+    // The hook has re-rendered with the server's retention.
+    await waitFor(() => expect(api.actions.onDelete).toBeDefined());
+    await act(async () => {});
+    await act(() => api.actions.onDelete(asset));
+    expect(confirm.mock.calls[0]?.[0].message).toContain("14 days");
+    restoreAsset.mockResolvedValue({ id: "a1", slug: "doc-one", noop: false });
+    onChanged.mockClear();
+    await act(async () => undoOfLastToast()());
+    expect(restoreAsset).toHaveBeenCalledWith("a1");
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+  });
+
+  it("brings a reader back to the document it restored", async () => {
+    render(<Probe onChanged={vi.fn()} onDeleted={vi.fn()} />);
+    restoreAsset.mockResolvedValue({ id: "a1", slug: "doc-one", noop: false });
+    await act(() => api.actions.onRestore(asset));
+    expect(navigate).toHaveBeenCalledWith("/v/doc-one");
+  });
+
+  it("archives, and the toast's undo takes the document back out", async () => {
+    const onChanged = vi.fn();
+    render(<Probe onChanged={onChanged} />);
+    archiveAsset.mockResolvedValue({});
+    unarchiveAsset.mockResolvedValue({});
+    await act(() => api.actions.onArchive(asset));
+    expect(archiveAsset).toHaveBeenCalledWith("a1");
+    expect(onChanged).toHaveBeenCalled();
+    await act(async () => undoOfLastToast()());
+    expect(unarchiveAsset).toHaveBeenCalledWith("a1");
+  });
+
+  it("takes an archived document out of the archive", async () => {
+    render(<Probe onChanged={vi.fn()} />);
+    unarchiveAsset.mockResolvedValue({});
+    await act(() => api.actions.onArchive({ ...asset, archived_at: "2026-11-01T00:00:00Z" }));
+    expect(unarchiveAsset).toHaveBeenCalledWith("a1");
+    expect(archiveAsset).not.toHaveBeenCalled();
+  });
+
+  it("purges only after a confirmation", async () => {
+    const onChanged = vi.fn();
+    render(<Probe onChanged={onChanged} />);
+    confirm.mockResolvedValueOnce(false);
+    await act(() => api.actions.onPurge(asset));
+    expect(purgeAsset).not.toHaveBeenCalled();
+    purgeAsset.mockResolvedValue({ id: "a1", purged: true });
+    await act(() => api.actions.onPurge(asset));
+    expect(purgeAsset).toHaveBeenCalledWith("a1");
+    expect(onChanged).toHaveBeenCalled();
+  });
+
+  it("empties the trash in batches until nothing is left", async () => {
+    let empty: ReturnType<typeof useEmptyTrash> = async () => {};
+    const expose = (next: typeof empty) => {
+      empty = next;
+    };
+    function EmptyProbe() {
+      const next = useEmptyTrash(vi.fn());
+      useEffect(() => expose(next));
+      return null;
+    }
+    render(<EmptyProbe />);
+    emptyTrash.mockResolvedValueOnce({ purged: 500, remaining: 3 }).mockResolvedValueOnce({ purged: 3, remaining: 0 });
+    await act(() => empty(503, "p1"));
+    expect(emptyTrash).toHaveBeenCalledTimes(2);
+    expect(emptyTrash).toHaveBeenCalledWith("p1");
+    expect(toast).toHaveBeenCalledWith(expect.stringContaining("503"), "success");
+  });
+
   it("opens the share dialog for the picked asset", async () => {
     // The share dialog's project section reads through TanStack Query.
-    render(
-      <QueryClientProvider client={new QueryClient()}>
-        <Probe onChanged={vi.fn()} />
-      </QueryClientProvider>,
-    );
+    render(<Probe onChanged={vi.fn()} />);
     act(() => api.actions.onShare(asset));
     await waitFor(() => expect(screen.getByText(/Doc One/)).toBeInTheDocument());
   });

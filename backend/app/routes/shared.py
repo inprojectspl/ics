@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import CurrentUser
 from app.db import get_session
 from app.models import Asset, AssetShare, Project, ProjectMember, User
+from app.services import asset_lifecycle
 
 router = APIRouter(prefix="/api/shared-with-me", tags=["shared-with-me"])
 
@@ -66,7 +67,7 @@ async def shared_with_me(
     shared_ids = select(AssetShare.asset_id).where(AssetShare.user_id == user.id)
     visible = (
         Asset.owner_id != user.id,
-        Asset.deleted_at.is_(None),
+        *asset_lifecycle.listed(),
         or_(Asset.project_id.in_(list(projects_by_id)), Asset.id.in_(shared_ids)),
     )
     total = await session.scalar(select(func.count()).select_from(Asset).where(*visible)) or 0

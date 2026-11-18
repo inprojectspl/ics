@@ -14,7 +14,7 @@ from sqlalchemy.orm import aliased
 
 from app import permissions
 from app.models import Asset, AssetExternalRef, AssetRelation, Project, User
-from app.services import duplicate_suggestions, graph_signals
+from app.services import asset_lifecycle, duplicate_suggestions, graph_signals
 from app.services.project_shares import in_project_filter
 from app.util import now as utc_now
 
@@ -39,7 +39,8 @@ Doc = aliased(Asset, name="doc")
 
 
 def _in_project(project_id: Any, doc: Any = Doc) -> ColumnElement[bool]:
-    return and_(doc.deleted_at.is_(None), in_project_filter(project_id, doc))
+    # The archive is done with: hygiene does not chase it (ADR-0029).
+    return and_(*asset_lifecycle.listed(model=doc), in_project_filter(project_id, doc))
 
 
 def _hidden_targets(user: User) -> ColumnElement[bool]:

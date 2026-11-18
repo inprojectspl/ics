@@ -31,7 +31,7 @@ from app.models import (
     Project,
     User,
 )
-from app.services import relations
+from app.services import asset_lifecycle, relations
 from app.services.project_shares import in_project_filter
 
 TITLE_SIMILARITY = 0.6
@@ -50,7 +50,7 @@ def _project_docs(project_id: Any):
             doc.content_hash,
         )
         .where(
-            doc.deleted_at.is_(None),
+            *asset_lifecycle.listed(model=doc),
             in_project_filter(project_id, doc),
         )
         .cte("dup_docs")

@@ -86,7 +86,7 @@ describe("ProjectDetail sorting", () => {
     renderWithClient(<ProjectDetail me={me} slug="alpha" />);
     await screen.findByRole("link", { name: "Alpha" });
     expect(rowTitles()).toEqual(["Alpha", "Mid", "Zeta"]);
-    expect(getProject).toHaveBeenCalledWith("alpha", { key: "updated", order: "desc" });
+    expect(getProject).toHaveBeenCalledWith("alpha", { key: "updated", order: "desc" }, "active");
   });
 
   it("re-sorts on a new key, asks the server for it and remembers it", async () => {
@@ -97,7 +97,7 @@ describe("ProjectDetail sorting", () => {
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Number of versions" }));
 
     expect(rowTitles()).toEqual(["Zeta", "Mid", "Alpha"]);
-    expect(getProject).toHaveBeenLastCalledWith("alpha", { key: "versions", order: "desc" });
+    expect(getProject).toHaveBeenLastCalledWith("alpha", { key: "versions", order: "desc" }, "active");
     expect(JSON.parse(window.localStorage.getItem("ics.assetSort.project.u1") ?? "null")).toEqual({
       key: "versions",
       order: "desc",

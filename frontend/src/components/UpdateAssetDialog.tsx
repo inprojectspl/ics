@@ -105,7 +105,7 @@ export function UpdateAssetDialog({ asset, onClose, onUpdated }: Props) {
     <Dialog eyebrow={t("updateAsset.eyebrow")} title={asset.title || asset.slug} onClose={onClose} maxWidth="lg">
         <section className="px-6 py-6">
           <p className="text-ui text-text-secondary mb-4">
-            {t(KIND_HINT[asset.kind])} {t("updateAsset.archiveNote")}
+            {t(KIND_HINT[asset.kind])} {t("updateAsset.historyNote")}
           </p>
           <ChangeNoteField
             value={changeNote}
