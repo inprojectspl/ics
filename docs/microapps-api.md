@@ -125,7 +125,7 @@ Every generic operation is allowed only by the permission the manifest names for
 | `Idempotency-Key` | `POST` and `DELETE`, and custom endpoints that declare it; a repeated key replays the first answer |
 | `If-Match` | `PATCH` and `DELETE`, and custom endpoints that declare it; a stale revision is `412 revision_mismatch` |
 
-Notable answers: `401 app_session_required` (open the app through ICS), `403 forbidden` or `csrf_failed`, `422 validation_failed` with a JSON Pointer, `429 rate_limited` with `Retry-After`, `507 app_data_quota_exceeded` (the owner's data limit is full; reads and deletes still work), `503 app_suspended`, `504 execution_deadline` or `commit_unknown` (retry with the same `Idempotency-Key`).
+Notable answers: `401 app_session_required` (open the app through ICS), `403 forbidden` or `csrf_failed`, `422 validation_failed` with a JSON Pointer, `429 rate_limited` with `Retry-After`, `507 app_data_quota_exceeded` (the owner's data limit is full; reads and deletes still work), `503 app_suspended`, `503 circuit_open` (the app failed repeatedly; wait for `Retry-After`), `504 execution_deadline`, `cpu_budget` or `commit_unknown` (retry with the same `Idempotency-Key`).
 
 ## Limits
 
@@ -138,7 +138,7 @@ Notable answers: `401 app_session_required` (open the app through ICS), `403 for
 | Custom endpoints | 30 |
 | JSON field | 64 KiB |
 | String field | 100,000 characters |
-| Handler run | 5 s wall time, 250 ms of JavaScript CPU, 32 MiB heap, 20 database calls, 256 KiB response |
+| Handler run | 5 s wall time, 1000 ms of JavaScript CPU, 32 MiB heap, 20 database calls, 256 KiB response |
 | Idle time before sleep | 60 to 3600 s, set by the app |
 | Data of all apps of one owner | 100 MB by default, set per user by an administrator |
 | Requests | 20 per second per person and app, 100 per second per share link, by default |

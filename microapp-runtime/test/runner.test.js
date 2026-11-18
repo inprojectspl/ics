@@ -17,8 +17,8 @@ const procs = [];
 let pool;
 
 // The CPU budget is time spent in the interpreter, so a busy shared CI host
-// can push a small handler past the production 250 ms. Only the test of that
-// budget runs at 250 ms; the others get room to stay deterministic.
+// can push a small handler past a tight budget. Only the test of the budget
+// itself runs at 250 ms; the others get room to stay deterministic.
 const BUDGET_MS = 250;
 const LIMITS = { memoryBytes: 32 << 20, cpuMs: 2000, wallMs: 3000, stackBytes: 512 * 1024 };
 

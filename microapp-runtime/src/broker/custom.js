@@ -2,6 +2,7 @@
 // client, every SDK call checked against the endpoint's declared
 // capabilities and replayed by the broker as controlled SQL. The handler
 // result counts only after its output validated and no call is pending.
+import { BREAKER_CODES } from "./apps.js";
 import * as data from "./data.js";
 import { DataError } from "./data.js";
 import { mapPgError } from "./db.js";
@@ -113,11 +114,11 @@ export async function invokeHandler(gw, rc, endpoint, input, ifRevision, client,
     if (rpcFailure) throw rpcFailure;
     if (!result.ok) {
       const code = result.error?.code ?? "handler_error";
-      if (["execution_deadline", "cpu_budget", "memory_limit", "runner_crashed", "runner_killed", "handler_stalled"].includes(code)) {
+      if (BREAKER_CODES.has(code) || code === "handler_stalled") {
         recycle = true;
         reason = code;
-        gw.apps.recordFailure(app, rc.auth.release.id, code === "cpu_budget" ? "execution_deadline" : code);
-        throw new DataError(code === "memory_limit" ? 507 : 504, code === "cpu_budget" ? "execution_deadline" : code, "the handler was stopped");
+        gw.apps.recordFailure(app, rc.auth.release.id, code, rc.requestId);
+        throw new DataError(code === "memory_limit" ? 507 : 504, code, "the handler was stopped");
       }
       const g = result.error?.guest;
       if (g && Number.isInteger(g.status) && [400, 403, 404, 409, 412, 422].includes(g.status)) {

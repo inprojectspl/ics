@@ -42,7 +42,7 @@ LIMITS: dict[str, int] = {
     "wall_ms": 5000,
     "max_db_calls": 20,
     "max_response_bytes": 262_144,
-    "js_cpu_ms": 250,
+    "js_cpu_ms": 1000,
     "guest_heap_bytes": 32 * 1024 * 1024,
     "min_idle_seconds": 60,
     "max_idle_seconds": 3600,
