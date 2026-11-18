@@ -227,6 +227,12 @@ describe("useAssetActions", () => {
     expect(confirm.mock.calls.at(-1)?.[0].title).toBe("Empty the whole organisation's trash?");
     expect(confirm.mock.calls.at(-1)?.[0].message).toContain("of every user");
     expect(emptyTrash).toHaveBeenCalledWith(undefined, true);
+
+    // One project's trash stays one project's in the organisation view.
+    await act(() => empty(2, { projectId: "p1", everyone: true }));
+    expect(confirm.mock.calls.at(-1)?.[0].title).toBe("Empty the project's trash?");
+    expect(confirm.mock.calls.at(-1)?.[0].message).not.toContain("of every user");
+    expect(emptyTrash).toHaveBeenLastCalledWith("p1", true);
   });
 
   it("opens the share dialog for the picked asset", async () => {

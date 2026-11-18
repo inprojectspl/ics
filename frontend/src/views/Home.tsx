@@ -19,7 +19,6 @@ import { Button } from "../components/ui/Button";
 import { PageHeader } from "../components/ui/PageHeader";
 import { PageToolbar } from "../components/ui/PageToolbar";
 import { formatApiError } from "../lib/apiError";
-import { navigate } from "../lib/navigate";
 import { t, tn, type MessageKey } from "../lib/i18n";
 import { qk, projectListQuery } from "../lib/queries";
 import {
@@ -27,7 +26,6 @@ import {
   filterValue,
   isArchiveOnly,
   isTrashScope,
-  scopeHref,
   useAssetFilterState,
   type AssetFilter,
   type AssetScope,
@@ -84,7 +82,7 @@ export function Home({ me }: Props) {
   const [search, setSearch] = useState("");
   const { sort, setSort } = useAssetSort("home", me.id);
   const [searchSort, setSearchSort] = useState<AssetSort | null>(null);
-  const { scope, filters, toggleFilter, clearFilters } = useAssetFilterState();
+  const { scope, filters, toggleFilter, clearFilters, setScope } = useAssetFilterState();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const query = search.trim();
@@ -142,7 +140,10 @@ export function Home({ me }: Props) {
   const { uploading, onDrop, onPicked } = useAssetUpload({ uploadMode, onUploaded: refresh });
 
   const trash = isTrashScope(scope);
-  const everyone = scope === "admin:trash";
+  // Only an administrator has a whole-organisation trash; for anyone else
+  // the server answers that address with their own, and so does the page.
+  const canSeeEveryone = me.role === "admin";
+  const everyone = scope === "admin:trash" && canSeeEveryone;
   const archiveOnly = isArchiveOnly(scope, filters);
   // Emptying follows what is on screen: the whole trash or one project's.
   const trashProjects = filters.filter((f) => filterKind(f) === "project");
@@ -159,6 +160,26 @@ export function Home({ me }: Props) {
       ? t("documents.countOf", { shown: total, total: tn("documents.count", scopeTotal) })
       : tn("documents.count", scopeTotal);
   const title = archiveOnly ? t("sidebarNav.archive") : t(SCOPE_TITLE[scope]);
+
+  // The trash is ordered by deletion, newest first, so it has no sort; an
+  // administrator picks whose trash it is, their own being the default.
+  const toolbarEnd = !trash ? (
+    <AssetSortControl
+      sort={activeSort ?? sort}
+      onChange={searching ? setSearchSort : setSort}
+      relevance={searching ? { active: searchSort === null, onSelect: () => setSearchSort(null) } : undefined}
+    />
+  ) : canSeeEveryone ? (
+    <SegmentedToggle
+      ariaLabel={t("trash.whose")}
+      value={everyone ? "admin:trash" : "state:trash"}
+      onChange={setScope}
+      options={[
+        { value: "state:trash", label: t("trash.mine") },
+        { value: "admin:trash", label: t("trash.everyone") },
+      ]}
+    />
+  ) : undefined;
 
   const filterProps = {
     active: filters,
@@ -220,23 +241,7 @@ export function Home({ me }: Props) {
               <DocumentFilters {...filterProps} />
             </>
           }
-          // The trash is ordered by deletion, newest first; an administrator
-          // picks whose trash it is, their own being the default.
-          end={trash ? (me.role === "admin" ? (
-            <SegmentedToggle
-              ariaLabel={t("trash.whose")}
-              value={scope}
-              onChange={(next) => navigate(scopeHref(next, filters))}
-              options={[
-                { value: "state:trash", label: t("trash.mine") },
-                { value: "admin:trash", label: t("trash.everyone") },
-              ]}
-            />
-          ) : undefined) : <AssetSortControl
-            sort={activeSort ?? sort}
-            onChange={searching ? setSearchSort : setSort}
-            relevance={searching ? { active: searchSort === null, onSelect: () => setSearchSort(null) } : undefined}
-          />}
+          end={toolbarEnd}
           chips={<ActiveFilterChips {...filterProps} />}
         />
 

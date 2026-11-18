@@ -317,4 +317,22 @@ describe("Home", () => {
     expect(await screen.findByRole("heading", { name: "Trash" })).toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: "Whole organisation" })).toBeNull();
   });
+
+  it("shows a non-administrator their own trash on the organisation address", async () => {
+    window.history.replaceState({}, "", "/?f=admin:trash");
+    listAssets.mockResolvedValue(page([mkAsset(1, { deleted_at: "2026-11-18T10:00:00Z" })]));
+    renderHome();
+    expect(await screen.findByText(/Deleted documents you can restore/)).toBeInTheDocument();
+    expect(screen.queryByText(/of every user/)).toBeNull();
+  });
+
+  it("switches whose trash without a new history entry", async () => {
+    window.history.replaceState({}, "", "/?f=state:trash");
+    listAssets.mockResolvedValue(page([]));
+    renderHome({ ...user, role: "admin" } as Me);
+    const before = window.history.length;
+    fireEvent.click(await screen.findByRole("radio", { name: "Whole organisation" }));
+    await waitFor(() => expect(window.location.search).toContain("admin%3Atrash"));
+    expect(window.history.length).toBe(before);
+  });
 });

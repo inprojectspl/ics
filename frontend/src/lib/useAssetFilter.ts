@@ -86,15 +86,17 @@ interface FilterState {
 
 const EMPTY: FilterState = { scope: "all", filters: [] };
 
+/** The scope among `?f=` values: the first one named, `all` when none is. */
+export function scopeOf(values: readonly string[]): AssetScope {
+  return values.find((v): v is AssetScope => isScope(v) && v !== "all") ?? "all";
+}
+
 function readFromUrl(): FilterState {
-  let scope: AssetScope = "all";
+  const values = new URLSearchParams(window.location.search).getAll(URL_PARAM);
   const filters: AssetFilter[] = [];
-  for (const v of new URLSearchParams(window.location.search).getAll(URL_PARAM)) {
-    if (isScope(v)) {
-      if (scope === "all") scope = v;
-    } else if (isFilter(v) && !filters.includes(v)) filters.push(v);
-  }
-  return { scope, filters };
+  // A scope such as `state:mine` also looks like a filter value: scopes first.
+  for (const v of values) if (!isScope(v) && isFilter(v) && !filters.includes(v)) filters.push(v);
+  return { scope: scopeOf(values), filters };
 }
 
 function writeToUrl({ scope, filters }: FilterState) {
@@ -227,6 +229,9 @@ export function useAssetFilterState() {
     [update],
   );
   const clearFilters = useCallback(() => update((prev) => ({ scope: prev.scope, filters: [] })), [update]);
+  // Another view of the same list (the administrator's trash switch): the
+  // address changes without a history entry, as for a filter.
+  const setScope = useCallback((scope: AssetScope) => update((prev) => ({ scope, filters: prev.filters })), [update]);
 
   useEffect(() => {
     const onPop = () => setState(readFromUrl());
@@ -234,7 +239,7 @@ export function useAssetFilterState() {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
-  return { ...state, toggleFilter, clearFilters };
+  return { ...state, toggleFilter, clearFilters, setScope };
 }
 
 export function useAssetFilter(assets: AssetSummary[], titleQuery: string) {

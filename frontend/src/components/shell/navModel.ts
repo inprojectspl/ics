@@ -11,6 +11,7 @@ import {
   isArchiveOnly,
   isTrashScope,
   scopeHref,
+  scopeOf as scopeFromValues,
   type AssetFilter,
   type AssetScope,
 } from "../../lib/useAssetFilter";
@@ -35,15 +36,7 @@ export interface NavGroup {
 }
 
 function scopeOf(search: URLSearchParams): AssetScope {
-  const scopes: AssetScope[] = [
-    "state:pinned",
-    "state:mine",
-    "state:shared-with-me",
-    "admin:review",
-    "state:trash",
-    "admin:trash",
-  ];
-  return scopes.find((s) => search.getAll("f").includes(s)) ?? "all";
+  return scopeFromValues(search.getAll("f"));
 }
 
 function archiveOnly(search: URLSearchParams): boolean {
