@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `deleted_by` and `purge_at`; documents already deleted get the full period from the upgrade.
   The project owner may now restore a project document from the trash, and a restore needs room in
   the owner's quota.
+- Project invitations reach the app, not only the e-mail: the invitee gets a `project.invited`
+  notification that opens the invitation screen of the e-mail link, now usable without its token,
+  with **Accept invitation** and **Decline**. `GET`/`POST`/`DELETE /api/projects/{slug}/invitation`
+  read, accept or decline the caller's own invitation (audit `project_invite_declined`).
 - Documentation site at <https://inprojectspl.github.io/ics/>, built with MkDocs from `docs/`.
 - `GET /api/assets/by-id/{id}/meta`: the asset meta by id for any viewer, as
   `/by-slug/{slug}/meta` (`/api/assets/{id}` answers editors only).

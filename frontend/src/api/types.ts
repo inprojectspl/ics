@@ -394,6 +394,15 @@ export type ProjectSummary = {
   asset_count: number;
 };
 
+/** The caller's invitation to a project, for the acceptance screen. */
+export type ProjectInvitation = {
+  project_name: string;
+  role: ProjectRole;
+  /** Who invited, as version authors are named; null once they are gone. */
+  invited_by: string | null;
+  accepted: boolean;
+};
+
 export type ProjectMemberRow = {
   id: string;
   user_id: string;

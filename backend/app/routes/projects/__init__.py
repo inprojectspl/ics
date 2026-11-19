@@ -26,7 +26,10 @@ from .crud import (
     patch_project,
 )
 from .membership import (
+    accept_invitation,
     accept_invite,
+    decline_invitation,
+    get_invitation,
     invite_member,
     kick_member,
     leave_project,
@@ -50,7 +53,10 @@ __all__ = [  # noqa: RUF022 - semantic order (router, DTOs, handlers)
     "list_projects",
     "patch_project",
     # Membership handlers
+    "accept_invitation",
     "accept_invite",
+    "decline_invitation",
+    "get_invitation",
     "invite_member",
     "kick_member",
     "leave_project",

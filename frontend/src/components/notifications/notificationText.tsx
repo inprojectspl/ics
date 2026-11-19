@@ -5,10 +5,12 @@ import {
   FolderInput,
   MessageSquareWarning,
   Trash2,
+  UserPlus,
   type LucideIcon,
 } from "lucide-react";
 import type { NotificationCode, NotificationItem } from "../../api/notificationTypes";
 import { t, tn } from "../../lib/i18n";
+import { projectRoleName } from "../../lib/roles";
 
 export const NOTIFICATION_ICON: Record<NotificationCode, LucideIcon> = {
   "asset.created": FilePlus2,
@@ -16,12 +18,14 @@ export const NOTIFICATION_ICON: Record<NotificationCode, LucideIcon> = {
   "asset.updated": FilePen,
   "asset.deleted": Trash2,
   "channel.chat_disabled": MessageSquareWarning,
+  "project.invited": UserPlus,
 };
 
 const TITLE = "{title}";
 
 /** Catalogue text of an entry with `{title}` left in place, so the title
- * can be set in bold without building the sentence from fragments. */
+ * (the document's, or the project's when no document is involved) can be
+ * set in bold without building the sentence from fragments. */
 function template(item: NotificationItem): string {
   if (item.unavailable) return t("notifications.text.unavailable");
   const project = item.project?.name;
@@ -39,11 +43,14 @@ function template(item: NotificationItem): string {
       return t("notifications.text.deleted");
     case "channel.chat_disabled":
       return t("notifications.text.chatDisabled");
+    case "project.invited":
+      return t("notifications.text.invited", { role: projectRoleName(String(item.params.role)) });
   }
 }
 
 function titleOf(item: NotificationItem): string {
-  return item.asset?.title || item.asset?.slug || t("notifications.untitled");
+  const title = item.asset ? item.asset.title || item.asset.slug : item.project?.name;
+  return title || t("notifications.untitled");
 }
 
 /** One line of text, for toasts and accessible names. */

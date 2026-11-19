@@ -110,6 +110,10 @@ ICS sends the person an e-mail with an **Open invitation** link. The link is val
 
 The invitation link works only for the account it was sent to. Someone signed in with a different account gets an error.
 
+### Answer an invitation in ICS
+
+The invitation also arrives as a [notification](notifications.md): "Invitation to the project … as editor". Clicking it opens the same invitation screen as the e-mail link, with who invited you and with which role, and two buttons: **Accept invitation** makes you a member and offers **Open project**; **Decline** removes the invitation, and the owner can invite you again. The screen works also after the e-mail link has expired, until you answer or the owner withdraws the invitation.
+
 ### Invite someone who has no account
 
 You can invite any e-mail address. If there is no account for it yet, ICS creates one and sends a single e-mail with two links: **Set password** first, then the invitation link. After the person sets a password and signs in, ICS takes them straight to the invitation and they join the project. Both links are valid for 7 days.

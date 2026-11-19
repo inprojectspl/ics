@@ -9,6 +9,7 @@ import type {
   ProjectExternalRef,
   ProjectGraph,
   ProjectHygiene,
+  ProjectInvitation,
   ProjectMemberRow,
   ProjectRole,
   ProjectSummary,
@@ -78,13 +79,26 @@ export const transferProjectOwner = (slug: string, userId: string) =>
     user_id: userId,
   });
 
+type AcceptedInvitation = {
+  accepted: boolean;
+  project_slug: string | null;
+  project_name: string | null;
+  role: ProjectRole;
+};
+
+/** Accept by the token of the e-mail link. */
 export const acceptProjectInvite = (token: string) =>
-  postJson<{
-    accepted: boolean;
-    project_slug: string | null;
-    project_name: string | null;
-    role: ProjectRole;
-  }>("/api/projects/accept-invite", { token });
+  postJson<AcceptedInvitation>("/api/projects/accept-invite", { token });
+
+/** The caller's own invitation, answered in the app without the token. */
+export const getProjectInvitation = (slug: string) =>
+  req<ProjectInvitation>(`/api/projects/${slug}/invitation`);
+
+export const acceptProjectInvitation = (slug: string) =>
+  postJson<AcceptedInvitation>(`/api/projects/${slug}/invitation`, {});
+
+export const declineProjectInvitation = (slug: string) =>
+  req<{ declined: boolean }>(`/api/projects/${slug}/invitation`, { method: "DELETE" });
 
 export const getProjectGraph = (slug: string, opts: { tasks?: boolean } = {}) =>
   req<ProjectGraph>(`/api/projects/${slug}/graph${opts.tasks ? "?include=tasks" : ""}`);

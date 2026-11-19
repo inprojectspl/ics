@@ -27,9 +27,8 @@ from app.services.sharing import build_app_url
 
 from . import inbox, preferences, schedule
 from .channels import chat
-from .fanout import deliver
+from .fanout import notify_user
 from .items import build_payload
-from .recipients import Recipient
 from .render import Rendered, render
 
 logger = logging.getLogger("ics.notifications.batches")
@@ -172,6 +171,5 @@ async def disable_chat(
         actor_name=None,
         params={"error_code": error_code},
     )
-    recipient = Recipient(id=user.id, locale=user.locale, prefs=preferences.from_row(row))
-    await deliver(redis, settings, [(recipient, payload)])
+    await notify_user(redis, settings, user, preferences.from_row(row), payload)
     logger.info("notify.channel.failed channel=chat user=%s code=%s", user.id, error_code)

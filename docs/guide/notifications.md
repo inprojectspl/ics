@@ -37,7 +37,7 @@ The project toggle always follows **All activity**. Documents shared into the pr
 
 ## What generates a notification
 
-There are four kinds of events. You never get a notification about your own action.
+There are four kinds of events you choose in the settings. You never get a notification about your own action.
 
 | Event (as named in the settings) | Who is notified |
 |---|---|
@@ -45,6 +45,8 @@ There are four kinds of events. You never get a notification about your own acti
 | Document added to a project | People who watch the project it was moved or shared into. |
 | New document version | People who watch the document or watch its project, plus the document's owner and maintainer. |
 | Document deleted | People who watch the document, plus its owner and maintainer. |
+
+An invitation to a project is always delivered in the app, next to its e-mail, and opens the invitation screen (see [Answer an invitation in ICS](projects.md#answer-an-invitation-in-ics)). It does not go to push, e-mail or Google Chat, since the invitation e-mail is already on its way.
 
 A [micro-application](micro-applications.md#notifications) counts as a new document once its first release runs, not when its first package is uploaded, and each later release counts as a new version.
 
