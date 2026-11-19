@@ -9,12 +9,16 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from app.config import Settings
-from app.models import Asset, User
-from app.redis_client import get_redis
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import schedule
-from .items import EventKind
+from app.config import Settings
+from app.models import Asset, Project, ProjectMember, User
+from app.redis_client import get_redis
+from app.services.versions import author_label
+
+from . import preferences, schedule
+from .fanout import notify_user
+from .items import EventKind, ProjectRef, build_payload
 
 logger = logging.getLogger("ics.notifications.events")
 
@@ -65,3 +69,29 @@ async def emit_updated(
         await schedule.note_update(get_redis(), asset.id, version, _actor_id(actor), settings)
     except Exception as e:
         logger.warning("notify emit failed: code=asset.updated asset=%s err=%s", asset.id, e)
+
+
+async def emit_invited(
+    session: AsyncSession,
+    settings: Settings,
+    member: ProjectMember,
+    project: Project,
+    inviter: User,
+    invitee: User,
+) -> None:
+    """A project invitation in the invitee's inbox, next to its e-mail; the
+    entry opens the acceptance screen. Delivered here, not through the
+    worker: one known recipient needs no fan-out query."""
+    try:
+        payload = build_payload(
+            "project.invited",
+            asset=None,
+            project=ProjectRef(slug=project.slug, name=project.name),
+            actor_id=str(inviter.id),
+            actor_name=author_label(inviter.display_name, inviter.email),
+            params={"role": member.role},
+        )
+        prefs = await preferences.load(session, invitee.id)
+        await notify_user(get_redis(), settings, invitee, prefs, payload)
+    except Exception as e:
+        logger.warning("notify emit failed: code=project.invited user=%s err=%s", invitee.id, e)

@@ -103,6 +103,7 @@ Stable codes, stored in the inbox as `code` plus params, never as text
 | `asset.added` | project watchers of the target project (move, project share) | `/v/{slug}` |
 | `asset.updated` | asset watchers, project watchers (`all`), owner and maintainer | `/v/{slug}` for one version, `/v/{slug}/diff?from=..&to=..` for a range |
 | `asset.deleted` | asset watchers, owner | the project page |
+| `project.invited` | the invitee only (in-app, no other channel: the invitation e-mail goes separately); delivered in the request through `fanout.notify_user`, as one known recipient needs no fan-out | `/projects/{slug}/accept`, the invitation screen |
 
 Always excluded: the actor (also when an agent acts for the user through
 MCP), users with the master switch off, and muted assets. A CI binding sync

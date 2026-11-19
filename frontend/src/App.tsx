@@ -278,7 +278,7 @@ function Router() {
       </AppShell>
     );
   if (route.name === "project-accept")
-    return <AcceptInvite token={route.token} />;
+    return <AcceptInvite slug={route.slug} token={route.token} />;
   if (route.name === "setup")
     return (
       <Setup

@@ -1,4 +1,5 @@
-"""Project membership: invite, patch role, kick, leave, transfer-owner, accept."""
+"""Project membership: invite, patch role, kick, leave, transfer-owner, and
+answering an invitation (by the e-mail token, or in the app)."""
 
 from __future__ import annotations
 
@@ -21,6 +22,8 @@ from app.i18n import resolve_locale
 from app.i18n.request import AcceptLanguage
 from app.models import Project, ProjectMember, User
 from app.services import sharing as sharing_svc
+from app.services.notifications.events import emit_invited
+from app.services.versions import author_label
 
 from ._models import AcceptInviteIn, InviteMemberIn, PatchMemberIn, TransferOwnerIn
 from ._router import router
@@ -103,6 +106,7 @@ async def invite_member(
     )
     await session.commit()
     await session.refresh(member)
+    await emit_invited(session, settings, member, project, user, invitee)
     return _member_row(member, user=invitee)
 
 
@@ -301,6 +305,23 @@ async def accept_invite(
             "invitation_not_yours",
             "this invitation belongs to another account",
         )
+    project = await session.get(Project, member.project_id)
+    return await _accept(session, user, member, project)
+
+
+async def _pending_invitation(
+    session: AsyncSession, slug: str, user: User
+) -> tuple[Project, ProjectMember]:
+    """The caller's own invitation to the project. The e-mail token proves
+    nothing more than the session does: the row already names the invitee."""
+    project = await _get_project_by_slug(session, slug)
+    member = await _get_member(session, project.id, user.id)
+    if member is None:
+        raise ApiError(status.HTTP_404_NOT_FOUND, "invitation_not_found", "invitation not found")
+    return project, member
+
+
+def _ensure_pending(member: ProjectMember) -> None:
     if member.accepted_at is not None:
         raise ApiError(
             status.HTTP_409_CONFLICT,
@@ -308,8 +329,12 @@ async def accept_invite(
             "the invitation has already been accepted",
         )
 
+
+async def _accept(
+    session: AsyncSession, user: User, member: ProjectMember, project: Project | None
+) -> dict:
+    _ensure_pending(member)
     member.accepted_at = _utcnow()
-    project = await session.get(Project, member.project_id)
     await audit.record(
         session,
         actor=user,
@@ -324,3 +349,52 @@ async def accept_invite(
         "project_name": project.name if project else None,
         "role": member.role,
     }
+
+
+@router.get("/{slug}/invitation")
+async def get_invitation(
+    slug: str,
+    user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict:
+    """The caller's invitation to the project, for the acceptance screen."""
+    project, member = await _pending_invitation(session, slug, user)
+    inviter = await session.get(User, member.invited_by) if member.invited_by else None
+    return {
+        "project_name": project.name,
+        "role": member.role,
+        "invited_by": author_label(inviter.display_name, inviter.email) if inviter else None,
+        "accepted": member.accepted_at is not None,
+    }
+
+
+@router.post("/{slug}/invitation", status_code=status.HTTP_200_OK)
+async def accept_invitation(
+    slug: str,
+    user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict:
+    """Accept a pending invitation from the app, without the e-mail link."""
+    project, member = await _pending_invitation(session, slug, user)
+    return await _accept(session, user, member, project)
+
+
+@router.delete("/{slug}/invitation", status_code=status.HTTP_200_OK)
+async def decline_invitation(
+    slug: str,
+    user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict:
+    """Decline a pending invitation; the owner can invite again later."""
+    project, member = await _pending_invitation(session, slug, user)
+    _ensure_pending(member)
+    await audit.record(
+        session,
+        actor=user,
+        action="project_invite_declined",
+        target=f"project:{project.id}",
+        payload={"role": member.role},
+    )
+    await session.delete(member)
+    await session.commit()
+    return {"declined": True}

@@ -6,7 +6,8 @@ export type NotificationCode =
   | "asset.added"
   | "asset.updated"
   | "asset.deleted"
-  | "channel.chat_disabled";
+  | "channel.chat_disabled"
+  | "project.invited";
 
 export type EventKind = "asset.created" | "asset.added" | "asset.updated" | "asset.deleted";
 /** Channels the user picks per event; in-app is always on and not listed. */

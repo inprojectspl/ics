@@ -909,6 +909,96 @@ async def test_accept_invite_expired_token(session, monkeypatch):
     assert ei.value.status_code == 410
 
 
+# ---------- invitations answered in the app ----------
+
+
+@pytest.fixture
+def invited_events(monkeypatch):
+    """(invitee id, project slug, role) of every inbox entry an invite emits."""
+    sent: list = []
+
+    async def _record(session, settings, member, project, inviter, invitee):
+        sent.append((invitee.id, project.slug, member.role))
+
+    monkeypatch.setattr(proj.membership, "emit_invited", _record)
+    return sent
+
+
+async def _invited(session, role: str = "editor") -> tuple[User, User, Project]:
+    """(owner, invitee, project) with the invitation still pending."""
+    owner = await _mk_user(session)
+    invited = await _mk_user(session)
+    await session.commit()
+    project = await _mk_project(session, owner, "Invited to")
+    await proj.invite_member(
+        project.slug,
+        proj.InviteMemberIn(email=invited.email, role=role),
+        owner,
+        session,
+        get_settings(),
+    )
+    return owner, invited, project
+
+
+@pytest.mark.asyncio
+async def test_invite_notifies_the_invitee_in_the_app(session, invited_events):
+    _, invited, project = await _invited(session, role="viewer")
+    assert invited_events == [(invited.id, project.slug, "viewer")]
+
+
+@pytest.mark.asyncio
+async def test_get_and_accept_invitation_in_app(session, invited_events):
+    owner, invited, project = await _invited(session)
+
+    assert await proj.get_invitation(project.slug, invited, session) == {
+        "project_name": "Invited to",
+        "role": "editor",
+        "invited_by": owner.display_name,
+        "accepted": False,
+    }
+    out = await proj.accept_invitation(project.slug, invited, session)
+    assert out == {
+        "accepted": True,
+        "project_slug": project.slug,
+        "project_name": project.name,
+        "role": "editor",
+    }
+    listed = await proj.list_projects(invited, session, page=1, page_size=200)
+    assert [p["slug"] for p in listed["items"]] == [project.slug]
+    assert (await proj.get_invitation(project.slug, invited, session))["accepted"] is True
+    for answer in (proj.accept_invitation, proj.decline_invitation):
+        with pytest.raises(HTTPException) as ei:
+            await answer(project.slug, invited, session)
+        assert ei.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_invitation_endpoints_need_one(session, invited_events):
+    _, _, project = await _invited(session)
+    stranger = await _mk_user(session)
+    for answer in (proj.get_invitation, proj.accept_invitation, proj.decline_invitation):
+        with pytest.raises(HTTPException) as ei:
+            await answer(project.slug, stranger, session)
+        assert ei.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_decline_invitation_removes_it(session, invited_events):
+    owner, invited, project = await _invited(session)
+
+    assert await proj.decline_invitation(project.slug, invited, session) == {"declined": True}
+    member = await session.scalar(select(ProjectMember).where(ProjectMember.user_id == invited.id))
+    assert member is None
+    # The owner can invite again.
+    await proj.invite_member(
+        project.slug,
+        proj.InviteMemberIn(email=invited.email, role="viewer"),
+        owner,
+        session,
+        get_settings(),
+    )
+
+
 # ---------- sys-admin bypass ----------
 
 

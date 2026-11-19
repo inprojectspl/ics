@@ -25,6 +25,7 @@ from . import inbox, recipients, schedule
 from .channels import webpush
 from .inbox import Delivery, Entry
 from .items import AssetRef, EventKind, ProjectRef, build_payload, to_item
+from .preferences import Prefs
 from .recipients import Recipient
 from .render import render
 
@@ -181,6 +182,17 @@ async def deliver(
         out.append(Delivered(recipient=recipient, entry_id=entry_id, payload=payload))
     await pipe.execute()
     return out
+
+
+async def notify_user(
+    redis: Redis, settings: Settings, user: User, prefs: Prefs, payload: dict
+) -> None:
+    """One entry about no document for one user, in the app only: an account
+    notice or an invitation. The master switch applies as to every event."""
+    if prefs.enabled:
+        await deliver(
+            redis, settings, [(Recipient(id=user.id, locale=user.locale, prefs=prefs), payload)]
+        )
 
 
 async def _route_channels(

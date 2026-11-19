@@ -11,7 +11,8 @@ type NotificationCode =
   | "asset.added"     // existing asset moved or shared into a watched project
   | "asset.updated"   // new version(s)
   | "asset.deleted"
-  | "channel.chat_disabled"; // the Google Chat webhook stopped working
+  | "channel.chat_disabled" // the Google Chat webhook stopped working
+  | "project.invited"; // an invitation to `project`; opens /projects/{slug}/accept
 
 type EventKind = "asset.created" | "asset.added" | "asset.updated" | "asset.deleted";
 type ChannelId = "app" | "push" | "email" | "chat";
@@ -31,7 +32,7 @@ interface NotificationItem {
   from_version: number | null;// first new version when count > 1
   count: number;              // collapsed events, >= 1
   link: string | null;        // app-relative URL to open, e.g. "/v/abc" or "/v/abc/diff?from=4&to=9"
-  params: Record<string, string | number>; // extra, e.g. {error_code} for channel.chat_disabled
+  params: Record<string, string | number>; // extra, e.g. {error_code} for channel.chat_disabled, {role} for project.invited
 }
 ```
 

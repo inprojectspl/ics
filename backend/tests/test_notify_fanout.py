@@ -23,7 +23,16 @@ from app.models import (
     Watch,
 )
 from app.redis_client import get_redis
-from app.services.notifications import batches, fanout, inbox, preferences, recipients, schedule
+from app.services.notifications import (
+    batches,
+    events,
+    fanout,
+    inbox,
+    preferences,
+    recipients,
+    schedule,
+)
+from app.services.notifications.items import link_of
 from app.slug import generate_slug
 from tests.conftest import mk_admin, mk_asset, mk_user
 
@@ -412,3 +421,33 @@ async def test_push_delivery_prunes_dead_devices(session: AsyncSession, monkeypa
     assert set(rows) == {"ok", "broken"}
     assert rows["ok"].last_success_at is not None
     assert rows["broken"].failures == 1
+
+
+async def _pending_invite(
+    session: AsyncSession, *, enabled: bool = True
+) -> tuple[User, User, Project, ProjectMember]:
+    owner = await mk_user(session)
+    invitee = await mk_user(session)
+    project = await _project(session, owner)
+    member = ProjectMember(project_id=project.id, user_id=invitee.id, role="editor")
+    session.add(member)
+    if not enabled:
+        session.add(NotificationPreference(user_id=invitee.id, enabled=False))
+    await session.commit()
+    await inbox.clear(get_redis(), invitee.id)
+    await events.emit_invited(session, get_settings(), member, project, owner, invitee)
+    return owner, invitee, project, member
+
+
+async def test_project_invitation_lands_in_the_invitee_inbox(session: AsyncSession):
+    _, invitee, project, _ = await _pending_invite(session)
+    entries, _ = await inbox.page(get_redis(), invitee.id, before=None, limit=5, unread_only=False)
+    [entry] = entries
+    assert entry.payload["c"] == "project.invited"
+    assert entry.payload["x"] == {"role": "editor"}
+    assert link_of(entry.payload) == f"/projects/{project.slug}/accept"
+
+
+async def test_project_invitation_respects_the_master_switch(session: AsyncSession):
+    _, invitee, _, _ = await _pending_invite(session, enabled=False)
+    assert await _inbox_codes(invitee) == []

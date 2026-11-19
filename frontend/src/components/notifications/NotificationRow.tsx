@@ -77,7 +77,8 @@ function NotificationRowImpl({ item, actions, compact = false, onOpened }: Props
           )}
         </p>
         <div className="mt-1 flex items-center gap-x-2 gap-y-1 flex-wrap text-meta text-text-tertiary">
-          {!compact && item.project && (
+          {/* Without a document the project is the title already. */}
+          {!compact && item.asset && item.project && (
             <span className="max-w-[12rem] truncate px-2 py-0.5 rounded-full bg-text-primary/[0.05] text-text-secondary">
               {item.project.name}
             </span>

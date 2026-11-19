@@ -19,6 +19,7 @@ NotificationCode = Literal[
     "asset.updated",
     "asset.deleted",
     "channel.chat_disabled",
+    "project.invited",
 ]
 EventKind = Literal["asset.created", "asset.added", "asset.updated", "asset.deleted"]
 EVENT_KINDS: tuple[EventKind, ...] = get_args(EventKind)
@@ -83,6 +84,9 @@ def link_of(payload: dict[str, Any]) -> str | None:
     slug = payload.get("sl")
     if code == "channel.chat_disabled":
         return "/account/notifications"
+    if code == "project.invited":
+        # The acceptance screen of the e-mail link, without its token.
+        return f"/projects/{payload['ps']}/accept"
     if code == "asset.deleted":
         return f"/projects/{payload['ps']}" if payload.get("ps") else None
     if not slug:

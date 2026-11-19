@@ -173,6 +173,7 @@ AuditAction = Literal[
     "project_member_role_changed",
     "project_member_kicked",
     "project_invite_accepted",
+    "project_invite_declined",
     "project_left",
     "project_owner_transferred",
     "asset_project_changed",
