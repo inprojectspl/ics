@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     # origin. Owner/share landing on the main domain redirects here via a
     # short-lived signed grant URL.
     html_viewer_base: str = "http://html.ics.localhost"
+    # Inject share_context.js into HTML bundle and micro-application pages, so
+    # copied addresses keep the share link (docs/copyable-addresses.md).
+    # Off stops the injection only: addresses that already carry `ics_share`
+    # keep working.
+    share_context_enabled: bool = True
 
     # CSV of allowed CORS origins for the API. In dev defaults to the
     # Vite dev server + local host; production must override with

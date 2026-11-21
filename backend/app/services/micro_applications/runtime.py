@@ -74,7 +74,11 @@ async def authorize(
     environment: str,
     user_id: UUID | None,
     share_id: UUID | None = None,
+    share_token: str | None = None,
 ) -> dict[str, Any]:
+    """What the broker session may do now. `share_token` is the link named in
+    a page address (`ics_share`): `share_token_id` says which live link of
+    this app it is, so the broker can tell a visit of another link apart."""
     env = await _env_by_hex(session, asset_hex, environment)
     asset = await session.get(Asset, env.asset_id)
     if asset is None:
@@ -104,6 +108,11 @@ async def authorize(
         select(MicroAppSchemaBinding).where(MicroAppSchemaBinding.environment_id == env.id)
     )
     data_full = await quota.owner_data_full(asset.owner_id)
+    named = (
+        await session.scalar(select(ShareLink).where(ShareLink.token == share_token))
+        if share_token
+        else None
+    )
     return {
         "found": True,
         "asset_id": str(asset.id),
@@ -121,6 +130,7 @@ async def authorize(
         "permissions": sorted(access.expand(grants, release)),
         "roles": access.held_roles(grants, release),
         "data_quota": {"exceeded": data_full},
+        "share_token_id": str(named.id) if named and _share_admits(named, asset) else None,
     }
 
 

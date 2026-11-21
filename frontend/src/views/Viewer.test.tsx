@@ -340,7 +340,7 @@ describe("Viewer html bundle", () => {
     render(<Viewer slug="doc" />);
     fireEvent.click(screen.getByRole("button", { name: "bundle Dash" }));
     await waitFor(() => expect(document.body.dataset.grant).toBe("https://cdn/x"));
-    expect(getAssetHtmlGrant).toHaveBeenCalledWith("doc", 1);
+    expect(getAssetHtmlGrant).toHaveBeenCalledWith("doc", 1, { share: undefined });
     expect(screen.queryByTestId("md")).toBeNull();
   });
 
@@ -350,7 +350,7 @@ describe("Viewer html bundle", () => {
     render(<Viewer slug="doc" />);
     fireEvent.click(screen.getByRole("button", { name: "bundle Dash" }));
     await waitFor(() => expect(document.body.dataset.grant).toBe("https://cdn/y"));
-    expect(getAssetHtmlGrant).toHaveBeenCalledWith("doc", undefined);
+    expect(getAssetHtmlGrant).toHaveBeenCalledWith("doc", undefined, { share: undefined });
   });
 });
 

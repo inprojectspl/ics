@@ -5,6 +5,8 @@ every later request inside the bundle carries."""
 
 from __future__ import annotations
 
+import base64
+import secrets
 import time
 from datetime import datetime
 from typing import Annotated, NamedTuple
@@ -22,8 +24,9 @@ from app.errors import ApiError
 from app.i18n import resolve_locale
 from app.i18n.request import AcceptLanguage
 from app.models import Asset, ShareLink, User
+from app.routes import _html_share_context as share_page
 from app.routes._version_param import resolve_version_or_404
-from app.services import link_resolution
+from app.services import link_resolution, share_context
 from app.services.versions import entry_path_at_version, version_created_at
 
 router = APIRouter(prefix="/html", tags=["html-viewer"], include_in_schema=False)
@@ -111,26 +114,53 @@ def issue_grant(
     *,
     basis: str,
     successor_href: str | None = None,
+    share_token: str | None = None,
+    target: str | None = None,
 ) -> str:
     """Sign a short-lived grant; the caller has already authorized the visitor.
 
     `version` is None for the current version. `basis` is what authorized
     the visitor (`user_basis` or `share_basis`). `successor_href` (current
     version only) is a successor the caller checked this visitor may open;
-    the entry page then carries the superseded banner."""
+    the entry page then carries the superseded banner. `share_token` is the
+    link the visit came through, kept in the page address (`ics_share`), and
+    `target` a page checked by `share_context.clean_target` to open instead
+    of the entry."""
     successor = successor_href if successor_href and version is None else ""
-    return tokens.issue("html_grant", f"{grant_key(asset_id, version)}|{successor}|{basis}")
+    to = base64.urlsafe_b64encode(target.encode()).decode() if target else ""
+    return tokens.issue(
+        "html_grant",
+        f"{grant_key(asset_id, version)}|{successor}|{basis}|{share_token or ''}|{to}",
+    )
 
 
-def _parse_grant(payload: str) -> tuple[UUID, int | None, str | None, str]:
-    """`"uuid:3||u:<id>"` -> (uuid, 3, None, "u:<id>"); `"uuid|/v/slug|s:<id>"`
-    -> (uuid, None, "/v/slug", "s:<id>"). Raises ValueError on garbage; the
-    caller maps it to 400 (the signature may be valid while the format comes
-    from another app version)."""
-    key, successor, basis = payload.split("|")
+class _Grant(NamedTuple):
+    asset_id: UUID
+    version: int | None
+    successor: str | None
+    basis: str
+    share_token: str | None
+    target: str | None
+
+
+def _parse_grant(payload: str) -> _Grant:
+    """`"uuid:3||u:<id>||"` -> archived v3 for a user; `"uuid|/v/slug|s:<id>|T|"`
+    -> current version through link T. Grants signed before the link context
+    have three fields. Raises ValueError on garbage; the caller maps it to 400
+    (the signature may be valid while the format comes from another app
+    version)."""
+    fields = payload.split("|")
+    if len(fields) == 3:
+        fields += ["", ""]
+    key, successor, basis, token, to = fields
     raw_id, _, raw_v = key.partition(":")
     _split_basis(basis)
-    return UUID(raw_id), int(raw_v) if raw_v else None, successor or None, basis
+    if token and not share_context.TOKEN_RE.fullmatch(token):
+        raise ValueError(token)
+    target = share_context.clean_target(base64.urlsafe_b64decode(to).decode()) if to else None
+    return _Grant(
+        UUID(raw_id), int(raw_v) if raw_v else None, successor or None, basis, token or None, target
+    )
 
 
 def _split_basis(basis: str) -> tuple[str, UUID]:
@@ -158,14 +188,7 @@ async def _basis_holds(basis: str, asset: Asset, session: AsyncSession, *, page:
     # The cookie is signed and only ever holds a basis `_parse_grant` accepted.
     kind, ref_id = _split_basis(basis)
     if kind == "s":
-        share = await session.get(ShareLink, ref_id)
-        # The view was counted when the grant was issued, so a link spent by
-        # that very view still serves the visit it allowed.
-        holds = (
-            share is not None
-            and share.asset_id == asset.id
-            and link_resolution.link_lifecycle(share) in (None, "spent")
-        )
+        holds = _link_serves(await session.get(ShareLink, ref_id), asset)
     else:
         user = await session.get(User, ref_id)
         holds = (
@@ -180,7 +203,51 @@ async def _basis_holds(basis: str, asset: Asset, session: AsyncSession, *, page:
     return holds
 
 
+def _link_serves(share: ShareLink | None, asset: Asset) -> bool:
+    """A live link of this asset. The view was counted when the grant was
+    issued, so a link spent by that very view still serves the visit it
+    allowed."""
+    return (
+        share is not None
+        and share.asset_id == asset.id
+        and link_resolution.link_lifecycle(share) in (None, "spent")
+    )
+
+
+async def _token_fits(token: str, basis: str, asset: Asset, session: AsyncSession) -> bool:
+    """Whether the link named in the page address may continue this visit:
+    a live link of this asset, and for a link visitor the very link that let
+    them in (a member keeps their own access, never demoted to a guest)."""
+    kind, ref_id = _split_basis(basis)
+    if kind == "s":
+        # `_basis_holds` loaded and checked this link: the identity map
+        # answers without a query.
+        own = await session.get(ShareLink, ref_id)
+        return own is not None and own.token == token
+    return _link_serves(
+        await session.scalar(select(ShareLink).where(ShareLink.token == token)), asset
+    )
+
+
 # ---------- endpoints ----------
+
+
+@router.get("/_/share-context.js")
+async def share_context_script(request: Request) -> Response:
+    """The shared bootstrap, also for the entry page without a grant. Pages
+    load it with its content hash (`?v=`), so the browser keeps it."""
+    body, etag = share_context.script()
+    headers = {
+        "Cache-Control": "public, max-age=31536000, immutable"
+        if request.query_params.get("v") == share_context.script_version()
+        else "no-cache",
+        "ETag": etag,
+        "X-Content-Type-Options": "nosniff",
+        "Cross-Origin-Resource-Policy": "same-origin",
+    }
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
+    return Response(content=body, media_type="text/javascript; charset=utf-8", headers=headers)
 
 
 @router.get("/_/grant", response_class=RedirectResponse)
@@ -198,28 +265,38 @@ async def grant(
         raise ApiError(status.HTTP_400_BAD_REQUEST, "link_invalid", "invalid link") from None
 
     try:
-        asset_id, version, successor, basis = _parse_grant(payload)
+        g = _parse_grant(payload)
     except ValueError:
         raise ApiError(status.HTTP_400_BAD_REQUEST, "link_invalid", "invalid link") from None
+    version, basis = g.version, g.basis
 
-    asset = await session.get(Asset, asset_id)
+    asset = await session.get(Asset, g.asset_id)
     if asset is None or asset.deleted_at is not None or asset.kind != "html_bundle":
         raise ApiError(status.HTTP_404_NOT_FOUND, "asset_not_found", "asset not found")
 
     v = resolve_version_or_404(asset, version)
     entry = await entry_path_at_version(asset, v, settings)
-    prefix = f"/{asset.slug}" if version is None else f"/-v{v}/{asset.slug}"
-
-    target = f"{prefix}/{entry}" if entry else f"{prefix}/"
+    scope = share_page.scope_of(asset, version)
+    target = share_context.target_url(scope.rstrip("/"), g.target or entry or "", g.share_token)
     response = RedirectResponse(url=target, status_code=status.HTTP_302_FOUND)
+    if g.share_token is None and basis.startswith("u:"):
+        response.set_cookie(
+            share_page.ENTRY_COOKIE,
+            secrets.token_urlsafe(12),
+            max_age=share_page.ENTRY_COOKIE_MAX_AGE_S,
+            httponly=True,
+            samesite="lax",
+            secure=not settings.debug,
+            path=scope,
+        )
 
     fresh = _Entry(basis, int(time.time()) + COOKIE_MAX_AGE_S)
     granted = _read_granted(request)
     granted[grant_key(asset.id, version)] = fresh
     if version is None:
         granted = {k: e for k, e in granted.items() if not k.startswith(_successor_key(asset.id))}
-        if successor:
-            granted[_successor_key(asset.id) + successor] = fresh
+        if g.successor:
+            granted[_successor_key(asset.id) + g.successor] = fresh
     if len(granted) > MAX_GRANTED_PER_COOKIE:
         # The entries closest to expiry go first; the ones just granted expire last.
         newest = sorted(granted.items(), key=lambda item: item[1].expires)
@@ -270,20 +347,39 @@ async def _serve_granted(
     from app.services.version_banner import build_banner_html
 
     asset = await _bundle_or_404(slug, session)
+    page = is_html_doc(path)
     granted = _read_granted(request)
     entry = granted.get(grant_key(asset.id, version))
-    if entry is None or not await _basis_holds(entry.basis, asset, session, page=is_html_doc(path)):
+    state, url_token = share_context.read_token(request.url.query) if page else ("none", None)
+    holds = False
+    if entry is not None and state != "invalid":
+        holds = await _basis_holds(entry.basis, asset, session, page=page) and (
+            url_token is None or await _token_fits(url_token, entry.basis, asset, session)
+        )
+    if not holds:
+        if page and share_page.is_navigation(request):
+            return share_page.recovery_response(
+                settings,
+                asset,
+                version,
+                invalid=state == "invalid",
+                accept_language=accept_language,
+            )
         raise ApiError(
             status.HTTP_401_UNAUTHORIZED, "grant_required", "open the document through ICS"
         )
     assert_bundle_renderable_for_visitors(asset)
     v = resolve_version_or_404(asset, version)
 
+    head = None
+    if page and settings.share_context_enabled:
+        head = share_page.page_tag(settings, request, asset, version)
+
     # HTML only: subresources must not pay for the version-date query.
     prelude = None
-    if v == asset.version and version is None and is_html_doc(path):
+    if v == asset.version and version is None and page:
         prelude = await _superseded_prelude(asset, granted, session, settings, accept_language)
-    elif v != asset.version and is_html_doc(path):
+    elif v != asset.version and page:
         prelude = build_banner_html(
             preview_version=v,
             current_version=asset.version,
@@ -292,7 +388,7 @@ async def _serve_granted(
             # The isolated origin has no ICS session, only the browser's language.
             locale=resolve_locale(accept_language=accept_language),
         )
-    return await serve_bundle_file(
+    response = await serve_bundle_file(
         asset,
         path,
         settings,
@@ -300,7 +396,11 @@ async def _serve_granted(
         request=request,
         version=version,
         body_prelude=prelude,
+        head_prelude=head,
     )
+    if head and share_page.ENTRY_COOKIE in request.cookies:
+        response.delete_cookie(share_page.ENTRY_COOKIE, path=share_page.scope_of(asset, version))
+    return response
 
 
 async def _superseded_prelude(

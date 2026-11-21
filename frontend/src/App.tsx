@@ -66,7 +66,7 @@ type Route =
   | { name: "viewer"; slug: string; path?: string; version?: number; tab?: "relations" }
   | { name: "version-diff"; slug: string; from?: number; to?: number }
   | { name: "agent-view"; slug: string; path?: string; format?: AgentFormat; version?: number }
-  | { name: "share"; token: string; path?: string; version?: number }
+  | { name: "share"; token: string; path?: string; version?: number; to?: string }
   | { name: "admin-audit" }
   | { name: "admin-review" }
   | { name: "admin-cdn" }
@@ -158,6 +158,9 @@ function parseRoute(): Route {
       // pass it on.
       path: params.get("p") || undefined,
       version: parseVersionParam(params),
+      // A page of an HTML bundle or micro-application whose copied address
+      // brought the visitor here; the visit returns there past the gates.
+      to: params.get("to") || undefined,
     };
   const projectAccept = path.match(/^\/projects\/([a-z0-9]+)\/accept\/?$/i);
   if (projectAccept?.[1])
@@ -273,7 +276,7 @@ function Router() {
     return (
       <AppShell me={null}>
         <Suspense fallback={<LoadingFallback />}>
-          <ShareView token={route.token} path={route.path} version={route.version} />
+          <ShareView token={route.token} path={route.path} version={route.version} to={route.to} />
         </Suspense>
       </AppShell>
     );

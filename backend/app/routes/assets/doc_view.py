@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends, status
+from fastapi import Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import microapp_guard, permissions
@@ -21,7 +21,7 @@ from app.i18n.request import AcceptLanguage
 from app.routes._version_param import VersionParam, resolve_version_or_404
 from app.routes.assets._helpers import _doc_payload_for
 from app.routes.assets.view import _gate_bundle_for_read_only, router
-from app.services import documents, link_resolution, superseded
+from app.services import documents, link_resolution, share_context, superseded
 from app.services.micro_applications import access as app_access
 from app.services.sharing import build_asset_url
 
@@ -33,10 +33,17 @@ async def asset_html_grant(
     session: Annotated[AsyncSession, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
     version: VersionParam = None,
+    share: Annotated[str | None, Query(max_length=128)] = None,
+    to: Annotated[str | None, Query(max_length=share_context.MAX_TARGET_LEN)] = None,
 ) -> dict:
     """Signed grant URL for the isolated viewer (viewer level). Auth is checked
-    here; a critical bundle is still stopped by the visitor gate when served."""
+    here; a critical bundle is still stopped by the visitor gate when served.
+
+    `share` is the link a role holder opened (`/s/<token>`): the visit keeps
+    their own access, and the page address keeps the link. `to` opens a page
+    of the bundle instead of its entry."""
     from app.routes.html_viewer import issue_grant, user_basis
+    from app.routes.shares._shared import _resolve_share
 
     asset, _ = await permissions.get_viewable_asset_by_slug(session, slug, user)
     microapp_guard.refuse_source(asset)
@@ -44,6 +51,11 @@ async def asset_html_grant(
         raise ApiError(
             status.HTTP_400_BAD_REQUEST, "not_html_bundle", "the document is not an HTML bundle"
         )
+    if share is not None:
+        link, linked = await _resolve_share(share, session)
+        if linked.id != asset.id:
+            raise ApiError(status.HTTP_404_NOT_FOUND, "share_not_found", "link does not exist")
+        share = link.token
     v = resolve_version_or_404(asset, version)
     current = v == asset.version
     successor = await superseded.for_viewer(session, user, asset) if current else None
@@ -52,6 +64,8 @@ async def asset_html_grant(
         version=None if current else v,
         basis=user_basis(user.id),
         successor_href=successor["href"] if successor else None,
+        share_token=share,
+        target=share_context.clean_target(to),
     )
     return {"url": f"{settings.html_viewer_base}/_/grant?t={sig}"}
 

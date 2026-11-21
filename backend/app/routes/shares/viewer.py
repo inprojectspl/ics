@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends, Request, Response, status
+from fastapi import Depends, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,7 +13,7 @@ from app.config import Settings, get_settings
 from app.db import get_session
 from app.errors import ApiError
 from app.routes._version_param import VersionParam, resolve_version_or_404
-from app.services import documents, superseded
+from app.services import documents, share_context, superseded
 from app.services.versions import version_rows
 
 from ._router import router
@@ -171,12 +171,14 @@ async def share_html_grant(
     session: Annotated[AsyncSession, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
     version: VersionParam = None,
+    to: Annotated[str | None, Query(max_length=share_context.MAX_TARGET_LEN)] = None,
 ) -> dict:
     """Grant URL for the isolated viewer, after the share-mode check.
 
     The view is counted here for bundles; the 1 h cookie lets a visitor of a
     `max_views=1` link browse the bundle until it expires. Archived versions
-    don't count.
+    don't count. The page address keeps the link (`ics_share`); `to` opens a
+    page of the bundle instead of its entry.
     """
     from app.routes.assets import assert_bundle_renderable_for_visitors
     from app.routes.html_viewer import issue_grant, share_basis
@@ -206,6 +208,8 @@ async def share_html_grant(
         version=v if stale else None,
         basis=share_basis(share.id),
         successor_href=successor["href"] if successor else None,
+        share_token=share.token,
+        target=share_context.clean_target(to),
     )
     if not stale and role is None:
         await _increment_view_count(session, share.id)

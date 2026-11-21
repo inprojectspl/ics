@@ -29,8 +29,14 @@ export class IcsClient {
     return data;
   }
 
-  authorize(assetHex, environment, userId, shareId = null) {
-    return this.#call("POST", "/api/internal/microapps/authorize", { asset: assetHex, environment, user_id: userId, share_id: shareId });
+  authorize(assetHex, environment, userId, shareId = null, shareToken = null) {
+    return this.#call("POST", "/api/internal/microapps/authorize", { asset: assetHex, environment, user_id: userId, share_id: shareId, share_token: shareToken });
+  }
+
+  async shareContextScript() {
+    const res = await this.#call("GET", "/api/internal/microapps/share-context.js", undefined, { raw: true });
+    if (!res.ok) throw Object.assign(new Error(`ICS ${res.status}`), { status: 503, code: "ics_error" });
+    return { body: Buffer.from(await res.arrayBuffer()), etag: res.headers.get("etag") ?? null };
   }
 
   resolveHost(host) {

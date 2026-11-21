@@ -169,5 +169,8 @@
   "scan.pdf_xfa_form": "The PDF contains an XFA form; the viewer shows the static pages only.",
   "scan.prompt_injection_suspect": "Text that reads like an instruction to an AI agent: \"{phrase}\". Check it before handing the document to an agent.",
   "scan.svg_script": "<script> inside <svg>: runs in the parent document's context and bypasses per-file heuristics.",
-  "scan.timer_string_arg": "setTimeout/setInterval with a string: implicit eval."
+  "scan.timer_string_arg": "setTimeout/setInterval with a string: implicit eval.",
+
+  "share_context.recover_body": "This document opens through ICS. If nothing happens, open it again from its link.",
+  "share_context.recover_title": "Opening the document"
 }

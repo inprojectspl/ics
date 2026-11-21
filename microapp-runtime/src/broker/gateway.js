@@ -14,11 +14,18 @@ import { invokeHandler } from "./custom.js";
 import { RateLimiter } from "./ratelimit.js";
 import { HostResolver } from "./hosts.js";
 import { HttpError, SECURITY_HEADERS, canonical, etag, parseIfMatch, readJson, send, sendError } from "./http.js";
+import { ENTRY_COOKIE, LAUNCH_RE, SCRIPT_PATH, ShareContextScript, TOKEN_RE, cleanTarget, injectHead, isDocumentPath, readToken, recoveryPage, scriptTag, targetPath } from "./share-context.js";
 
 const LIMITS = { wallMs: 5000, cpuMs: 1000, queueMs: 1000, maxDbCalls: 20, maxResponseBytes: 256 * 1024, memoryBytes: 32 * 1024 * 1024, stackBytes: 512 * 1024 };
 const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
 const MIME = { html: "text/html; charset=utf-8", htm: "text/html; charset=utf-8", js: "text/javascript; charset=utf-8", mjs: "text/javascript; charset=utf-8", css: "text/css; charset=utf-8", json: "application/json", svg: "image/svg+xml", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", ico: "image/x-icon", woff2: "font/woff2", txt: "text/plain; charset=utf-8" };
 const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9._:-]{8,128}$/;
+
+/** A local path to land on after the sign-in; anything else is `/`. */
+function safeBack(back) {
+  if (typeof back !== "string" || !back.startsWith("/")) return "/";
+  return cleanTarget(back.slice(1)) === null && back !== "/" ? "/" : back;
+}
 
 export class Gateway {
   constructor({ config, ics, apps, pools, runners, limiter = new RateLimiter(), hosts = new HostResolver({ config, ics }) }) {
@@ -29,6 +36,7 @@ export class Gateway {
     this.pools = pools;
     this.runners = runners;
     this.limiter = limiter;
+    this.shareScript = new ShareContextScript(ics);
   }
 
   // Runs on the session cookie alone, before ICS is asked anything, so a
@@ -54,22 +62,35 @@ export class Gateway {
         throw new HttpError(400, "bad_request", "bad URL");
       }
       if (url.pathname === "/__ics/sdk.js") return this.sdk(res);
+      if (url.pathname === SCRIPT_PATH) return await this.shareContextScript(req, res);
       if (url.pathname === "/__ics/callback") return await this.callback(req, res, target, url);
+      if (url.pathname === "/__ics/share") return this.startShare(res, target, url);
+      if (url.pathname === "/__ics/login") return this.startLogin(res, target, `/${cleanTarget(url.searchParams.get("to")) ?? ""}`);
       const cookies = parseCookies(req.headers.cookie);
       const session = readSession(this.config.sessionSecret, cookies[SESSION_COOKIE], target);
-      if (url.pathname === "/__ics/share") return this.startShare(res, target, url, session);
       const isApi = url.pathname.startsWith("/api/");
+      // A page load (not the app's own files or data): the one place the
+      // link named in the address is checked against the session.
+      const page = (req.method === "GET" || req.method === "HEAD") && isDocumentPath(url.pathname);
       if (!session) {
         if (isApi) throw new HttpError(401, "app_session_required", "open the application through ICS to sign in");
-        return this.startLogin(res, target, url);
+        // The entry page keeps the whole address, fragment included, which
+        // a redirect through the sign-in would lose.
+        if (page) return recoveryPage(res, target, url);
+        return this.startLogin(res, target, url.pathname + url.search);
       }
       if (url.pathname === "/__ics/logout" && req.method === "POST") {
         this.checkWrite(req, target, session);
         return send(res, 204, undefined, { "set-cookie": cookie(SESSION_COOKIE, "", { maxAge: 0 }) });
       }
+      const named = page ? readToken(url.search) : { state: "none", token: null };
+      if (named.state === "invalid") return recoveryPage(res, target, url, 400);
       await this.rateLimit(target, session);
-      const auth = await this.ics.authorize(target.assetHex, target.environment, session.uid, session.sh ?? null);
+      const auth = await this.ics.authorize(target.assetHex, target.environment, session.uid, session.sh ?? null, named.token);
       if (!auth.found || auth.deleted) throw new HttpError(404, "not_found", "application not found");
+      // Another link than the one this visitor came through (or a dead one)
+      // is a new entry through that link; a member keeps their own session.
+      if (named.token && (!auth.share_token_id || (session.sh && auth.share_token_id !== session.sh))) return recoveryPage(res, target, url);
       if (!auth.app_use || !auth.user) throw new HttpError(403, "forbidden", "you no longer have access to this application");
       const app = this.apps.get(target.assetHex, target.environment);
       await this.apps.sync(app, auth);
@@ -77,7 +98,7 @@ export class Gateway {
       if (!auth.release) throw new HttpError(503, "app_not_ready", "the application has no active release");
       app.releaseId = auth.release.id;
       const { bundle, model } = await this.apps.model(auth.release.id);
-      const rc = { req, res, url, target, session, auth, app, bundle, model, requestId, permissions: new Set(auth.permissions) };
+      const rc = { req, res, url, target, session, cookies, auth, app, bundle, model, requestId, permissions: new Set(auth.permissions) };
       if (!isApi) return await this.serveStatic(rc);
       return await this.api(rc);
     } catch (err) {
@@ -93,10 +114,20 @@ export class Gateway {
     res.end(SDK_SOURCE);
   }
 
-  startLogin(res, target, url) {
+  async shareContextScript(req, res) {
+    const { body, etag } = await this.shareScript.get();
+    const headers = { ...SECURITY_HEADERS, "content-type": "text/javascript; charset=utf-8", "cache-control": "no-cache", ...(etag ? { etag } : {}) };
+    if (etag && req.headers["if-none-match"] === etag) {
+      res.writeHead(304, headers);
+      return res.end();
+    }
+    res.writeHead(200, headers);
+    res.end(body);
+  }
+
+  startLogin(res, target, back) {
     const nonce = newStartNonce();
-    const back = url.pathname.startsWith("/") && !url.pathname.startsWith("//") ? url.pathname + url.search : "/";
-    const value = `${nonce}.${Buffer.from(back).toString("base64url")}`;
+    const value = `${nonce}.${Buffer.from(safeBack(back)).toString("base64url")}`;
     const launch = new URL("/api/micro-applications/launch", target.icsBaseUrl ?? this.config.icsPublicBaseUrl);
     launch.searchParams.set("host", target.host);
     launch.searchParams.set("state", stateOf(nonce));
@@ -104,22 +135,22 @@ export class Gateway {
     res.end();
   }
 
-  startShare(res, target, url, session) {
+  startShare(res, target, url) {
     // A share link opens the app through ICS, which checks the link's gate
-    // (password, sign-in) on its own origin and answers with a code.
+    // (password, sign-in) on its own origin and answers with a code. A member
+    // gets a code of their own there, so the link never demotes them to an
+    // anonymous visitor. The page the visit started on comes back with the
+    // link in its address.
     const token = url.searchParams.get("token") ?? "";
-    if (!/^[A-Za-z0-9_-]{16,128}$/.test(token)) throw new HttpError(400, "launch_invalid", "invalid share link");
-    if (session && !session.sh) {
-      // Already signed in as themselves: a link must not demote them to an
-      // anonymous visitor with fewer permissions.
-      res.writeHead(302, { ...SECURITY_HEADERS, location: "/", "cache-control": "no-store" });
-      return res.end();
-    }
+    if (!TOKEN_RE.test(token)) throw new HttpError(400, "launch_invalid", "invalid share link");
+    const to = cleanTarget(url.searchParams.get("to"));
     const nonce = newStartNonce();
     const launch = new URL(`/api/share/${token}/launch`, target.icsBaseUrl ?? this.config.icsPublicBaseUrl);
     launch.searchParams.set("host", target.host);
     launch.searchParams.set("state", stateOf(nonce));
-    res.writeHead(302, { ...SECURITY_HEADERS, location: launch.toString(), "referrer-policy": "no-referrer", "set-cookie": cookie(START_COOKIE, `${nonce}.${Buffer.from("/").toString("base64url")}`, { maxAge: 300 }), "cache-control": "no-store" });
+    if (to) launch.searchParams.set("to", to);
+    const back = targetPath(to ?? "", token);
+    res.writeHead(302, { ...SECURITY_HEADERS, location: launch.toString(), "referrer-policy": "no-referrer", "set-cookie": cookie(START_COOKIE, `${nonce}.${Buffer.from(back).toString("base64url")}`, { maxAge: 300 }), "cache-control": "no-store" });
     res.end();
   }
 
@@ -140,15 +171,13 @@ export class Gateway {
       userId = prior?.sh === shareId ? prior.uid : crypto.randomUUID();
     }
     const { value, payload } = issueSession(this.config.sessionSecret, { userId, assetHex: target.assetHex, environment: target.environment, host: target.host, shareId });
-    let back = "/";
-    try {
-      const decoded = Buffer.from(back64 ?? "", "base64url").toString();
-      if (decoded.startsWith("/") && !decoded.startsWith("//") && !decoded.startsWith("/__ics/")) back = decoded;
-    } catch {
-      back = "/";
-    }
+    const back = safeBack(Buffer.from(back64 ?? "", "base64url").toString());
     const maxAge = payload.exp - Math.floor(Date.now() / 1000);
-    res.writeHead(302, { ...SECURITY_HEADERS, location: back, "cache-control": "no-store", "set-cookie": [cookie(SESSION_COOKIE, value, { maxAge }), cookie(START_COOKIE, "", { maxAge: 0 })] });
+    const setCookies = [cookie(SESSION_COOKIE, value, { maxAge }), cookie(START_COOKIE, "", { maxAge: 0 })];
+    // A launch of the member's own (from the panel or a sign-in): the next
+    // page drops the tab's earlier link context, once.
+    if (!shareId) setCookies.push(cookie(ENTRY_COOKIE, crypto.randomBytes(12).toString("base64url"), { maxAge: 60 }));
+    res.writeHead(302, { ...SECURITY_HEADERS, location: back, "cache-control": "no-store", "set-cookie": setCookies });
     res.end();
   }
 
@@ -165,14 +194,23 @@ export class Gateway {
     if (!file) throw new HttpError(404, "not_found", "not found");
     const ext = path.split(".").pop().toLowerCase();
     const isHtml = ext === "html" || ext === "htm";
-    res.writeHead(200, {
+    const headers = {
       ...SECURITY_HEADERS,
       "content-type": MIME[ext] ?? "application/octet-stream",
       "content-security-policy": CSP,
       "cache-control": isHtml ? "no-store" : "private, max-age=60",
       "x-ics-release": auth.release.id,
-    });
-    res.end(rc.req.method === "HEAD" ? undefined : file.bytes);
+    };
+    let bytes = file.bytes;
+    if (isHtml && auth.share_context) {
+      const launch = rc.cookies[ENTRY_COOKIE];
+      const direct = typeof launch === "string" && LAUNCH_RE.test(launch);
+      bytes = injectHead(bytes, scriptTag({ assetId: rc.target.assetHex, kind: "micro_application", scope: "/", entryMode: direct ? "direct" : "continuation", launch: direct ? launch : null }));
+      if (launch !== undefined) headers["set-cookie"] = cookie(ENTRY_COOKIE, "", { maxAge: 0 });
+    }
+    headers["content-length"] = String(bytes.length);
+    res.writeHead(200, headers);
+    res.end(rc.req.method === "HEAD" ? undefined : bytes);
   }
 
   checkWrite(req, target, session) {

@@ -169,5 +169,8 @@
   "scan.pdf_xfa_form": "PDF zawiera formularz XFA; podgląd pokazuje tylko statyczne strony.",
   "scan.prompt_injection_suspect": "Tekst wygląda na polecenie dla agenta AI: \"{phrase}\". Sprawdź go, zanim przekażesz dokument agentowi.",
   "scan.svg_script": "<script> wewnątrz <svg>: wykonywany w kontekście dokumentu nadrzędnego, omija heurystyki działające per plik.",
-  "scan.timer_string_arg": "setTimeout/setInterval ze stringiem: niejawny eval."
+  "scan.timer_string_arg": "setTimeout/setInterval ze stringiem: niejawny eval.",
+
+  "share_context.recover_body": "Ten dokument otwiera się przez ICS. Jeżeli nic się nie dzieje, otwórz go ponownie z linku.",
+  "share_context.recover_title": "Otwieranie dokumentu"
 }
