@@ -61,7 +61,7 @@ _LINK_STYLE = (
 )
 
 
-def _ascii_html(text: str) -> str:
+def ascii_html(text: str) -> str:
     """HTML escape plus every non-ASCII character as a numeric entity."""
     return html.escape(text).encode("ascii", "xmlcharrefreplace").decode("ascii")
 
@@ -91,8 +91,8 @@ def build_banner_html(
         tail = t("banner.current_dated", locale, version=current_version, date=current_when)
     else:
         tail = t("banner.current", locale, version=current_version)
-    body = _ascii_html(f"{head}. {tail}.")
-    close = _ascii_html(t("banner.close", locale))
+    body = ascii_html(f"{head}. {tail}.")
+    close = ascii_html(t("banner.close", locale))
     return (
         f'<div id="{_ID}" role="alert" style="{_BAR_STYLE}">{body}'
         f'<button type="button" aria-label="{close}" '
@@ -131,10 +131,10 @@ def build_superseded_banner_html(
         if when
         else t("banner.superseded", locale, title=name)
     )
-    body = _ascii_html(f"{head}.")
-    link = _ascii_html(t("banner.superseded_open", locale))
-    close = _ascii_html(t("banner.close", locale))
-    href = _ascii_html(url)
+    body = ascii_html(f"{head}.")
+    link = ascii_html(t("banner.superseded_open", locale))
+    close = ascii_html(t("banner.close", locale))
+    href = ascii_html(url)
     return (
         f'<div id="{_SUPERSEDED_ID}" role="alert" style="{_SUPERSEDED_STYLE}">{body}'
         f'<a href="{href}" target="_top" rel="noopener" style="{_LINK_STYLE}">{link}</a>'

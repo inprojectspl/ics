@@ -1,4 +1,4 @@
-import { encodePath, patchJson, postJson, putJson, req, sortQuery, withVersion } from "./_core";
+import { encodePath, patchJson, postJson, putJson, req, sortQuery, withParams, withVersion } from "./_core";
 import type {
   AgentFiles,
   AgentReadOpts,
@@ -121,8 +121,10 @@ export const getOcr = (slug: string, version?: number) =>
 export const requestOcr = (assetId: string, body: OcrRequest = {}) =>
   postJson<OcrResponse>(`/api/assets/${assetId}/ocr`, body);
 
-export const getAssetHtmlGrant = (slug: string, version?: number) =>
-  req<{ url: string }>(withVersion(`/api/assets/by-slug/${slug}/html-grant`, version));
+/** `link.share`: the share link a role holder opened, kept in the page
+ * address; `link.to`: a page of the bundle to open instead of its entry. */
+export const getAssetHtmlGrant = (slug: string, version?: number, link: { share?: string; to?: string } = {}) =>
+  req<{ url: string }>(withParams(`/api/assets/by-slug/${slug}/html-grant`, { version: version ? String(version) : undefined, ...link }));
 
 // ---------- Asset metadata mutations ----------
 

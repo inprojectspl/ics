@@ -65,3 +65,4 @@ Numbers start at `0001`. Numbers are never reused (not even from deleted ADRs). 
 - [ADR-0027](0027-micro-applications.md): Micro-applications: agent-published apps with their own data, run by a shared broker and QuickJS/WASM runners on origins of their own.
 - [ADR-0028](0028-short-micro-application-hosts.md): Short micro-application hosts: a random 8-character name per app, reserved for good; long hosts keep working.
 - [ADR-0029](0029-asset-archive-and-trash.md): Asset archive and trash: the archive leaves lists and search but keeps links working; the trash keeps a deleted asset 30 days, then purges it with its files.
+- [ADR-0030](0030-copyable-share-addresses.md): Copyable share addresses: HTML bundles and micro-applications keep the share link in their address (`ics_share`) through a platform-injected script, so a copied address takes its recipient through the same link.

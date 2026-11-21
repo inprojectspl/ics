@@ -175,6 +175,12 @@ You can paste the address from the browser's address bar into a chat. When the d
 
 Someone who opens an internal `/v/...` address without access is sent to a link they can use, when there is one: an organisation link if they are signed in with an organisation account, otherwise a public link, then a password link. One-time links are never used for this, so nobody else spends them.
 
+### HTML reports and micro-applications
+
+An HTML report or a micro-application opens on its own address, outside ICS. When you open it through a share link, its address carries that link as `ics_share=...`, and it stays there while you move between its pages and sections. Copy the address at any point and send it: the recipient goes through that same link (its password, sign-in, recipient list, expiry and open limit) and lands on the page and section you were looking at.
+
+Opening the report or app from ICS directly, not through a link, leaves the address without `ics_share`. Details for administrators and developers: [Copyable asset addresses](../copyable-addresses.md).
+
 ## Find documents shared with you
 
 Click **Shared with me** in the sidebar. The list shows documents other people gave you access to, directly or through a project you are a member of. It is the regular document list, so search, filters and sorting work as described in [Documents](documents.md#find-your-way-in-the-document-list).

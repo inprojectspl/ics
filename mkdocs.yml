@@ -114,6 +114,7 @@ nav:
       - microapps-api.md
       - publication-receipts-api.md
       - expected-version-api.md
+      - copyable-addresses.md
       - DESIGN.md
   - Decisions:
       - Overview: decisions/README.md
@@ -146,3 +147,4 @@ nav:
       - decisions/0027-micro-applications.md
       - decisions/0028-short-micro-application-hosts.md
       - decisions/0029-asset-archive-and-trash.md
+      - decisions/0030-copyable-share-addresses.md

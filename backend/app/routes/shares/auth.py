@@ -4,7 +4,7 @@ the share-link entry of a micro-application."""
 from __future__ import annotations
 
 from typing import Annotated
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from fastapi import Depends, Query, Request, status
 from fastapi.responses import RedirectResponse
@@ -18,6 +18,7 @@ from app.db import get_session
 from app.errors import ApiError
 from app.models import MicroAppEnvironment
 from app.routes.micro_applications import callback_redirect, require_enabled
+from app.services import share_context
 from app.services.micro_applications import access, runtime
 from app.services.micro_applications.common import ENVIRONMENT
 from app.services.micro_applications.hosts import app_url
@@ -186,13 +187,17 @@ async def share_launch(
     settings: Annotated[Settings, Depends(get_settings)],
     host: Annotated[str, Query(max_length=200)],
     state: Annotated[str, Query(max_length=128)],
+    to: Annotated[str | None, Query(max_length=share_context.MAX_TARGET_LEN)] = None,
 ) -> RedirectResponse:
     """Share-link entry of a micro-application. A member who may use the app
     enters as themselves, uncounted; anyone else passes the link's own gate
     (password, sign-in, e-mail) and gets a one-time code bound to the link.
-    Each such launch counts against `max_views`."""
+    Each such launch counts against `max_views`. `to` (the app page the
+    visit started on) survives the gate on the share page."""
     require_enabled(settings)
-    share_page = RedirectResponse(f"/s/{quote(token, safe='')}", status_code=302)
+    target = share_context.clean_target(to)
+    share_path = f"/s/{quote(token, safe='')}" + (f"?{urlencode({'to': target})}" if target else "")
+    share_page = RedirectResponse(share_path, status_code=302)
     try:
         share, asset = await _resolve_share(token, session)
     except ApiError:
@@ -208,9 +213,7 @@ async def share_launch(
         await _assert_share_view(request, share, asset, session, settings)
     except ApiError as e:
         if e.code == "share_login_required" and user is None:
-            return RedirectResponse(
-                f"/#login?next={quote(f'/s/{token}', safe='')}", status_code=302
-            )
+            return RedirectResponse(f"/#login?next={quote(share_path, safe='')}", status_code=302)
         if e.code in ("share_login_required", "share_password_required", "share_access_denied"):
             # The share page asks for the password or the e-mail link, or
             # tells a signed-in visitor this link is not for them.

@@ -1,4 +1,4 @@
-import { encodePath, postJson, putJson, req, withVersion } from "./_core";
+import { encodePath, postJson, putJson, req, withParams, withVersion } from "./_core";
 import type {
   AssetDoc,
   AssetShareRow,
@@ -80,8 +80,9 @@ export const shareStaticUrl = (token: string, path: string) =>
 export const sharePdfUrl = (token: string, version?: number) =>
   withVersion(`/api/share/${token}/pdf`, version);
 
-export const getShareHtmlGrant = (token: string, version?: number) =>
-  req<{ url: string }>(withVersion(`/api/share/${token}/html-grant`, version));
+/** `to`: a page of the bundle to open instead of its entry. */
+export const getShareHtmlGrant = (token: string, version?: number, to?: string) =>
+  req<{ url: string }>(withParams(`/api/share/${token}/html-grant`, { version: version ? String(version) : undefined, to }));
 
 // ---------- Per-user asset shares (granted_to specific email) ----------
 

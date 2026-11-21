@@ -28,12 +28,35 @@ test("a share link starts the ICS launch for a visitor without a session", () =>
   assert.ok(String(res.headers["set-cookie"]).startsWith(`${START_COOKIE}=`));
 });
 
-test("a share link keeps a signed-in member's own session", () => {
+test("a share link returns to the page it started on, with the link in its address", () => {
+  const backOf = (res) => Buffer.from(String(res.headers["set-cookie"]).split(";")[0].split("=")[1].split(".")[1], "base64url").toString();
   const res = fakeRes();
-  const own = sessionOf({ userId: "u1" }).payload;
-  gateway().startShare(res, target, new URL(`https://${target.host}/__ics/share?token=${TOKEN}`), own);
-  assert.equal(res.headers.location, "/");
-  assert.equal(res.headers["set-cookie"], undefined);
+  gateway().startShare(res, target, new URL(`https://${target.host}/__ics/share?token=${TOKEN}&to=${encodeURIComponent(`board?tab=2&ics_share=${"X".repeat(43)}`)}`));
+  assert.equal(new URL(res.headers.location).searchParams.get("to"), "board?tab=2");
+  assert.equal(backOf(res), `/board?tab=2&ics_share=${TOKEN}`);
+  // A member is not short-circuited here: ICS gives them a code of their own.
+  const plain = fakeRes();
+  gateway().startShare(plain, target, new URL(`https://${target.host}/__ics/share?token=${TOKEN}&to=__ics/callback`));
+  assert.equal(backOf(plain), `/?ics_share=${TOKEN}`);
+  assert.equal(new URL(plain.headers.location).searchParams.get("to"), null);
+});
+
+test("the callback lands on the started page and marks a member's own launch", async () => {
+  const call = async (back, shareId) => {
+    const ics = { exchangeLaunch: async () => ({ asset_hex: HEX, environment: "prod", user_id: "u1", share_id: shareId }) };
+    const res = fakeRes();
+    const cookie = `${START_COOKIE}=n.${Buffer.from(back).toString("base64url")}`;
+    await gateway(ics).callback({ headers: { cookie } }, res, target, new URL(`https://${target.host}/__ics/callback?code=c`));
+    return res;
+  };
+  const member = await call(`/board?x=1&ics_share=${TOKEN}`, null);
+  assert.equal(member.headers.location, `/board?x=1&ics_share=${TOKEN}`);
+  assert.ok(member.headers["set-cookie"].some((c) => c.startsWith("__Host-ics-app-entry=") && !c.includes("Max-Age=0")));
+  const guest = await call("/", "s1");
+  assert.ok(!guest.headers["set-cookie"].some((c) => c.startsWith("__Host-ics-app-entry=")));
+  for (const evil of ["//evil.example/", "/__ics/callback?code=x", "/a/../../x", "/a\\b", "https://evil.example/"]) {
+    assert.equal((await call(evil, null)).headers.location, "/", evil);
+  }
 });
 
 test("the callback keeps the visitor identity of the same link only", async () => {

@@ -25,6 +25,7 @@ from app.config import Settings, get_settings
 from app.db import get_session
 from app.errors import ApiError
 from app.redis_client import get_redis
+from app.services import share_context
 from app.services.micro_applications import (
     contract,
     control,
@@ -399,6 +400,7 @@ class AuthorizeRequest(BaseModel):
     environment: str = Field(pattern="^prod$")
     user_id: UUID | None = None
     share_id: UUID | None = None
+    share_token: str | None = Field(default=None, max_length=128)
 
 
 class ExchangeRequest(BaseModel):
@@ -413,11 +415,21 @@ class HostRequest(BaseModel):
 
 @internal_router.post("/authorize")
 async def internal_authorize(
-    body: AuthorizeRequest, _: Service, session: Session
+    body: AuthorizeRequest, _: Service, session: Session, settings: AppSettings
 ) -> dict[str, Any]:
-    return await runtime.authorize(
-        session, body.asset, body.environment, body.user_id, body.share_id
+    out = await runtime.authorize(
+        session, body.asset, body.environment, body.user_id, body.share_id, body.share_token
     )
+    # One platform switch for the bundle viewer and the broker.
+    out["share_context"] = settings.share_context_enabled
+    return out
+
+
+@internal_router.get("/share-context.js")
+async def internal_share_context_script(_: Service) -> Response:
+    """The shared bootstrap the broker serves on every app origin."""
+    body, etag = share_context.script()
+    return Response(content=body, media_type="text/javascript", headers={"ETag": etag})
 
 
 @internal_router.post("/hosts/resolve")

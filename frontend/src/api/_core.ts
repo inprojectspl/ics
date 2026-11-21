@@ -88,6 +88,14 @@ export function withVersion(path: string, version?: number): string {
   return `${path}${path.includes("?") ? "&" : "?"}version=${version}`;
 }
 
+/** `path` with the given query parameters; empty and undefined values are left out. */
+export function withParams(path: string, params: Record<string, string | undefined>): string {
+  const q = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) if (value) q.set(key, value);
+  const text = q.toString();
+  return text ? `${path}${path.includes("?") ? "&" : "?"}${text}` : path;
+}
+
 /** `init` adds fetch options, e.g. `keepalive` for a request that must
  * survive leaving the page. */
 export function postJson<T>(path: string, body: unknown, init?: RequestInit): Promise<T> {

@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - First public release.
+- Copyable addresses of HTML bundles and micro-applications opened through a share link
+  ([ADR-0030](docs/decisions/0030-copyable-share-addresses.md), docs/copyable-addresses.md). The
+  page address keeps the link as `ics_share=<token>` across pages, `history.pushState`, GET forms
+  and anchors; a recipient of the copied address passes that link's gate and lands on the same
+  page, query and fragment. ICS and the broker inject `share_context.js` into served pages (no
+  UI, no requests), serve an entry page instead of a page without a session, and carry the page
+  through `html-grant` (`share`, `to`), `/api/share/{token}/launch` (`to`) and the `/s/{token}?to=`
+  share page. `ICS_SHARE_CONTEXT_ENABLED=false` stops the injection only.
 - Archive and trash of documents ([ADR-0029](docs/decisions/0029-asset-archive-and-trash.md)).
   An archived document leaves lists, search and project upkeep but still opens by link, share and
   slug: **Move to archive** in the `…` menu, **Archive** in the sidebar and in **Filters**, a

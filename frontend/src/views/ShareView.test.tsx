@@ -10,6 +10,7 @@ const getShareInfo = vi.fn();
 const getShareDoc = vi.fn();
 const getShareCollectionFile = vi.fn();
 const getShareHtmlGrant = vi.fn();
+const getAssetHtmlGrant = vi.fn();
 const getShareGraph = vi.fn();
 const shareMagicClaim = vi.fn();
 const shareAuth = vi.fn();
@@ -22,6 +23,7 @@ vi.mock("../api", () => ({
     getShareVersions: vi.fn().mockResolvedValue([]),
     getShareGraph: (...a: unknown[]) => getShareGraph(...a),
     getShareHtmlGrant: (...a: unknown[]) => getShareHtmlGrant(...a),
+    getAssetHtmlGrant: (...a: unknown[]) => getAssetHtmlGrant(...a),
     sharePdfUrl: (token: string, v?: number) => `/spdf/${token}${v ? `?version=${v}` : ""}`,
     shareMagicClaim: (...a: unknown[]) => shareMagicClaim(...a),
     shareAuth: (...a: unknown[]) => shareAuth(...a),
@@ -158,6 +160,47 @@ describe("ShareView", () => {
     vi.unstubAllGlobals();
   });
 
+  it("returns a micro-application visitor to the page of the copied address", async () => {
+    const replace = vi.fn();
+    vi.stubGlobal("location", { ...window.location, replace });
+    const url = "https://app.test/__ics/share?token=tok";
+    getShareInfo.mockResolvedValue(info({ kind: "micro_application", app_launch_url: url, has_access: true }));
+    render(<ShareView token="tok" to="board?tab=2" />);
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(`${url}&to=${encodeURIComponent("board?tab=2")}`));
+    vi.unstubAllGlobals();
+  });
+
+  it("opens the bundle page of a copied address once, through the link", async () => {
+    const replace = vi.fn();
+    vi.stubGlobal("location", { ...window.location, replace });
+    getShareHtmlGrant.mockResolvedValue({ url: "https://html.test/_/grant?t=g" });
+    getShareInfo.mockResolvedValue(info({ kind: "html_bundle", has_access: true }));
+    render(<ShareView token="tok" version={2} to="sub/page.html?x=1" />);
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("https://html.test/_/grant?t=g"));
+    expect(getShareHtmlGrant).toHaveBeenCalledTimes(1);
+    expect(getShareHtmlGrant).toHaveBeenCalledWith("tok", 2, "sub/page.html?x=1");
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps a role holder's own access and the link on a copied bundle address", async () => {
+    const replace = vi.fn();
+    vi.stubGlobal("location", { ...window.location, replace });
+    getAssetHtmlGrant.mockResolvedValue({ url: "https://html.test/_/grant?t=u" });
+    getShareInfo.mockResolvedValue(info({ kind: "html_bundle", my_role: "viewer", slug: "dash" }));
+    render(<ShareView token="tok" to="page.html" />);
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("https://html.test/_/grant?t=u"));
+    expect(getAssetHtmlGrant).toHaveBeenCalledWith("dash", undefined, { share: "tok", to: "page.html" });
+    expect(getShareHtmlGrant).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it("shows why a copied bundle address does not open", async () => {
+    getShareHtmlGrant.mockRejectedValue(new ApiError(410, "withheld", "410", "bundle_withheld"));
+    getShareInfo.mockResolvedValue(info({ kind: "html_bundle", has_access: true }));
+    render(<ShareView token="tok" to="page.html" />);
+    expect(await screen.findByText(t("error.bundle_withheld"))).toBeInTheDocument();
+  });
+
   it("still challenges a password link", async () => {
     getShareInfo.mockResolvedValue(
       info({ mode: "password", requires_password: true, has_access: false }),
@@ -191,9 +234,14 @@ describe("ShareView access states", () => {
 
   it("asks an anonymous visitor of an org link to log in", async () => {
     getShareInfo.mockResolvedValue(info({ requires_login: true, has_access: false }));
-    render(<ShareView token="tok" />);
+    window.history.replaceState({}, "", "/s/tok?to=page.html");
+    render(<ShareView token="tok" to="page.html" />);
     expect(await screen.findByText("Sign-in required")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/#login");
+    // The sign-in comes back to this link and the page it was asked for.
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
+      "href",
+      `/#login?next=${encodeURIComponent("/s/tok?to=page.html")}`,
+    );
   });
 
   it("mounts the full reader under the share path for someone with a role", async () => {

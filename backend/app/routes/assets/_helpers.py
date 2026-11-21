@@ -36,7 +36,7 @@ from app.i18n import DEFAULT_LOCALE, Locale
 from app.models import Asset
 from app.render_cache import render_asset_file, render_document
 from app.routes._version_param import resolve_version_or_404, version_echo
-from app.services import asset_security, documents, ocr
+from app.services import asset_security, documents, ocr, share_context
 from app.services.version_banner import inject_banner
 from app.services.versions import entry_from_paths, version_created_at
 from app.storage import storage_from_url
@@ -218,6 +218,7 @@ async def serve_bundle_file(
     *,
     version: int | None = None,
     body_prelude: str | None = None,
+    head_prelude: str | None = None,
     app_origin: bool = False,
 ) -> Response:
     """Stream one html_bundle file with strict security headers. The caller
@@ -227,8 +228,9 @@ async def serve_bundle_file(
 
     Without `session` only the env CDN allowlist applies, so HTTP handlers
     should pass it. `request` enables the 304 on If-None-Match. `version`
-    serves an archived tree. `body_prelude` (ASCII HTML) is injected into
-    HTML documents only, which are then buffered; everything else streams.
+    serves an archived tree. `body_prelude` (ASCII HTML, after `<body>`) and
+    `head_prelude` (ASCII HTML, before the page's own scripts) are injected
+    into HTML documents only, which are then buffered; everything else streams.
     """
     if asset.kind != "html_bundle":
         raise ApiError(
@@ -254,12 +256,15 @@ async def serve_bundle_file(
         return Response(status_code=304, headers=headers)
 
     media_type = content_type_for(rel)
-    if body_prelude and is_html:
+    if (body_prelude or head_prelude) and is_html:
         try:
-            raw = await read_bytes_at_version(asset, v, rel, settings)
+            payload = await read_bytes_at_version(asset, v, rel, settings)
         except FileNotFoundError:
             raise ApiError(status.HTTP_404_NOT_FOUND, "file_not_found", "file not found") from None
-        payload = inject_banner(raw, body_prelude)
+        if body_prelude:
+            payload = inject_banner(payload, body_prelude)
+        if head_prelude:
+            payload = share_context.inject_head(payload, head_prelude)
         return Response(
             content=payload,
             media_type=media_type,

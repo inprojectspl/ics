@@ -1,6 +1,7 @@
-import { FormEvent, useCallback, useEffect, useState, type ReactNode } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Download } from "lucide-react";
 import { api, AssetDoc, ShareInfo } from "../api";
+import { withParams } from "../api/_core";
 import { CenteredCard, Field, PrimaryButton } from "../components/Form";
 import { HtmlBundleView } from "../components/HtmlBundleView";
 import { OfficeDocument } from "../components/OfficeDocument";
@@ -20,6 +21,7 @@ import { formatApiError } from "../lib/apiError";
 import { displayTitle } from "../lib/displayTitle";
 import { formatRelative } from "../lib/format";
 import { t } from "../lib/i18n";
+import { currentNextPath } from "../lib/nextPath";
 import { hasOcrState } from "../lib/ocr";
 import { useCollectionDoc } from "../lib/useCollectionDoc";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
@@ -36,9 +38,13 @@ interface Props {
    * gets the full reader at this address, and it navigates files via the
    * query string. */
   path?: string;
+  /** `?to=`: the page of an HTML bundle or micro-application whose copied
+   * address led here (`ics_share`); once the link admits the visitor, the
+   * visit goes straight back to it. */
+  to?: string;
 }
 
-export function ShareView({ token, version, path }: Props) {
+export function ShareView({ token, version, path, to }: Props) {
   const [info, setInfo] = useState<ShareInfo | null>(null);
   const [accessReady, setAccessReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,7 +107,7 @@ export function ShareView({ token, version, path }: Props) {
   // Without access the page below asks for the gate or ends the visit, so
   // the app can never bounce the browser back here in a loop.
   if (info.kind === "micro_application" && info.app_launch_url && info.has_access) {
-    return <AppRedirect url={info.app_launch_url} title={info.title} />;
+    return <AppRedirect url={withParams(info.app_launch_url, { to })} title={info.title} />;
   }
 
   if (info.requires_password) {
@@ -133,7 +139,7 @@ export function ShareView({ token, version, path }: Props) {
           {t("shareView.loginBody")}
         </p>
         <div className="flex justify-center">
-          <a href="/#login" className={buttonClass()}>
+          <a href={loginHref()} className={buttonClass()}>
             {t("viewerStates.signIn")}
           </a>
         </div>
@@ -145,8 +151,15 @@ export function ShareView({ token, version, path }: Props) {
   // on the asset, so instead of the reduced visitor view we mount the full
   // reader at the same address (editing, history, no view counting).
   // The address stays `/s/<token>` because that is the link people share.
+  if (to && info.kind === "html_bundle" && (info.my_role || accessReady)) {
+    const slug = info.my_role ? info.slug : null;
+    // A role holder keeps their own access; a guest spends a view of the link.
+    const load = () => (slug ? api.getAssetHtmlGrant(slug, version, { share: token, to }) : api.getShareHtmlGrant(token, version, to));
+    return <BundleRedirect title={info.title} load={load} />;
+  }
+
   if (info.my_role && info.slug) {
-    return <Viewer slug={info.slug} path={path} version={version} basePath={`/s/${token}`} />;
+    return <Viewer slug={info.slug} path={path} version={version} basePath={`/s/${token}`} shareToken={token} />;
   }
 
   // Info is loaded, no mode challenge applies, there is no role and the
@@ -402,15 +415,42 @@ function PasswordGate({
   );
 }
 
+/** Back to the sign-in with this page (and its `?to=`) to return to. */
+function loginHref(): string {
+  const next = currentNextPath();
+  return next ? `/#login?next=${encodeURIComponent(next)}` : "/#login";
+}
+
+/** Opens the bundle page of a copied address once the link admits the
+ * visitor, replacing this entry in the history. */
+function BundleRedirect({ title, load }: { title: string | null; load: () => Promise<{ url: string }> }) {
+  const [error, setError] = useState<string | null>(null);
+  // One grant per visit even when effects run twice (Strict Mode).
+  const started = useRef(false);
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    load().then(
+      ({ url }) => window.location.replace(url),
+      (e) => setError(formatApiError(e)),
+    );
+  }, [load]);
+  return <RedirectCard title={title ?? t("kind.htmlBundle")} message={t("htmlBundleView.opening")} error={error} />;
+}
+
+function RedirectCard({ title, message, error = null }: { title: string; message: string; error?: string | null }) {
+  return (
+    <CenteredCard bare>
+      <h1 className="mb-2 text-center text-title font-semibold text-text-primary [overflow-wrap:anywhere]">{title}</h1>
+      <p className={error ? "text-center text-danger" : "text-center text-text-secondary"}>{error ?? message}</p>
+    </CenteredCard>
+  );
+}
+
 function AppRedirect({ url, title }: { url: string; title: string | null }) {
   useEffect(() => {
     window.location.replace(url);
   }, [url]);
-  return (
-    <CenteredCard bare>
-      <h1 className="mb-2 text-center text-title font-semibold text-text-primary [overflow-wrap:anywhere]">{title ?? t("kind.microApplication")}</h1>
-      <p className="text-center text-text-secondary">{t("shareView.openingApp")}</p>
-    </CenteredCard>
-  );
+  return <RedirectCard title={title ?? t("kind.microApplication")} message={t("shareView.openingApp")} />;
 }
 

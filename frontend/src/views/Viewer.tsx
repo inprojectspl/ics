@@ -49,6 +49,9 @@ interface Props {
    * role on the asset, and then file navigation must stay within the token
    * instead of jumping to the internal address. */
   basePath?: string;
+  /** The share link this reader was opened through (`/s/<token>`), kept in
+   * the address of an HTML bundle opened from here. */
+  shareToken?: string;
   /** `?tab=relations`: the document's relations instead of its content. */
   tab?: "relations";
 }
@@ -60,7 +63,7 @@ function closeIfDrawer(close: () => void) {
   if (!window.matchMedia(DOCKED).matches) close();
 }
 
-export function Viewer({ slug, path, version, basePath, tab }: Props) {
+export function Viewer({ slug, path, version, basePath, shareToken, tab }: Props) {
   const theme = useTheme();
   const [editing, setEditing] = useState(false);
   const [vaultMode, setVaultMode] = useState<VaultMode>("text");
@@ -288,7 +291,7 @@ export function Viewer({ slug, path, version, basePath, tab }: Props) {
           files={doc.files}
           {...security}
           previewVersion={previewVersion}
-          fetchGrantUrl={async () => (await api.getAssetHtmlGrant(slug, previewVersion ?? undefined)).url}
+          fetchGrantUrl={async () => (await api.getAssetHtmlGrant(slug, previewVersion ?? undefined, { share: shareToken })).url}
           downloadHref={downloadHref}
         />
       );

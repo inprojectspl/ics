@@ -1234,3 +1234,64 @@ async def test_publishers_compare_package_versions_users_do_not(client, session)
     for path in (f"/api/assets/{aid}/versions", f"/api/assets/{aid}/versions/1/diff/2"):
         denied = await client.get(path, headers=bearer(bob))
         assert denied.status_code == 403 and denied.json()["code"] == "microapp_source_restricted"
+
+
+@needs_pg
+@pytest.mark.usefixtures("apps_db")
+async def test_link_in_the_app_address_is_checked_and_kept_past_the_gate(client, session):
+    """`ics_share` of a copied app address: which live link of this app it
+    names, and the app page surviving the share page's gate."""
+    from urllib.parse import quote
+
+    owner = await mk_user(session)
+    await session.commit()
+    op, env = await _published(client, session, owner)
+    _, other_env = await _published(client, session, owner)
+    await login_as(client, owner)
+
+    async def link(asset_id: str, **body) -> dict:
+        r = await client.post(
+            f"/api/assets/{asset_id}/shares",
+            json={"mode": "public", "app_permissions": ["requests.read"], **body},
+            headers=origin(),
+        )
+        return r.json()
+
+    mine = await link(op["asset_id"])
+    foreign = await link(str(other_env.asset_id))
+    gated = await link(op["asset_id"], mode="password", password="Long-enough-pass-42")
+
+    async def named(token: str) -> dict:
+        r = await client.post(
+            "/api/internal/microapps/authorize",
+            headers=SVC,
+            json={"asset": env.asset_hex, "environment": "prod", "share_token": token},
+        )
+        return r.json()
+
+    assert (await named(mine["token"]))["share_token_id"] == mine["id"]
+    assert (await named(foreign["token"]))["share_token_id"] is None
+    assert (await named("Z" * 43))["share_token_id"] is None
+    plain = await named(mine["token"])
+    assert plain["share_context"] is True
+    assert (await client.delete(f"/api/shares/{mine['id']}", headers=origin())).status_code == 204
+    assert (await named(mine["token"]))["share_token_id"] is None
+
+    script = await client.get("/api/internal/microapps/share-context.js", headers=SVC)
+    assert script.status_code == 200 and b"ics_share" in script.content
+
+    client.cookies.clear()
+    host = f"{env.host_name}.{get_settings().microapps_app_host_suffix}"
+    to = "board?tab=2"
+    r = await client.get(
+        f"/api/share/{gated['token']}/launch",
+        params={"host": host, "state": "st1", "to": to},
+        follow_redirects=False,
+    )
+    assert r.headers["location"] == f"/s/{gated['token']}?to={quote(to, safe='')}"
+    bad = await client.get(
+        f"/api/share/{gated['token']}/launch",
+        params={"host": host, "state": "st1", "to": "//evil.example/"},
+        follow_redirects=False,
+    )
+    assert bad.headers["location"] == f"/s/{gated['token']}"

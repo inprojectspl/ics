@@ -30,7 +30,7 @@ def test_grant_token_roundtrip():
     aid, uid = uuid4(), uuid4()
     t = issue_grant(aid, basis=user_basis(uid))
     payload = tokens.verify("html_grant", t)
-    assert payload == f"{aid}||u:{uid}"
+    assert payload == f"{aid}||u:{uid}||"
 
 
 def test_grant_token_purpose_isolation():
@@ -207,9 +207,9 @@ def test_grant_token_carries_version():
     aid, uid = uuid4(), uuid4()
     basis = user_basis(uid)
     assert tokens.verify("html_grant", issue_grant(aid, version=3, basis=basis)) == (
-        f"{aid}:3||u:{uid}"
+        f"{aid}:3||u:{uid}||"
     )
-    assert tokens.verify("html_grant", issue_grant(aid, basis=basis)) == f"{aid}||u:{uid}"
+    assert tokens.verify("html_grant", issue_grant(aid, basis=basis)) == f"{aid}||u:{uid}||"
 
 
 @pytest.mark.asyncio
