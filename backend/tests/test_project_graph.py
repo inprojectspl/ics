@@ -147,6 +147,42 @@ async def test_task_layer_on_request(client, session):
     ]
 
 
+async def test_node_ids_of_two_ps_projects_stay_two_tasks(client, session):
+    owner = await mk_user(session)
+    project = await _project(session, owner)
+    a = await _doc(session, owner, project)
+    b = await _doc(session, owner, project)
+    c = await _doc(session, owner, project)
+    for asset, scope in ((a, "ics"), (b, "wtms"), (c, "ics")):
+        session.add(
+            AssetExternalRef(
+                asset_id=asset.id,
+                system="project_standard",
+                entity="node",
+                external_id="n-8f2c",
+                external_scope=scope,
+                role="deliverable",
+                url=f"https://ps.test/{scope}/n-8f2c",
+                origin="manual",
+            )
+        )
+    await session.commit()
+
+    await login_as(client, owner)
+    body = (await client.get(f"/api/projects/{project.slug}/graph?include=tasks")).json()
+    tasks = {t["id"]: t for t in body["tasks"]}
+    assert set(tasks) == {"project_standard:node:n-8f2c@ics", "project_standard:node:n-8f2c@wtms"}
+    assert tasks["project_standard:node:n-8f2c@wtms"]["url"] == "https://ps.test/wtms/n-8f2c"
+    links = sorted((link["task_id"], link["asset_id"]) for link in body["task_links"])
+    assert links == sorted(
+        [
+            ("project_standard:node:n-8f2c@ics", str(a.id)),
+            ("project_standard:node:n-8f2c@wtms", str(b.id)),
+            ("project_standard:node:n-8f2c@ics", str(c.id)),
+        ]
+    )
+
+
 async def test_node_cap_sets_truncated(client, session):
     owner = await mk_user(session)
     project = await _project(session, owner)

@@ -72,7 +72,8 @@ class Asset(Base):
             "setweight(to_tsvector('public.ics_search', coalesce(summary, '')), 'B') || "
             "setweight(to_tsvector('public.ics_search', "
             "coalesce(ics_immutable_array_to_string(tags, ' '), '')), 'B') || "
-            "setweight(to_tsvector('public.ics_search', coalesce(search_content, '')), 'C')",
+            # 0054: the longest prefix of the text whose vector fits in 1 MiB.
+            "setweight(ics_search_tsvector(search_content), 'C')",
             persisted=True,
         ),
         deferred=True,

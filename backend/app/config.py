@@ -13,6 +13,10 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://ics:ics@host.docker.internal:5432/ics"
     redis_url: str = "redis://redis:6379/0"
+    # Rendered Markdown (ADR-0006) in a Redis of its own, bounded and evicting,
+    # so the cache cannot take the memory of sessions and queues. Empty keeps
+    # it in `redis_url`.
+    render_cache_redis_url: str = ""
     storage_url: str = "fs:///data/storage"
 
     base_url: str = "http://ics.localhost"

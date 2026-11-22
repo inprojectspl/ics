@@ -8,9 +8,11 @@ quota, and that any failure leaves the current version as it was.
 from __future__ import annotations
 
 import asyncio
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import select, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.collections_io import list_version_files, read_bytes_at_version
@@ -223,8 +225,38 @@ async def test_restore_of_a_bundle_respects_the_bundle_cap(session):
     assert exc.value.code == "bundle_too_large"
     await session.rollback()
     await session.refresh(asset)
+    await session.refresh(owner)
     assert asset.version == 1
     assert await _tree(asset, 2) == {}
+
+
+@pytest.mark.asyncio
+async def test_a_database_error_leaves_the_files_to_the_next_writer(session):
+    # A failed flush rolls the transaction back and frees the row lock, so
+    # another writer may own v2 by the time the error is handled: the files
+    # must not be deleted then. The next writer clears them under its lock.
+    owner = await mk_user(session)
+    asset = await _vault(session, owner, {"index.md": b"original"})
+    with pytest.raises(SQLAlchemyError):
+        await asset_versions.commit_new_version(
+            session,
+            asset,
+            get_settings(),
+            stage=asset_versions.edit_files(put={"index.md": b"lost"}),
+            actor=owner,
+            created_by=uuid4(),  # no such user: the version row fails its FK
+            audit_action="test_versioned",
+            audit_payload=lambda nv: {"version": nv.version},
+        )
+    await session.rollback()
+    await session.refresh(asset)
+    await session.refresh(owner)
+    assert asset.version == 1
+    assert (await _tree(asset, 2))["index.md"] == b"lost"
+
+    result = await _commit(session, asset, owner, asset_versions.edit_files(put={"b.md": b"b"}))
+    assert result.version == 2
+    assert await _tree(asset, 2) == {"index.md": b"original", "b.md": b"b"}
 
 
 @pytest.mark.asyncio

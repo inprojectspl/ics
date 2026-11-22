@@ -145,6 +145,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Purging the trash no longer deletes the files of a document restored at the same moment: the
+  purge locks and checks its rows again, deletes them in one commit with their storage prefixes
+  queued in `storage_cleanup` (migration `0053`), and removes the files after it; the
+  `sweep_storage_cleanup` job retries what a crash or a storage error left. Deleting an account now
+  deletes the files of its documents and app plans, which used to stay on disk with nothing
+  pointing at them.
+- A database error while writing a version no longer deletes the version files: the transaction may
+  already be rolled back, its lock released and the same version written by someone else. The next
+  writer clears what an unfinished attempt left. A micro-application version commits outside that
+  cleanup as well.
+- Two concurrent writes of one owner can no longer both pass the storage quota: a last check right
+  before the commit locks the owner's row, so the lock lasts only for the commit.
+- Two `part_of` or `supersedes` relations added at the same time can no longer close a cycle.
+- A Markdown or document text whose search vector would pass PostgreSQL's 1 MiB tsvector limit no
+  longer fails the upload: the longest prefix that fits is indexed and the text is kept whole
+  (migration `0054`).
+- The relation graph of a document with tens of thousands of backlinks no longer fails on the
+  driver's 32,767 parameter limit.
+- The project map keeps Project Standard tasks with the same node id in different projects apart.
+- Rate limits and the audit log saw the reverse proxy's address for every client, so all users
+  shared one bucket (password reset, OAuth registration and tokens). The backend now trusts
+  `X-Forwarded-For` from private networks (`ICS_FORWARDED_ALLOW_IPS`).
+- The rendered Markdown cache has a Redis of its own (`redis-cache`, `ICS_RENDER_CACHE_REDIS_URL`)
+  with a memory cap and LRU eviction, so it cannot use up the memory of sessions and queues.
+- The S3 storage keeps one client and its connection pool per process instead of opening a new
+  one for every operation.
+- A micro-application warming up a runner no longer takes both runner slots, and connections
+  still handshaking count against the broker's PostgreSQL budget.
+
 - A micro-application request stopped by its deadline counted twice towards the circuit breaker,
   so two failed requests already blocked the app for 30 seconds. A restart, enable or policy change
   from ICS now also closes the breaker.

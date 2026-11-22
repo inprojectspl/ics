@@ -59,6 +59,13 @@ services:
         reservations:
           memory: 256m
 
+  redis-cache:
+    deploy:
+      resources:
+        limits:
+          # ICS_RENDER_CACHE_MAXMEMORY (128mb) plus the process's own memory.
+          memory: 192m
+
   redis:
     restart: unless-stopped
     deploy:

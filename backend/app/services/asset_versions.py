@@ -1,8 +1,8 @@
 """Creating a new asset version: the only code that bumps `asset.version`.
 
 `commit_new_version` locks the asset row so concurrent writers cannot both
-claim v{n+1}, and a failure before the commit removes the new tree while the
-lock is still held, so the current version stays intact.
+claim v{n+1}. A failure before the commit removes the new tree only while the
+lock is certainly still held; otherwise the next writer clears it.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass, replace
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import audit, permissions, quota, search
@@ -33,7 +34,7 @@ from app.services import (
 )
 from app.services.notifications import events as notification_events
 from app.services.upload import ByteBudget, ReadableFile, one_chunk, put_all
-from app.storage import Storage, storage_from_url
+from app.storage import Storage, delete_prefixes, storage_from_url
 from app.util import now as utc_now
 
 # Author's note on a version (the equivalent of a commit message).
@@ -174,10 +175,17 @@ async def commit_new_version(
         created_by = user.id
     draft = VersionDraft(asset=asset, storage=storage_from_url(settings.storage_url))
     version, prefix = draft.version, draft.prefix
-    await draft.storage.delete_prefix(prefix)
+    # Read before anything can expire the row: a rollback does.
+    derived = (
+        documents.derived_prefix(asset.storage_prefix, version)
+        if documents.is_document(asset.kind)
+        else None
+    )
+    # Leftovers of an earlier attempt at this version that could not clean up.
+    await _clear_version_files(draft.storage, prefix, derived)
     try:
         staged = await stage(draft)
-        await _enforce_limits(session, asset, staged, settings)
+        grows = await _enforce_limits(session, asset, staged, settings)
         converted = None
         ocr_run = None
         if documents.is_document(asset.kind):
@@ -213,7 +221,6 @@ async def commit_new_version(
             # No scan, search text, read size or relations from package files:
             # handlers and author notes must not surface as snippets, outlines
             # or agent context for someone who may only use the app.
-            security = None
             result = NewVersion(
                 version=version,
                 size_bytes=asset.size_bytes,
@@ -231,103 +238,113 @@ async def commit_new_version(
                 target=f"asset:{asset.id}",
                 payload=audit_payload(result),
             )
-            await session.commit()
-            return result
-        # Markdown is read once for the prompt-injection scan and the search blob.
-        sources = (
-            await read_markdown_files(asset, settings)
-            if prompt_injection.is_markdown_kind(asset.kind)
-            else None
-        )
-        security = await asset_security.scan_and_apply(
-            asset, settings, session, actor=user, markdown_sources=sources
-        )
-        if converted is not None:
-            # The text is at hand; re-reading it would cost a derived-file
-            # round trip for nothing.
-            asset.search_content = documents.search_content_of(asset.kind, converted)
-            ocr_run = ocr.queue_after_write(
-                session, asset, version, converted, settings, requested_by=created_by
-            )
         else:
-            await search.refresh_search_content(asset, settings, sources=sources)
-        await read_size.refresh_read_tokens(asset, settings, sources=sources, converted=converted)
-        await relation_extraction.extract_from_content(
-            session, asset, settings, user.id if user else created_by, converted=converted
-        )
-        result = NewVersion(
-            version=version,
-            size_bytes=asset.size_bytes,
-            entry_path=asset.entry_path,
-            file_count=staged.file_count,
-            security=security,
-            publication_result=(
-                {
-                    "id": str(asset.id),
-                    "version": version,
-                    "entry_path": asset.entry_path,
-                    "file_count": staged.file_count,
-                    "size_bytes": asset.size_bytes,
-                    "security_status": asset.security_status,
-                }
-                if publication is not None
+            # Markdown is read once for the prompt-injection scan and the search blob.
+            sources = (
+                await read_markdown_files(asset, settings)
+                if prompt_injection.is_markdown_kind(asset.kind)
                 else None
-            ),
-        )
-        await audit.record(
-            session,
-            actor=actor,
-            action=audit_action,
-            target=f"asset:{asset.id}",
-            payload=audit_payload(result),
-        )
-        if publication is not None:
-            assert payload_hash is not None and result.publication_result is not None
-            session.add(
-                PublicationReceipt(
-                    **asdict(publication.scope),
-                    schema_version=publications.SCHEMA_VERSION,
-                    payload_hash=payload_hash,
-                    asset_id=asset.id,
-                    version=version,
-                    result=result.publication_result,
-                )
             )
-        if binding_publication is not None:
-            result = replace(
-                result,
-                publication_result=binding_publications.record_result(
-                    session, binding_publication, asset, result
+            security = await asset_security.scan_and_apply(
+                asset, settings, session, actor=user, markdown_sources=sources
+            )
+            if converted is not None:
+                # The text is at hand; re-reading it would cost a derived-file
+                # round trip for nothing.
+                asset.search_content = documents.search_content_of(asset.kind, converted)
+                ocr_run = ocr.queue_after_write(
+                    session, asset, version, converted, settings, requested_by=created_by
+                )
+            else:
+                await search.refresh_search_content(asset, settings, sources=sources)
+            await read_size.refresh_read_tokens(
+                asset, settings, sources=sources, converted=converted
+            )
+            await relation_extraction.extract_from_content(
+                session, asset, settings, user.id if user else created_by, converted=converted
+            )
+            result = NewVersion(
+                version=version,
+                size_bytes=asset.size_bytes,
+                entry_path=asset.entry_path,
+                file_count=staged.file_count,
+                security=security,
+                publication_result=(
+                    {
+                        "id": str(asset.id),
+                        "version": version,
+                        "entry_path": asset.entry_path,
+                        "file_count": staged.file_count,
+                        "size_bytes": asset.size_bytes,
+                        "security_status": asset.security_status,
+                    }
+                    if publication is not None
+                    else None
                 ),
             )
-    except Exception:
-        await draft.storage.delete_prefix(prefix)
-        if documents.is_document(asset.kind):
-            await draft.storage.delete_prefix(
-                documents.derived_prefix(asset.storage_prefix, version)
+            await audit.record(
+                session,
+                actor=actor,
+                action=audit_action,
+                target=f"asset:{asset.id}",
+                payload=audit_payload(result),
             )
+            if publication is not None:
+                assert payload_hash is not None and result.publication_result is not None
+                session.add(
+                    PublicationReceipt(
+                        **asdict(publication.scope),
+                        schema_version=publications.SCHEMA_VERSION,
+                        payload_hash=payload_hash,
+                        asset_id=asset.id,
+                        version=version,
+                        result=result.publication_result,
+                    )
+                )
+            if binding_publication is not None:
+                result = replace(
+                    result,
+                    publication_result=binding_publications.record_result(
+                        session, binding_publication, asset, result
+                    ),
+                )
+        if grows is not None:
+            # Last, so the owner's row is locked only for the commit.
+            await quota.assert_within_quota(session, grows.id, grows.storage_quota_bytes)
+    except Exception as exc:
+        # A database error may already have rolled the transaction back and
+        # released the row lock (a failed flush does), so another writer can
+        # own this prefix by now. Leave the files then: the next writer clears
+        # its prefixes before staging, under the lock.
+        if not isinstance(exc, SQLAlchemyError) and session.is_active:
+            await _clear_version_files(draft.storage, prefix, derived)
         raise
-    # No cleanup after a failed commit: the row lock is gone by then and a
-    # concurrent writer may already be filling the same prefix. The next
-    # writer clears the prefix before staging.
+    # No cleanup after a failed commit either, for the same reason.
     await session.commit()
+    if micro_app:
+        return result
     await ocr.enqueue(ocr_run, settings)
     # A CI sync has no user actor: its versions notify everyone watching.
     await notification_events.emit_updated(asset, version, user, settings)
     return result
 
 
+async def _clear_version_files(storage: Storage, prefix: str, derived: str | None) -> None:
+    await delete_prefixes(storage, [p for p in (prefix, derived) if p is not None])
+
+
 async def _enforce_limits(
     session: AsyncSession, asset: Asset, staged: StagedTree, settings: Settings
-) -> None:
+) -> User | None:
     """The owner pays for the asset, whoever edits it, so both limits are the
     owner's. Only growth is checked: shrinking an asset is always allowed,
-    even for an owner who is already over quota."""
+    even for an owner who is already over quota. Returns the owner when the
+    asset grows, for the locked check before the commit."""
     if staged.size_bytes is None:
-        return
+        return None
     owner = await session.get(User, asset.owner_id)
     if owner is None:
-        return
+        return None
     if documents.is_document(asset.kind):
         documents.assert_size(asset.kind, staged.size_bytes, settings)
     if asset.kind == "html_bundle":
@@ -335,10 +352,16 @@ async def _enforce_limits(
             total_bytes=staged.size_bytes, bundle_max_bytes=owner.bundle_max_bytes
         )
     growth = staged.size_bytes - (asset.size_bytes or 0)
-    if growth > 0:
-        await quota.assert_can_grow(
-            session, owner.id, incoming_bytes=growth, quota_bytes=owner.storage_quota_bytes
-        )
+    if growth <= 0:
+        return None
+    await quota.assert_can_grow(
+        session,
+        owner.id,
+        incoming_bytes=growth,
+        quota_bytes=owner.storage_quota_bytes,
+        lock=False,
+    )
+    return owner
 
 
 # Stages

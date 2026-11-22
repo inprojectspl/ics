@@ -12,10 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import audit
 from app.auth import AdminUser
+from app.config import Settings, get_settings
 from app.constants import ROLES
 from app.db import get_session
 from app.errors import ApiError
-from app.models import Asset, User
+from app.models import User
+from app.services import asset_lifecycle, storage_cleanup
 from app.util import now as utc_now
 
 from ._models import LockIn, PatchUserIn
@@ -196,9 +198,11 @@ async def delete_user(
     user_id: UUID,
     admin: AdminUser,
     session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict:
-    """Hard delete, cascading to the user's assets, shares and bindings;
-    audit entries stay (actor is a string). Returns the cascaded asset count."""
+    """Hard delete, cascading to the user's assets, shares and bindings, and
+    then their files; audit entries stay (actor is a string). Returns the
+    cascaded asset count."""
     user = await session.get(User, user_id)
     if user is None:
         raise ApiError(status.HTTP_404_NOT_FOUND, "user_not_found", "user not found")
@@ -217,9 +221,7 @@ async def delete_user(
                 "cannot delete the last administrator",
             )
 
-    cascade_assets = (
-        await session.execute(select(func.count(Asset.id)).where(Asset.owner_id == user.id))
-    ).scalar_one()
+    cascade_assets, cleanup = await asset_lifecycle.queue_owner_files(session, user.id)
 
     await audit.record(
         session,
@@ -229,9 +231,11 @@ async def delete_user(
         payload={
             "deleted_email": user.email,
             "deleted_role": user.role,
-            "cascade_assets": int(cascade_assets),
+            "cascade_assets": cascade_assets,
         },
     )
     await session.delete(user)
     await session.commit()
-    return {"deleted": True, "cascade_assets": int(cascade_assets)}
+    # A large account is left to the worker's sweep rather than this request.
+    await storage_cleanup.run(session, settings, cleanup[: storage_cleanup.INLINE_MAX])
+    return {"deleted": True, "cascade_assets": cascade_assets}

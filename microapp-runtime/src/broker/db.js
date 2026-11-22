@@ -1,7 +1,8 @@
 // Connection pools keyed by (asset, environment, role, credential generation).
 // Every physical connection logs in with that asset's runtime role; there is
 // no shared login with SET ROLE. Pools are created on demand (min 0, max 2)
-// and one global budget counts open connections, idle ones included.
+// and one global budget counts every client of every pool: open, idle and
+// still handshaking (pg-pool lists a client as soon as it starts connecting).
 import pg from "pg";
 import { DataError } from "./data.js";
 
@@ -21,7 +22,13 @@ export class PoolRegistry {
     this.perAppMax = perAppMax;
     this.idleMs = idleMs;
     this.pools = new Map(); // key -> { pool, open, lastUsed, appKey }
-    this.open = 0;
+  }
+
+  /** Clients counted against the budget, handshakes included. */
+  get used() {
+    let n = 0;
+    for (const entry of this.pools.values()) n += entry.pool.totalCount;
+    return n;
   }
 
   key(binding) {
@@ -55,11 +62,9 @@ export class PoolRegistry {
     entry = { pool, open: 0, lastUsed: Date.now(), appKey, schema: binding.schema };
     pool.on("connect", () => {
       entry.open += 1;
-      this.open += 1;
     });
     pool.on("remove", () => {
       entry.open -= 1;
-      this.open -= 1;
     });
     pool.on("error", () => {
       // An idle client died (server restart, terminate); the pool drops it.
@@ -74,19 +79,21 @@ export class PoolRegistry {
       if (k === exceptKey) continue;
       if (e.pool.waitingCount === 0 && e.pool.idleCount === e.pool.totalCount && e.pool.totalCount > 0) {
         this.#close(k, e);
-        if (this.open < this.maxConnections) return true;
+        if (this.used < this.maxConnections) return true;
       }
     }
-    return this.open < this.maxConnections;
+    return this.used < this.maxConnections;
   }
 
   async connect(appKey, binding) {
     const entry = this.get(appKey, binding);
     entry.lastUsed = Date.now();
     const needsNew = entry.pool.idleCount === 0 && entry.pool.totalCount < this.perAppMax;
-    if (needsNew && this.open >= this.maxConnections && !this.#reclaim(this.key(binding))) {
+    if (needsNew && this.used >= this.maxConnections && !this.#reclaim(this.key(binding))) {
       throw new DataError(503, "capacity_exhausted", "no database connection budget left", { retryAfter: 1 });
     }
+    // pool.connect() lists the new client synchronously, so the next caller
+    // already counts this handshake.
     try {
       return await entry.pool.connect();
     } catch (err) {

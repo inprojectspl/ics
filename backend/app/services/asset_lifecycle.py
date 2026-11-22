@@ -19,6 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import audit, quota
 from app.config import Settings
+from app.db import uuid_in
+from app.domain_errors import NotFoundError
 from app.models import (
     Asset,
     AssetShare,
@@ -28,8 +30,8 @@ from app.models import (
     ShareLink,
     User,
 )
+from app.services import storage_cleanup
 from app.services.project_shares import in_project_filter
-from app.storage import delete_prefixes, storage_from_url
 from app.util import now as utc_now
 
 ArchiveState = Literal["active", "archived"]
@@ -132,6 +134,17 @@ async def move_to_trash(
 async def restore(session: AsyncSession, user: User, asset: Asset, *, request: Any = None) -> None:
     """Take an asset out of the trash. Its bytes count again against its
     owner's quota, so the owner must have room for them."""
+    # The purge locks the rows it removes: whichever commits first wins, and
+    # a purged asset is not reported as restored.
+    if (
+        await session.scalar(
+            select(Asset.id)
+            .where(Asset.id == asset.id, Asset.deleted_at.is_not(None))
+            .with_for_update()
+        )
+        is None
+    ):
+        raise NotFoundError("asset_not_found", "asset not found")
     owner = await session.get(User, asset.owner_id)
     if owner is not None:
         await quota.assert_can_grow(
@@ -154,34 +167,54 @@ async def restore(session: AsyncSession, user: User, asset: Asset, *, request: A
 PURGE_COLUMNS = (Asset.id, Asset.storage_prefix, Asset.kind, Asset.slug, Asset.title)
 
 
+async def _storage_prefixes(
+    session: AsyncSession, rows: Sequence[Row[Any]], *, plans_of: UUID | None = None
+) -> set[str]:
+    """Every storage prefix of the assets in `rows` (`PURGE_COLUMNS`):
+    versions, derived files, an app's files and its plans, and with
+    `plans_of` also the plans that user made (a new app's plan has no asset)."""
+    plans = uuid_in(MicroAppPlan.asset_id, [r.id for r in rows])
+    if plans_of is not None:
+        plans = or_(plans, MicroAppPlan.user_id == plans_of)
+    plan_prefixes = (await session.scalars(select(MicroAppPlan.storage_prefix).where(plans))).all()
+    prefixes = {f"{r.storage_prefix}/" for r in rows if r.storage_prefix}
+    prefixes |= {f"assets/{r.id}/" for r in rows if r.kind == "micro_application"}
+    prefixes |= {f"{p}/" for p in plan_prefixes if p}
+    return prefixes
+
+
 async def purge(
     session: AsyncSession,
     settings: Settings,
-    rows: Sequence[Row[Any]],
+    ids: Sequence[UUID],
     *,
     actor: User | str,
     request: Any = None,
 ) -> int:
-    """Remove trash entries (`PURGE_COLUMNS` rows) for good, with every
-    version and derived file. The read transaction ends before the files go,
-    so no connection idles through the storage calls. Files go first: if this
-    stops halfway, the rows stay in the trash and the next purge finishes
-    them. Deleting a row cascades to versions, relations, pins and an app's
+    """Remove the trash entries among `ids` for good, with every version and
+    derived file. The rows are locked and checked again, so an asset
+    restored since it was picked stays; the rest are deleted in one commit
+    with their prefixes queued in `storage_cleanup`, and the files go after
+    it. Deleting a row cascades to versions, relations, pins and an app's
     environments, whose database schema the micro-application sweeper then
-    drops. The caller commits."""
-    if not rows:
+    drops. Commits."""
+    if not ids:
         return 0
-    ids = [r.id for r in rows]
-    plan_prefixes = (
-        await session.scalars(
-            select(MicroAppPlan.storage_prefix).where(MicroAppPlan.asset_id.in_(ids))
+    rows = (
+        await session.execute(
+            select(*PURGE_COLUMNS)
+            .where(uuid_in(Asset.id, ids), Asset.deleted_at.is_not(None))
+            # One order for every purge, so two of them cannot deadlock.
+            .order_by(Asset.id)
+            .with_for_update()
         )
     ).all()
-    await session.commit()
-    prefixes = {f"{r.storage_prefix}/" for r in rows if r.storage_prefix}
-    prefixes |= {f"assets/{r.id}/" for r in rows if r.kind == "micro_application"}
-    prefixes |= {f"{p}/" for p in plan_prefixes if p}
-    await delete_prefixes(storage_from_url(settings.storage_url), prefixes)
+    if not rows:
+        await session.commit()
+        return 0
+    cleanup = await storage_cleanup.schedule(
+        session, await _storage_prefixes(session, rows), reason="asset_purged"
+    )
     await audit.record_many(
         session,
         request,
@@ -191,8 +224,27 @@ async def purge(
             (f"asset:{r.id}", {"slug": r.slug, "kind": r.kind, "title": r.title}) for r in rows
         ],
     )
-    await session.execute(delete(Asset).where(Asset.id.in_(ids), Asset.deleted_at.is_not(None)))
-    return len(ids)
+    await session.execute(delete(Asset).where(uuid_in(Asset.id, [r.id for r in rows])))
+    await session.commit()
+    await storage_cleanup.run(session, settings, cleanup)
+    return len(rows)
+
+
+async def queue_owner_files(
+    session: AsyncSession, user_id: UUID
+) -> tuple[int, list[storage_cleanup.Entry]]:
+    """Before an account is deleted (the cascade takes its assets and
+    plans): lock its assets, then the user (the order of every write that
+    checks the quota), and queue every prefix they leave behind. Locking the
+    user blocks new assets of theirs, so the list is complete; the caller
+    deletes the user in the same transaction and `run`s the entries after it.
+    Returns the asset count and the entries."""
+    owned = Asset.owner_id == user_id
+    await session.execute(select(Asset.id).where(owned).order_by(Asset.id).with_for_update())
+    await session.execute(select(User.id).where(User.id == user_id).with_for_update())
+    rows = (await session.execute(select(*PURGE_COLUMNS).where(owned))).all()
+    prefixes = await _storage_prefixes(session, rows, plans_of=user_id)
+    return len(rows), await storage_cleanup.schedule(session, prefixes, reason="user_deleted")
 
 
 async def purge_batch(
@@ -208,14 +260,14 @@ async def purge_batch(
     Returns (purged, left over)."""
     rows = (
         await session.execute(
-            select(*PURGE_COLUMNS, func.count().over().label("total"))
+            select(Asset.id, func.count().over().label("total"))
             .where(where)
             .order_by(Asset.deleted_at)
             .limit(limit)
         )
     ).all()
     total = int(rows[0].total) if rows else 0
-    purged = await purge(session, settings, rows, actor=actor, request=request)
+    purged = await purge(session, settings, [r.id for r in rows], actor=actor, request=request)
     return purged, total - purged
 
 

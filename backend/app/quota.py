@@ -38,9 +38,18 @@ async def assert_can_grow(
     *,
     incoming_bytes: int,
     quota_bytes: int,
+    lock: bool = True,
 ) -> int:
     """Raise QuotaExceededError if adding `incoming_bytes` would push the user over quota.
-    Returns current usage so callers can include it in error context."""
+    Returns current usage so callers can include it in error context.
+
+    The sum spans many assets, whose own row locks do not serialize two writes
+    of one owner, so the check locks the owner's row until the caller's commit
+    (and reads the quota fresh). Lock order everywhere: asset, then owner.
+    `lock=False` is for an early check before slow work; the write then calls
+    `assert_within_quota` right before its commit, so the lock is short."""
+    if lock:
+        quota_bytes = await _lock_owner(session, user_id, quota_bytes)
     used = await used_bytes(session, user_id)
     if used + incoming_bytes > quota_bytes:
         raise QuotaExceededError(
@@ -49,6 +58,30 @@ async def assert_can_grow(
             f"(short by {used + incoming_bytes - quota_bytes} B)",
         )
     return used
+
+
+async def _lock_owner(session: AsyncSession, user_id: UUID, quota_bytes: int) -> int:
+    fresh = await session.scalar(
+        select(User.storage_quota_bytes)
+        .where(User.id == user_id)
+        # NO KEY UPDATE: rows that only reference the user are not blocked.
+        .with_for_update(key_share=True)
+    )
+    return quota_bytes if fresh is None else fresh
+
+
+async def assert_within_quota(session: AsyncSession, user_id: UUID, quota_bytes: int) -> None:
+    """The locked check of a write that grew the owner's usage, called last
+    before its commit: the sum then includes the write's own flushed sizes,
+    and the owner's row stays locked only for the commit."""
+    quota_bytes = await _lock_owner(session, user_id, quota_bytes)
+    used = await used_bytes(session, user_id)
+    if used > quota_bytes:
+        raise QuotaExceededError(
+            "storage_quota_exceeded",
+            f"storage quota exceeded: using {used} B of {quota_bytes} B "
+            f"(short by {used - quota_bytes} B)",
+        )
 
 
 def assert_bundle_fits(*, total_bytes: int, bundle_max_bytes: int) -> None:

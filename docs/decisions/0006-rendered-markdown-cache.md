@@ -100,9 +100,12 @@ Revisit this decision when:
 
 - Reading a document with a cache hit: 0.25 ms instead of 38 ms on a 14 KB
   document, 154 times faster. A hit also skips the storage read.
-- Redis usage grows by the rendered HTML of actively read documents. With a
-  seven-day TTL and a 1 MB limit per entry this is bounded and expires by
-  itself.
+- Redis usage grows by the rendered HTML of actively read documents. The TTL
+  and the 1 MB limit per entry bound each entry, not their sum, so the cache
+  has a Redis of its own (`ICS_RENDER_CACHE_REDIS_URL`, the `redis-cache`
+  service: `maxmemory` with `allkeys-lru`, no persistence). Filling it evicts
+  old renders; it never takes the memory of sessions, revocations and queues,
+  which the main Redis must not evict.
 - Restoring a version creates a new version, so the content is rendered again
   even though it is identical to the archived one. A deliberate loss, the
   price of a simple key.

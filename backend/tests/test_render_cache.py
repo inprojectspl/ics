@@ -14,7 +14,7 @@ import pytest
 
 from app import render_cache
 from app.models import Asset
-from app.redis_client import get_redis
+from app.redis_client import get_cache_redis
 from tests.conftest import login_as as _login
 from tests.conftest import mk_asset, mk_user, put_blob
 
@@ -109,7 +109,7 @@ async def test_read_survives_a_broken_cache(client, session, fs_storage):
         async def set(self, *_a, **_kw):
             raise ConnectionError("redis down")
 
-    with patch.object(render_cache, "get_redis", return_value=_Broken()):
+    with patch.object(render_cache, "get_cache_redis", return_value=_Broken()):
         html = await _doc_html(client, asset)
 
     assert "Works regardless" in html
@@ -180,5 +180,5 @@ async def test_oversized_html_is_served_but_not_stored(session, fs_storage):
 
     html = await render_cache.render_asset_file(asset, 1, "doc.md", get_settings())
     assert big[:50] in html
-    stored = await get_redis().get(render_cache.cache_key(asset.id, 1, "doc.md"))
+    stored = await get_cache_redis().get(render_cache.cache_key(asset.id, 1, "doc.md"))
     assert stored is None

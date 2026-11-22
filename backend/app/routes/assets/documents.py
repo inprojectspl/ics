@@ -61,8 +61,14 @@ async def _upload_document(
     scan result skips the default share link, as for HTML bundles."""
     filename = documents.filename(kind, file.filename)
     data = await _read_capped(kind, file, settings)
+    # Unlocked: the conversion below may take a minute, and the locked check
+    # comes right before the commit.
     await quota.assert_can_grow(
-        session, user.id, incoming_bytes=len(data), quota_bytes=user.storage_quota_bytes
+        session,
+        user.id,
+        incoming_bytes=len(data),
+        quota_bytes=user.storage_quota_bytes,
+        lock=False,
     )
 
     slug = generate_slug()
@@ -138,6 +144,12 @@ async def _upload_document(
             "share_mode": share_mode if share else None,
         },
     )
+    try:
+        await quota.assert_within_quota(session, user.id, user.storage_quota_bytes)
+    except quota.QuotaExceededError:
+        # The slug is fresh and nothing committed points at it.
+        await storage.delete_prefix(prefix)
+        raise
     await session.commit()
     await notification_events.emit_created(asset, user)
     await ocr.enqueue(ocr_run, settings)

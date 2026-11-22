@@ -52,6 +52,14 @@ services:
       ICS_SKIP_MIGRATIONS: ${ICS_SKIP_MIGRATIONS:-}
       ICS_DATABASE_URL: ${ICS_DATABASE_URL:-postgresql+asyncpg://ics:${ICS_PG_PASSWORD}@host.docker.internal:5432/ics}
       ICS_REDIS_URL: ${ICS_REDIS_URL:-redis://redis:6379/0}
+      # Peers whose X-Forwarded-For/-Proto Uvicorn believes: the reverse proxy
+      # reaches the backend over Docker networks, never over loopback, so
+      # without this every client gets the proxy's address in rate limits and
+      # audit. The backend publishes no port; narrow this to the proxy's
+      # network when other stacks share it.
+      FORWARDED_ALLOW_IPS: ${ICS_FORWARDED_ALLOW_IPS:-172.16.0.0/12,192.168.0.0/16,10.0.0.0/8}
+      # Rendered Markdown only: bounded and evicting, apart from sessions and queues.
+      ICS_RENDER_CACHE_REDIS_URL: ${ICS_RENDER_CACHE_REDIS_URL:-redis://redis-cache:6379/0}
 
       # File storage: a local volume by default, S3/R2 through .env (see .env.example).
       ICS_STORAGE_URL: ${ICS_STORAGE_URL:-fs:///data/storage}
@@ -117,6 +125,8 @@ services:
       - asset_storage:/data/storage
     depends_on:
       redis:
+        condition: service_started
+      redis-cache:
         condition: service_started
     networks:
       - ics
@@ -187,6 +197,26 @@ services:
   ocr-worker:
     <<: *worker
     command: ["arq", "app.jobs.ocr_worker.OcrWorkerSettings"]
+
+  # The render cache (ICS_RENDER_CACHE_REDIS_URL): rebuildable, so it evicts
+  # the least recently used entries at its limit and keeps nothing on disk.
+  # The main `redis` holds what must not be evicted (sessions, revocations,
+  # rate limits, Arq, inboxes).
+  redis-cache:
+    image: redis:7-alpine
+    command:
+      - redis-server
+      - --maxmemory
+      - ${ICS_RENDER_CACHE_MAXMEMORY:-128mb}
+      - --maxmemory-policy
+      - allkeys-lru
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+    networks:
+      - ics
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine

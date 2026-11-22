@@ -100,6 +100,7 @@ Copy [`.env.example`](https://github.com/inprojectspl/ics/blob/main/.env.example
 | `ICS_ALLOWED_DOMAINS` | your organisation's e-mail domains, CSV |
 | `ICS_BOOTSTRAP_ADMIN_EMAIL` / `ICS_BOOTSTRAP_ADMIN_PASSWORD` | the first administrator |
 | `ICS_EDGE_NETWORK` | the proxy network from step 1 |
+| `ICS_FORWARDED_ALLOW_IPS` | optional: the proxy's network (`docker network inspect <edge>`); the default trusts every private range |
 | `ICS_SMTP_*` | your mail relay |
 | `ICS_SYNC_IMAGE` | an `ics-sync` image, if you use GitLab bindings (see the [README](https://github.com/inprojectspl/ics/blob/main/README.md#gitlab-repository-bindings)) |
 
@@ -139,6 +140,7 @@ docker compose -p ics ps
 # arq-worker: Up
 # ocr-worker: Up
 # redis:      Up (healthy)
+# redis-cache: Up
 # frontend:   Exited (0)   <- one-shot copier, expected
 
 # Static files in the volume:
@@ -221,6 +223,10 @@ without configuration; the rest needs:
   # wait until `INFO persistence` shows aof_rewrite_in_progress:0, then add
   # `--appendonly yes` to the redis command in your compose override
   ```
+
+  Rendered Markdown goes to the separate `redis-cache` service, capped at
+  `ICS_RENDER_CACHE_MAXMEMORY` (128mb) with LRU eviction and no persistence,
+  so a full cache drops old renders instead of taking the main Redis's memory.
 
 ## Micro-applications (optional)
 

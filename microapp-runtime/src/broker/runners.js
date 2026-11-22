@@ -15,7 +15,8 @@ class Slot {
     this.socketPath = socketPath;
     this.onEvent = onEvent;
     this.state = "failed"; // idle | leased | busy | recycling | failed
-    this.key = null;
+    this.key = null; // confirmed lease key of the current child process
+    this.reservedFor = null; // asset holding the slot, from dispatch until release
     this.childPid = null;
     this.lease = null;
     this.waiters = new Map(); // message type:leaseId/reqId -> resolver
@@ -27,7 +28,9 @@ class Slot {
     const socket = net.createConnection(this.socketPath);
     socket.on("connect", () => {
       this.send = attachNdjson(socket, (m) => this.onMessage(m), () => {});
-      this.state = "idle";
+      // A holder that lost the old connection still owns the slot until it
+      // calls release; handing the slot out now would double-book it.
+      this.state = this.reservedFor ? "busy" : "idle";
       this.key = null;
       this.onEvent("slot_ready", this);
     });
@@ -186,7 +189,7 @@ export class RunnerPool {
   }
 
   busyFor(assetKey) {
-    return this.slots.some((s) => (s.state === "busy" || s.state === "leased") && s.key?.startsWith(`${assetKey}|`));
+    return this.slots.some((s) => s.reservedFor === assetKey);
   }
 
   /** Wait for a free slot for `assetKey`, honouring global and per-asset limits. */
@@ -222,11 +225,13 @@ export class RunnerPool {
       i -= 1;
       clearTimeout(item.timer);
       slot.state = "busy";
+      slot.reservedFor = item.assetKey;
       item.resolve(slot);
     }
   }
 
   release(slot, { recycle, reason } = {}) {
+    slot.reservedFor = null;
     const done = () => {
       if (slot.state === "busy") slot.state = "idle";
       this.#dispatch();

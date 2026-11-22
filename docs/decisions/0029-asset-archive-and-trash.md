@@ -66,10 +66,16 @@ the same way, so they need no new tables: `archived_at`, `deleted_at` and
 the trash, so a later change of the setting never shortens what the trash
 already promised, and the date the web app shows is exact. The migration
 gives assets deleted before this change the full period from the day it
-ships. The worker runs `purge_trash` every hour: files go first, then the
-row, whose cascade removes versions, relations, pins, and an app's
-environments (the micro-application sweeper then drops its schema and roles).
-A purge that stops halfway leaves the row in the trash for the next run.
+ships. The worker runs `purge_trash` every hour. A purge locks the rows and
+checks them again, so a restore that committed first wins and a restore that
+comes later finds nothing; then, in one commit, it deletes the rows (the
+cascade removes versions, relations, pins and an app's environments; the
+micro-application sweeper then drops its schema and roles) and records their
+storage prefixes in `storage_cleanup`. The files go after the commit; an
+entry stays until its files are gone, and the `sweep_storage_cleanup` job
+(three times an hour, least tried first) retries what a crash or a storage
+error left. Deleting an account queues the files of its assets and plans the
+same way and deletes up to 200 prefixes itself, leaving the rest to the job.
 
 ### Names
 
@@ -111,6 +117,6 @@ access, or if 30 days proves too short or too long.
 ## References
 
 - `backend/app/services/asset_lifecycle.py`, `backend/app/routes/mcp_assets/lifecycle.py`,
-  migration `0052_asset_archive_trash.py`, `backend/app/jobs/tasks/cleanup.py` (`purge_trash`).
+  migrations `0052_asset_archive_trash.py` and `0053_storage_cleanup.py`, `backend/app/services/storage_cleanup.py`, `backend/app/jobs/tasks/cleanup.py` (`purge_trash`).
 - Frontend: `lib/useAssetFilter.ts`, `lib/useAssetActions.tsx`, `components/ArchivedBanner.tsx`.
 - ICS-MCP `ics_mcp/tools/lifecycle.py`.

@@ -1,7 +1,9 @@
 import asyncio
 import shutil
+import weakref
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Collection
+from contextlib import AsyncExitStack
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -132,6 +134,10 @@ class FSStorage(Storage):
 # R2/S3 tolerate this much parallelism comfortably; high enough to hide
 # round-trip latency, low enough to stay well inside per-account limits.
 _S3_COPY_CONCURRENCY = 16
+# Pool of the shared client. A streamed download holds its connection until
+# the client has read it all, so leave room for slow readers next to a full
+# copy; idle pooled connections cost little.
+_S3_POOL_CONNECTIONS = 100
 
 
 # S3 requires parts of at least 5 MiB (except the last one).
@@ -173,11 +179,41 @@ class S3Storage(Storage):
             "region_name": region,
         }
 
-    def _client(self):
-        # Local import: aiobotocore is heavy and only S3 deployments need it.
-        from aiobotocore.session import get_session
+        # One open client per event loop (a process has one), keeping its
+        # connection pool: a client per call costs a session, a pool and new
+        # connections every time.
+        self._clients: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+        self._client_locks: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 
-        return get_session().create_client(**self._client_kwargs)
+    async def _client(self):
+        """This loop's shared client; callers never close it."""
+        loop = asyncio.get_running_loop()
+        entry = self._clients.get(loop)
+        if entry is not None:
+            return entry[1]
+        lock = self._client_locks.setdefault(loop, asyncio.Lock())
+        async with lock:
+            entry = self._clients.get(loop)
+            if entry is None:
+                # Local import: aiobotocore is heavy and only S3 deployments need it.
+                from aiobotocore.config import AioConfig
+                from aiobotocore.session import get_session
+
+                stack = AsyncExitStack()
+                client = await stack.enter_async_context(
+                    get_session().create_client(
+                        **self._client_kwargs,
+                        config=AioConfig(max_pool_connections=_S3_POOL_CONNECTIONS),
+                    )
+                )
+                entry = self._clients[loop] = (stack, client)
+        return entry[1]
+
+    async def aclose(self) -> None:
+        """Close this loop's client (process shutdown)."""
+        entry = self._clients.pop(asyncio.get_running_loop(), None)
+        if entry is not None:
+            await entry[0].aclose()
 
     async def put(self, key: str, data: AsyncIterator[bytes]) -> int:
         # Multipart above one part, so memory holds one part instead of the file.
@@ -185,36 +221,32 @@ class S3Storage(Storage):
         upload_id: str | None = None
         parts: list[dict] = []
         total = 0
-        async with self._client() as client:
-            try:
-                async for chunk in data:
-                    buf.extend(chunk)
-                    total += len(chunk)
-                    if len(buf) >= _S3_PART_BYTES:
-                        if upload_id is None:
-                            created = await client.create_multipart_upload(
-                                Bucket=self.bucket, Key=key
-                            )
-                            upload_id = created["UploadId"]
-                        parts.append(await self._upload_part(client, key, upload_id, parts, buf))
-                        buf = bytearray()
-                if upload_id is None:
-                    await client.put_object(Bucket=self.bucket, Key=key, Body=bytes(buf))
-                    return total
-                if buf:
+        client = await self._client()
+        try:
+            async for chunk in data:
+                buf.extend(chunk)
+                total += len(chunk)
+                if len(buf) >= _S3_PART_BYTES:
+                    if upload_id is None:
+                        created = await client.create_multipart_upload(Bucket=self.bucket, Key=key)
+                        upload_id = created["UploadId"]
                     parts.append(await self._upload_part(client, key, upload_id, parts, buf))
-                await client.complete_multipart_upload(
-                    Bucket=self.bucket,
-                    Key=key,
-                    UploadId=upload_id,
-                    MultipartUpload={"Parts": parts},
-                )
-            except BaseException:
-                if upload_id is not None:
-                    await client.abort_multipart_upload(
-                        Bucket=self.bucket, Key=key, UploadId=upload_id
-                    )
-                raise
+                    buf = bytearray()
+            if upload_id is None:
+                await client.put_object(Bucket=self.bucket, Key=key, Body=bytes(buf))
+                return total
+            if buf:
+                parts.append(await self._upload_part(client, key, upload_id, parts, buf))
+            await client.complete_multipart_upload(
+                Bucket=self.bucket,
+                Key=key,
+                UploadId=upload_id,
+                MultipartUpload={"Parts": parts},
+            )
+        except BaseException:
+            if upload_id is not None:
+                await client.abort_multipart_upload(Bucket=self.bucket, Key=key, UploadId=upload_id)
+            raise
         return total
 
     async def _upload_part(self, client, key: str, upload_id: str, parts: list, buf) -> dict:
@@ -228,81 +260,80 @@ class S3Storage(Storage):
         # Open eagerly, as FSStorage does, so `await get()` raises FileNotFoundError.
         from botocore.exceptions import ClientError
 
-        async def _open():
-            client_cm = self._client()
-            client = await client_cm.__aenter__()
-            try:
-                resp = await client.get_object(Bucket=self.bucket, Key=key)
-            except ClientError as e:
-                await client_cm.__aexit__(type(e), e, e.__traceback__)
-                if _is_not_found(e):
-                    raise FileNotFoundError(key) from e
-                raise
-            return client_cm, resp
-
-        client_cm, resp = await _open()
+        client = await self._client()
+        try:
+            resp = await client.get_object(Bucket=self.bucket, Key=key)
+        except ClientError as e:
+            if _is_not_found(e):
+                raise FileNotFoundError(key) from e
+            raise
 
         async def gen():
+            body = resp["Body"]
             try:
-                async for chunk in resp["Body"]:
+                async for chunk in body:
                     yield chunk
             finally:
-                await client_cm.__aexit__(None, None, None)
+                # Hands the connection back to the shared pool even when the
+                # reader stops early or is cancelled.
+                close = getattr(body, "close", None)
+                if close is not None:
+                    close()
 
         return gen()
 
     async def exists(self, key: str) -> bool:
         from botocore.exceptions import ClientError
 
-        async with self._client() as client:
-            try:
-                await client.head_object(Bucket=self.bucket, Key=key)
-                return True
-            except ClientError as e:
-                if _is_not_found(e):
-                    return False
-                raise
+        client = await self._client()
+        try:
+            await client.head_object(Bucket=self.bucket, Key=key)
+            return True
+        except ClientError as e:
+            if _is_not_found(e):
+                return False
+            raise
 
     async def list_prefix_stats(self, prefix: str) -> list[tuple[str, int]]:
         stats: list[tuple[str, int]] = []
-        async with self._client() as client:
-            paginator = client.get_paginator("list_objects_v2")
-            async for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
-                for obj in page.get("Contents", []) or []:
-                    stats.append((obj["Key"], int(obj.get("Size", 0))))
+        client = await self._client()
+        paginator = client.get_paginator("list_objects_v2")
+        async for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
+            for obj in page.get("Contents", []) or []:
+                stats.append((obj["Key"], int(obj.get("Size", 0))))
         stats.sort()
         return stats
 
     async def delete(self, key: str) -> None:
         # S3 DeleteObject is silently idempotent: a missing key returns 204.
-        async with self._client() as client:
-            await client.delete_object(Bucket=self.bucket, Key=key)
+        client = await self._client()
+        await client.delete_object(Bucket=self.bucket, Key=key)
 
     async def delete_prefix(self, prefix: str) -> None:
-        async with self._client() as client:
-            paginator = client.get_paginator("list_objects_v2")
-            batch: list[dict[str, str]] = []
+        client = await self._client()
+        paginator = client.get_paginator("list_objects_v2")
+        batch: list[dict[str, str]] = []
 
-            async def _flush() -> None:
-                if not batch:
-                    return
-                # Snapshot before clearing: the underlying client may
-                # serialise the list lazily and our `.clear()` would race.
-                payload = list(batch)
-                batch.clear()
-                await client.delete_objects(
-                    Bucket=self.bucket,
-                    Delete={"Objects": payload, "Quiet": True},
-                )
+        async def _flush() -> None:
+            if not batch:
+                return
+            # Snapshot before clearing: the underlying client may
+            # serialise the list lazily and our `.clear()` would race.
+            payload = list(batch)
+            batch.clear()
+            await client.delete_objects(
+                Bucket=self.bucket,
+                Delete={"Objects": payload, "Quiet": True},
+            )
 
-            directory = prefix.rstrip("/") + "/"
-            async for page in paginator.paginate(Bucket=self.bucket, Prefix=directory):
-                for obj in page.get("Contents", []) or []:
-                    batch.append({"Key": obj["Key"]})
-                    # DeleteObjects caps at 1000 keys per request.
-                    if len(batch) >= 1000:
-                        await _flush()
-            await _flush()
+        directory = prefix.rstrip("/") + "/"
+        async for page in paginator.paginate(Bucket=self.bucket, Prefix=directory):
+            for obj in page.get("Contents", []) or []:
+                batch.append({"Key": obj["Key"]})
+                # DeleteObjects caps at 1000 keys per request.
+                if len(batch) >= 1000:
+                    await _flush()
+        await _flush()
 
     async def copy_prefix(self, src_prefix: str, dst_prefix: str) -> int:
         # Server-side copies, issued concurrently: every content edit copies the
@@ -314,22 +345,22 @@ class S3Storage(Storage):
         if not src_stats:
             raise FileNotFoundError(f"source prefix not found: {src_prefix}")
         sem = asyncio.Semaphore(_S3_COPY_CONCURRENCY)
-        async with self._client() as client:
+        client = await self._client()
 
-            async def _copy_one(src_key: str) -> None:
-                rel = src_key[len(src_norm) :]
-                async with sem:
-                    await client.copy_object(
-                        Bucket=self.bucket,
-                        Key=dst_norm + rel,
-                        CopySource={"Bucket": self.bucket, "Key": src_key},
-                    )
+        async def _copy_one(src_key: str) -> None:
+            rel = src_key[len(src_norm) :]
+            async with sem:
+                await client.copy_object(
+                    Bucket=self.bucket,
+                    Key=dst_norm + rel,
+                    CopySource={"Bucket": self.bucket, "Key": src_key},
+                )
 
-            # TaskGroup, not gather: the first error cancels the rest before the
-            # caller cleans up the prefix.
-            async with asyncio.TaskGroup() as tg:
-                for key, _ in src_stats:
-                    tg.create_task(_copy_one(key))
+        # TaskGroup, not gather: the first error cancels the rest before the
+        # caller cleans up the prefix.
+        async with asyncio.TaskGroup() as tg:
+            for key, _ in src_stats:
+                tg.create_task(_copy_one(key))
         return sum(size for _, size in src_stats)
 
 
@@ -389,15 +420,33 @@ def _build_storage(url: str, settings=None) -> Storage:
     raise ValueError(f"unsupported storage scheme: {parsed.scheme}")
 
 
+async def close_storages() -> None:
+    """Close the shared S3 clients of the running loop; call on shutdown."""
+    for storage in list(_STORAGE_CACHE.values()):
+        if isinstance(storage, S3Storage):
+            await storage.aclose()
+
+
 async def delete_prefixes(
-    storage: Storage, prefixes: Collection[str], *, concurrency: int = 8
-) -> None:
+    storage: Storage,
+    prefixes: Collection[str],
+    *,
+    concurrency: int = 8,
+    raise_first: bool = True,
+) -> list[BaseException | None]:
     """Delete several prefixes, a few at a time (each may list and delete
-    many objects)."""
+    many objects). Every prefix is tried; the first error is raised after
+    all of them unless the caller reads the per-prefix outcomes instead
+    (`None` for done, in input order) with `raise_first=False`."""
     gate = asyncio.Semaphore(concurrency)
 
     async def drop(prefix: str) -> None:
         async with gate:
             await storage.delete_prefix(prefix)
 
-    await asyncio.gather(*(drop(p) for p in prefixes))
+    outcomes = await asyncio.gather(*(drop(p) for p in prefixes), return_exceptions=True)
+    if raise_first:
+        for outcome in outcomes:
+            if outcome is not None:
+                raise outcome
+    return outcomes

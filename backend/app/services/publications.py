@@ -5,10 +5,11 @@ import json
 from dataclasses import asdict, dataclass
 from uuid import UUID
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import permissions
+from app.db import advisory_xact_lock
 from app.domain_errors import ConflictError, NotFoundError
 from app.models import Asset, PublicationReceipt, User
 
@@ -60,14 +61,13 @@ async def lock_and_replay(
     session: AsyncSession, scope: PublicationScope, user: User, payload_hash: str
 ) -> PublicationReceipt | None:
     # A collision only serializes unrelated scopes. The full unique DB key,
-    # never this 64-bit lock number, decides publication identity.
+    # never the lock, decides publication identity.
     identity = {
         key: str(value) if isinstance(value, UUID) else value
         for key, value in asdict(scope).items()
     }
     digest = canonical_hash({"publication_scope": identity})
-    lock_id = int.from_bytes(bytes.fromhex(digest)[:8], "big", signed=True)
-    await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_id})
+    await advisory_xact_lock(session, f"ics:publication:{digest}")
     receipt = await find_receipt(session, scope)
     if receipt is None:
         # Admission happened before a potentially long wait. Revocation while

@@ -13,6 +13,7 @@ from sqlalchemy import select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import permissions
+from app.db import uuid_in
 from app.domain_errors import NotFoundError
 from app.models import Asset, AssetRelation, User
 from app.services.asset_projection import load_metadata, metadata_fields
@@ -62,7 +63,7 @@ async def _visible_assets(
     if not wanted:
         return {}
     rows = await session.scalars(
-        select(Asset).where(Asset.id.in_(wanted), permissions.visible_assets_filter(user))
+        select(Asset).where(uuid_in(Asset.id, wanted), permissions.visible_assets_filter(user))
     )
     return {a.id: a for a in rows}
 

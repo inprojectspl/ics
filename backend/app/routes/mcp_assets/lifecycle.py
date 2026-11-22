@@ -113,7 +113,6 @@ async def empty_trash(
         actor=user,
         request=request,
     )
-    await session.commit()
     return ORJSONResponse({"purged": purged, "remaining": remaining})
 
 
@@ -137,7 +136,6 @@ async def purge_asset(
         actor=user,
         request=request,
     )
-    await session.commit()
     return ORJSONResponse({"id": str(asset_id), "slug": slug, "purged": True})
 
 
