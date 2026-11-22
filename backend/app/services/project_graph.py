@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import permissions
 from app.models import Asset, AssetExternalRef, Project, User
+from app.services import external_refs
 from app.services.project_shares import in_project_filter
 from app.services.relation_graph import edges_touching
 from app.services.relation_views import edge_fields, project_nodes
@@ -45,7 +46,7 @@ async def _task_layer(session: AsyncSession, ids: list[UUID]) -> dict[str, Any]:
     tasks: dict[str, dict[str, Any]] = {}
     links = []
     for ref in refs:
-        key = f"{ref.system}:{ref.entity}:{ref.external_id}"
+        key = external_refs.ref_key(ref)
         task = tasks.setdefault(
             key,
             {

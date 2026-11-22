@@ -25,6 +25,11 @@ the full text of each field separately: stored tsvectors cap positions at
 16,383 and record at most 256 occurrences of a lexeme. Positional matching
 alone loses phrases late in long documents and can join metadata boundaries.
 Phrase verification also respects complete identifiers such as `v1.3`.
+A whole tsvector holds at most 1 MiB; for a text whose vector would not fit
+(a large PDF, a long transcript), `ics_search_tsvector` (migration 0054)
+indexes the longest prefix that fits instead of failing the write. The text
+itself stays whole for phrase checks, snippets and the content hash; words
+only past that prefix are not candidates.
 PostgreSQL also inserts positional operators when parsing hyphenated words,
 dates and URLs. Candidate queries remove that adjacency and verify the
 original identifier in a single field, preserving its prefix semantics.

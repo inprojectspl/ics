@@ -158,7 +158,11 @@ def stub_storage(monkeypatch):
         access_key_id="a",
         secret_access_key="s",
     )
-    monkeypatch.setattr(s, "_client", lambda: stub)
+
+    async def client():
+        return stub
+
+    monkeypatch.setattr(s, "_client", client)
     return s, stub
 
 
@@ -322,3 +326,64 @@ async def test_delete_prefix_leaves_sibling_versions(stub_storage):
 
     deletes = [c for c in stub.calls if c[0] == "delete_objects"]
     assert {o["Key"] for d in deletes for o in d[1]["Delete"]["Objects"]} == {"assets/a/v1/x.md"}
+
+
+@pytest.mark.asyncio
+async def test_operations_share_one_client_until_closed(monkeypatch):
+    """One client per process and loop, so its connection pool is reused;
+    a read gives its connection back even when the reader stops early."""
+    import aiobotocore.session
+
+    opened: list[str] = []
+
+    class _Body:
+        closed = False
+
+        def __init__(self):
+            self._chunks = iter([b"a", b"b"])
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            try:
+                return next(self._chunks)
+            except StopIteration:
+                raise StopAsyncIteration from None
+
+        def close(self):
+            self.closed = True
+
+    body = _Body()
+
+    class _Client:
+        async def head_object(self, **kw):
+            return {}
+
+        async def get_object(self, **kw):
+            return {"Body": body}
+
+    class _ClientContext:
+        async def __aenter__(self):
+            opened.append("open")
+            return _Client()
+
+        async def __aexit__(self, *exc):
+            opened.append("close")
+
+    class _Session:
+        def create_client(self, **kw):
+            assert kw["config"].max_pool_connections >= 16
+            return _ClientContext()
+
+    monkeypatch.setattr(aiobotocore.session, "get_session", lambda: _Session())
+    s = S3Storage(bucket="b", endpoint_url="https://x", access_key_id="a", secret_access_key="s")
+
+    assert await s.exists("k1") and await s.exists("k2")
+    stream = await s.get("k3")
+    assert await anext(stream) == b"a"
+    await stream.aclose()
+    assert body.closed
+    assert opened == ["open"]
+    await s.aclose()
+    assert opened == ["open", "close"]

@@ -9,7 +9,12 @@ from arq import cron
 
 from app.config import get_settings
 from app.jobs.queue import worker_redis_settings
-from app.jobs.tasks.cleanup import cleanup_oauth_artifacts, cleanup_old_email_outbox, purge_trash
+from app.jobs.tasks.cleanup import (
+    cleanup_oauth_artifacts,
+    cleanup_old_email_outbox,
+    purge_trash,
+    sweep_storage_cleanup,
+)
 from app.jobs.tasks.micro_applications import (
     microapp_control_retry,
     microapp_process_operation,
@@ -18,6 +23,7 @@ from app.jobs.tasks.micro_applications import (
 from app.jobs.tasks.notify import notifications_sweeper, notify_asset_event
 from app.jobs.tasks.ocr import ocr_sweeper
 from app.jobs.tasks.outline import outline_stale_sweeper, rebuild_outline
+from app.storage import close_storages
 
 
 class WorkerSettings:
@@ -29,6 +35,7 @@ class WorkerSettings:
         cleanup_oauth_artifacts,
         cleanup_old_email_outbox,
         purge_trash,
+        sweep_storage_cleanup,
         ocr_sweeper,
         notify_asset_event,
         notifications_sweeper,
@@ -43,6 +50,7 @@ class WorkerSettings:
         cron(cleanup_old_email_outbox, hour={3}, minute={0}),
         # The trash keeps an asset to its purge date, not to the next night.
         cron(purge_trash, minute={17}),
+        cron(sweep_storage_cleanup, minute={7, 27, 47}),
         cron(ocr_sweeper, minute=set(range(0, 60))),
         # Debounced version events and e-mail / Chat batches (ADR-0023).
         cron(notifications_sweeper, second=set(range(0, 60, 5)), timeout=60),
@@ -67,5 +75,6 @@ class WorkerSettings:
         from app.services.notifications.channels import webpush
 
         await webpush.close_client()
+        await close_storages()
 
         structlog.get_logger("arq").info("worker.shutdown")

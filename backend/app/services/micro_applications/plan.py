@@ -243,7 +243,11 @@ async def _assert_fits_quota(
     growth = pkg.total_bytes - current
     if owner is not None and growth > 0:
         await quota.assert_can_grow(
-            session, owner.id, incoming_bytes=growth, quota_bytes=owner.storage_quota_bytes
+            session,
+            owner.id,
+            incoming_bytes=growth,
+            quota_bytes=owner.storage_quota_bytes,
+            lock=False,
         )
 
 

@@ -321,7 +321,7 @@ async def test_reinvite_only_for_unverified(session):
 
 
 @pytest.mark.asyncio
-async def test_delete_cascades_assets_and_returns_count(session):
+async def test_delete_cascades_assets_and_returns_count(session, fs_storage):
     admin = await _mk_user(session, role="admin")
     victim = await _mk_user(session)
     session.add(
@@ -340,7 +340,7 @@ async def test_delete_cascades_assets_and_returns_count(session):
     )
     await session.commit()
 
-    out = await delete_user(victim.id, admin, session)
+    out = await delete_user(victim.id, admin, session, get_settings())
     assert out["deleted"] is True
     assert out["cascade_assets"] == 1
 
@@ -350,5 +350,5 @@ async def test_delete_refuses_self(session):
     admin = await _mk_user(session, role="admin")
     await session.commit()
     with pytest.raises(HTTPException) as exc:
-        await delete_user(admin.id, admin, session)
+        await delete_user(admin.id, admin, session, get_settings())
     assert exc.value.status_code == 400

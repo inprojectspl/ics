@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import audit, permissions
 from app.config import get_settings
+from app.db import advisory_xact_lock, uuid_in
 from app.domain_errors import ConflictError, InvalidInputError, LimitExceededError, NotFoundError
 from app.models import Asset, AssetRelation, User
 from app.services import relation_anchor
@@ -68,7 +69,7 @@ async def ids_matching(
     wanted = set(ids)
     if not wanted:
         return set()
-    rows = await session.scalars(select(Asset.id).where(Asset.id.in_(wanted), allowed))
+    rows = await session.scalars(select(Asset.id).where(uuid_in(Asset.id, wanted), allowed))
     return set(rows)
 
 
@@ -104,10 +105,10 @@ async def edge_counts(session: AsyncSession, ids: Iterable[UUID]) -> dict[UUID, 
         return {}
     end = union_all(
         select(AssetRelation.source_asset_id.label("asset_id")).where(
-            AssetRelation.source_asset_id.in_(wanted)
+            uuid_in(AssetRelation.source_asset_id, wanted)
         ),
         select(AssetRelation.target_asset_id.label("asset_id")).where(
-            AssetRelation.target_asset_id.in_(wanted)
+            uuid_in(AssetRelation.target_asset_id, wanted)
         ),
     ).subquery()
     rows = await session.execute(select(end.c.asset_id, func.count()).group_by(end.c.asset_id))
@@ -130,7 +131,7 @@ async def _creates_visible_cycle(
     while frontier:
         rows = await session.execute(
             select(AssetRelation.target_asset_id).where(
-                AssetRelation.source_asset_id.in_(frontier),
+                uuid_in(AssetRelation.source_asset_id, frontier),
                 AssetRelation.relation_type == relation_type,
             )
         )
@@ -241,10 +242,14 @@ async def add_relation(
 
     if max((await edge_counts(session, (src, dst))).values()) >= MAX_EDGES_PER_ASSET:
         raise LimitExceededError("relation_limit", "too many relations on this asset")
-    if relation_type in ACYCLIC and await _creates_visible_cycle(
-        session, actor, src, dst, relation_type
-    ):
-        raise ConflictError("relation_cycle", "this relation would create a cycle")
+    if relation_type in ACYCLIC:
+        # Two uncommitted edges cannot see each other, so A->B and B->A would
+        # both pass. One lock per type until the commit makes the check and
+        # the insert atomic; locking just the two ends would miss longer
+        # cycles. Edits of these types are rare.
+        await advisory_xact_lock(session, f"ics:relation_cycle:{relation_type}")
+        if await _creates_visible_cycle(session, actor, src, dst, relation_type):
+            raise ConflictError("relation_cycle", "this relation would create a cycle")
 
     edge = AssetRelation(
         source_asset_id=src,

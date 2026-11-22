@@ -1,5 +1,5 @@
-"""Arq tasks: expired OAuth artifacts, e-mail outbox retention and the purge
-of the asset trash.
+"""Arq tasks: expired OAuth artifacts, e-mail outbox retention, the purge
+of the asset trash and the files a purge or an account deletion left behind.
 
 audit_log is deliberately not cleaned: an immutability trigger (migration
 0016) blocks DELETE, so retention there is a deliberate owner decision.
@@ -16,7 +16,7 @@ from app.config import get_settings
 from app.db import SessionLocal
 from app.models import EmailOutbox
 from app.oauth import tokens as oauth_tokens
-from app.services import asset_lifecycle
+from app.services import asset_lifecycle, storage_cleanup
 
 # Batches one run may purge; a long backlog finishes over the next runs.
 _PURGE_RUN_BATCHES = 20
@@ -52,8 +52,15 @@ async def purge_trash(ctx: dict) -> dict:
     for _ in range(_PURGE_RUN_BATCHES):
         async with SessionLocal() as session:
             n = await asset_lifecycle.purge_expired(session, settings)
-            await session.commit()
         purged += n
         if not n:
             break
     return {"purged": purged}
+
+
+async def sweep_storage_cleanup(ctx: dict) -> dict:
+    """Files whose deletion failed or was cut short after a purge or an
+    account deletion, and those a large account left to the worker."""
+    async with SessionLocal() as session:
+        cleaned = await storage_cleanup.sweep(session, get_settings())
+    return {"cleaned_prefixes": cleaned}

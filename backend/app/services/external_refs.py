@@ -44,6 +44,17 @@ def plain_label(label: str | None) -> str | None:
     return text or None
 
 
+def ref_key(ref: AssetExternalRef) -> str:
+    """One string per external object. A Project Standard node id is unique
+    only within its project, so its scope is part of the key (as in
+    `uq_asset_ps_node_ref`); a work package id is global. `@` occurs in
+    neither ids nor scopes."""
+    key = f"{ref.system}:{ref.entity}:{ref.external_id}"
+    if ref.system == "project_standard" and ref.external_scope:
+        key += f"@{ref.external_scope}"
+    return key
+
+
 def validate_key(system: str, entity: str, external_id: str, external_scope: str | None) -> None:
     if system not in EXTERNAL_SYSTEMS:
         raise _invalid("unknown external system", "system")

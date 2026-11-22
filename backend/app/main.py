@@ -37,6 +37,7 @@ from app.routes import (
     shares,
 )
 from app.session_store import session_cookie_name
+from app.storage import close_storages
 
 
 class SecurityHeadersMiddleware:
@@ -84,6 +85,7 @@ async def lifespan(app: FastAPI):
     await ensure_bootstrap_admin(SessionLocal, settings)
     await ensure_builtin_clients(SessionLocal, settings)
     yield
+    await close_storages()
 
 
 def create_app() -> FastAPI:

@@ -14,6 +14,7 @@ from uuid import UUID
 from sqlalchemy import select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db import uuid_in
 from app.domain_errors import InvalidInputError
 from app.models import Asset, AssetRelation, User
 from app.services.graph_compact import (
@@ -59,8 +60,8 @@ async def edges_touching(
     keeps the edges leaving `ids`, `in` those arriving; a symmetric edge has
     no direction and answers both."""
     wanted = list(ids)
-    by_source = select(AssetRelation).where(AssetRelation.source_asset_id.in_(wanted))
-    by_target = select(AssetRelation).where(AssetRelation.target_asset_id.in_(wanted))
+    by_source = select(AssetRelation).where(uuid_in(AssetRelation.source_asset_id, wanted))
+    by_target = select(AssetRelation).where(uuid_in(AssetRelation.target_asset_id, wanted))
     if types is not None:
         by_source = by_source.where(AssetRelation.relation_type.in_(types))
         by_target = by_target.where(AssetRelation.relation_type.in_(types))
@@ -140,7 +141,7 @@ async def neighbourhood(
             ).items()
         )
     )
-    assets = (await session.scalars(select(Asset).where(Asset.id.in_(depth_of)))).all()
+    assets = (await session.scalars(select(Asset).where(uuid_in(Asset.id, depth_of)))).all()
     by_id = {a.id: a for a in assets}
     nodes = await project_nodes(session, actor, assets)
     ordered = sorted(assets, key=lambda a: (depth_of[a.id], a.title or "", str(a.id)))

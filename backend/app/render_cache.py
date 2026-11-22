@@ -20,7 +20,7 @@ from app.collections_io import read_text_at_version
 from app.config import Settings
 from app.markdown import render_markdown_async
 from app.models import Asset
-from app.redis_client import get_redis
+from app.redis_client import get_cache_redis
 from app.services.upload import one_chunk
 from app.storage import read_all, storage_from_url
 from app.util import short_sha256
@@ -131,7 +131,7 @@ async def _render_cached(
 ) -> str:
     """Redis first; HTML over `_MAX_CACHED_BYTES` goes to `keep_large` when
     the caller has a durable place for it."""
-    redis = get_redis()
+    redis = get_cache_redis()
 
     try:
         hit = await redis.get(key)

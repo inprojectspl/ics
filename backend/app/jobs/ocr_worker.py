@@ -35,3 +35,9 @@ class OcrWorkerSettings:
         import structlog
 
         structlog.get_logger("arq").info("ocr_worker.started")
+
+    @staticmethod
+    async def on_shutdown(ctx):
+        from app.storage import close_storages
+
+        await close_storages()

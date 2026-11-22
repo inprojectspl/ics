@@ -220,3 +220,14 @@ async def test_update_note_and_refresh_target_version(session):
         session, actor=owner, relation_id=edge.id, refresh_target_version=True
     )
     assert edge.target_version == 3
+
+
+@pytest.mark.asyncio
+async def test_visibility_of_more_ids_than_the_driver_binds(session):
+    # A document with tens of thousands of backlinks: one parameter per id
+    # would pass asyncpg's limit of 32,767.
+    user = await mk_user(session)
+    mine = await mk_asset(session, user)
+    await session.commit()
+    ids = [uuid4() for _ in range(33_000)] + [mine.id]
+    assert await relations.visible_ids(session, user, ids) == {mine.id}

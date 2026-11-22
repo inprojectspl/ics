@@ -57,7 +57,7 @@ from sqlalchemy.ext.asyncio import (  # noqa: E402
 from app.config import get_settings  # noqa: E402
 from app.db import Base  # noqa: E402
 from app.models import Asset, DocType, User  # noqa: E402
-from app.redis_client import get_redis  # noqa: E402
+from app.redis_client import get_cache_redis, get_redis  # noqa: E402
 from app.slug import generate_slug  # noqa: E402
 from app.storage import storage_from_url  # noqa: E402
 
@@ -161,6 +161,7 @@ async def _reset_module_globals():
         except Exception:
             pass
     get_redis.cache_clear()
+    get_cache_redis.cache_clear()
     # The Arq pool (`enqueue`) is a module global bound to the loop of the
     # test that first enqueued a job; a later test would await it on a
     # closed loop ("attached to a different loop").
