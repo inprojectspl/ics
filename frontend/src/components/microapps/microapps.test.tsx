@@ -13,7 +13,7 @@ function app(over: Record<string, unknown> = {}) {
     desired_state: "enabled", generation: 3, package_version: 2,
     active_release: { id: "r1", package_version: 2, digest: "sha256:abcdef0123456789", activated_at: null, schema: [1, 1] },
     last_publication: null,
-    runtime: { state: "sleeping", sampled_at: null, fresh: false, inflight: 0, queued: 0, open_connections: 0, last_used_at: null, last_error: null, breaker_open_until: null },
+    runtime: { state: "sleeping", sampled_at: null, fresh: false, inflight: 0, queued: 0, open_connections: 0, last_used_at: null, last_error: null, breaker_open_until: null, realtime: { sockets: 0, people: 0 } },
     data: { measured: true, sampled_at: null, bytes: 16384, rows_estimate: 3, tables: 1, schema_version: 1 },
     rights: { use: true, publish: true, control: true, manage_access: true, prepare: true },
     suspended_at: null,
@@ -87,9 +87,32 @@ describe("MicroAppPage, App tab", () => {
     expect(screen.getByText("Sleeping: no resources")).toBeInTheDocument();
     expect(screen.getByText("Active release: package v2")).toBeInTheDocument();
     expect(screen.getByText("≈3 rows in 1 table")).toBeInTheDocument();
+    expect(screen.getByText("Nobody has the app open right now")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Open/ })).toHaveAttribute("href", "https://k7m2q9x4.apps.example/");
     expect(screen.getByRole("button", { name: "Put to sleep" })).toBeInTheDocument();
     for (const name of ["App", "Data", "Access", "Logs"]) expect(screen.getByRole("link", { name })).toBeInTheDocument();
+  });
+
+  it("counts the people who have the app open, with Polish plurals", async () => {
+    const live = (people: number, sockets: number) =>
+      app({ runtime: { ...app().runtime, state: "running", fresh: true, realtime: { sockets, people } } });
+    mockFetch({ "GET /api/micro-applications/a1": live(3, 5) });
+    const view = renderPage();
+    expect(await screen.findByText("In the app now: 3 people (5 tabs)")).toBeInTheDocument();
+    view.unmount();
+
+    setLocale("pl", { persist: false });
+    mockFetch({ "GET /api/micro-applications/a1": live(1, 1) });
+    const one = renderPage();
+    expect(await screen.findByText("Teraz w aplikacji: 1 osoba (1 karta)")).toBeInTheDocument();
+    one.unmount();
+    mockFetch({ "GET /api/micro-applications/a1": live(3, 22) });
+    const few = renderPage();
+    expect(await screen.findByText("Teraz w aplikacji: 3 osoby (22 karty)")).toBeInTheDocument();
+    few.unmount();
+    mockFetch({ "GET /api/micro-applications/a1": live(5, 12) });
+    renderPage();
+    expect(await screen.findByText("Teraz w aplikacji: 5 osób (12 kart)")).toBeInTheDocument();
   });
 
   it("hides the controls, Access and Logs without the rights", async () => {

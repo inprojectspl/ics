@@ -12,11 +12,15 @@ import { Dialog } from "../ui/Dialog";
 import {
   ActionRow,
   DangerZone,
+  CountLimitEditor,
   LimitEditor,
   LockEditor,
   RoleEditor,
   ToggleRow,
 } from "./rows";
+
+/** Upper bound of `sheet_max_rows` accepted by the API. */
+const SHEET_MAX_ROWS_CEILING = 1_000_000;
 
 interface Props {
   user: AdminUser;
@@ -185,6 +189,23 @@ export function UserDetailDialog({ user, onClose, onChanged, onDeleted, microapp
             onChange={(b) =>
               run("microappData", async () => {
                 await api.adminUserPatch(user.id, { microapp_data_max_bytes: b });
+                await onChanged();
+              })
+            }
+          />
+          )}
+
+          {microappsEnabled && (
+          <CountLimitEditor
+            title={t("userDetail.sheetRowsTitle")}
+            desc={t("userDetail.sheetRowsDesc")}
+            unit={t("userDetail.rowsUnit")}
+            value={user.sheet_max_rows}
+            max={SHEET_MAX_ROWS_CEILING}
+            busy={busy === "sheetRows"}
+            onChange={(n) =>
+              run("sheetRows", async () => {
+                await api.adminUserPatch(user.id, { sheet_max_rows: n });
                 await onChanged();
               })
             }

@@ -24,7 +24,7 @@ CONTRACT_VERSION = "ics.microapp/v1alpha1"
 PROFILE = "js-capabilities-v1"
 SDK_VERSION = "1.0"
 # Part of every plan digest: a validator change invalidates older plans.
-VALIDATOR_VERSION = "2026-11-12.1"
+VALIDATOR_VERSION = "2026-11-23.1"
 MANIFEST_PATH = "microapp.json"
 
 # Platform limits of the v1alpha1 contract; a manifest may request less, never more.
@@ -46,6 +46,13 @@ LIMITS: dict[str, int] = {
     "guest_heap_bytes": 32 * 1024 * 1024,
     "min_idle_seconds": 60,
     "max_idle_seconds": 3600,
+    "realtime_max_channels": 20,  # realtime (ADR-0032): enforced by the broker
+    "realtime_message_bytes": 64 * 1024,
+    "realtime_max_message_bytes": 128 * 1024,
+    "realtime_messages_per_second": 30,
+    "realtime_message_burst": 60,
+    "realtime_sockets_per_person": 20,
+    "realtime_subscriptions_per_socket": 50,
 }
 
 SYSTEM_FIELDS = ("id", "created_by", "created_at", "updated_at", "revision")
@@ -359,6 +366,8 @@ def _semantic(pkg: Package, m: dict[str, Any]) -> None:
                 _check_restricted(pkg, ep["input"][key], f"{ep_p}/input/{key}", 0)
         _check_restricted(pkg, ep["output"], f"{ep_p}/output", 0)
 
+    for cname, channel in ((m.get("realtime") or {}).get("channels") or {}).items():
+        need_permission(channel["permission"], f"/realtime/channels/{cname}/permission")
     entry = m["frontend"]["entry"]
     if entry not in pkg.files:
         pkg.error(

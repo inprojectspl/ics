@@ -228,6 +228,12 @@ async def render(
         if release
         else ({}, "app_not_ready")
     )
+    if release:
+        # Reading the app's data counts as a wake-up for its sheet link
+        # (ADR-0032): a sleeping app's sheet is not read otherwise.
+        from app.services.sheets import auto
+
+        await auto.enqueue_soon(settings, await auto.read_links(session, settings, asset.id))
     collections: list[dict[str, Any]] = list(exported.get("collections") or [])
     await _name_authors(session, collections)
     app_view = exported.get("document") or {"error": error or "broker_error"}

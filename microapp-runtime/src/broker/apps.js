@@ -11,10 +11,15 @@ const COUNTED_REQUESTS = 64;
 // Failures that say the handler itself cannot finish; other errors only
 // update the last error shown in the panel.
 export const BREAKER_CODES = new Set(["execution_deadline", "cpu_budget", "memory_limit", "runner_crashed", "runner_killed"]);
+// Route of the writes of ICS's own Google Sheets sync: watchers hear them,
+// the report to ICS does not list them.
+export const SHEETS_ORIGIN = "sheets:apply";
 
 export class AppRegistry {
   constructor({ ics, pools, runners, idleSeconds }) {
     this.ics = ics;
+    // The realtime hub (realtime.js), set by main; absent in tests.
+    this.realtime = null;
     this.pools = pools;
     this.runners = runners;
     this.idleSeconds = idleSeconds;
@@ -48,6 +53,8 @@ export class AppRegistry {
         lastErrorCode: null,
         lastErrorAt: null,
         releaseId: null,
+        // Collections committed since the last report to ICS.
+        changed: new Set(),
       };
       this.apps.set(key, app);
     }
@@ -85,15 +92,19 @@ export class AppRegistry {
     return app.binding;
   }
 
-  begin(app) {
+  /** `use`: a person's request. ICS's own reads and writes (export, sheet
+   * sync) count for the drain barrier only: they neither wake the app nor
+   * keep it awake, so a polling sync never stops it from going to sleep. */
+  begin(app, use = true) {
     app.inflight += 1;
+    if (!use) return;
     app.state = "running";
     app.lastUsed = Date.now();
   }
 
-  end(app) {
+  end(app, use = true) {
     app.inflight -= 1;
-    app.lastUsed = Date.now();
+    if (use) app.lastUsed = Date.now();
     if (app.inflight === 0 && app.state === "running") app.state = "ready";
     if (app.inflight === 0 && app.drainWaiters) {
       for (const w of app.drainWaiters) w();
@@ -175,7 +186,36 @@ export class AppRegistry {
     }
   }
 
-  snapshot() {
+  /** After a commit that wrote `names` (collection names) of the app;
+   * `origin`: the route that wrote them. */
+  markChanged(app, names, origin = null) {
+    // The report would start a sync of the same link again.
+    if (origin !== SHEETS_ORIGIN) for (const name of names) app.changed.add(name);
+    this.realtime?.changed(app, names);
+  }
+
+  /** Changed collections per app key, taken out for one report. */
+  drainChanged() {
+    const out = new Map();
+    for (const a of this.apps.values()) {
+      if (!a.changed.size) continue;
+      out.set(a.key, a.changed);
+      a.changed = new Set();
+    }
+    return out;
+  }
+
+  /** A report that failed: its changes go into the next one. */
+  restoreChanged(drained) {
+    for (const [key, names] of drained) {
+      const app = this.apps.get(key);
+      if (app) for (const name of names) app.changed.add(name);
+    }
+  }
+
+  /** `changed`: what drainChanged() took for this report; without it the
+   * pending changes are shown and kept (the admin status). */
+  snapshot(changed = null) {
     return [...this.apps.values()]
       .filter((a) => a.assetId)
       .map((a) => ({
@@ -189,6 +229,8 @@ export class AppRegistry {
         last_error_code: a.lastErrorCode,
         last_error_at: a.lastErrorAt,
         breaker_open_until: a.breakerOpenUntil > Date.now() ? new Date(a.breakerOpenUntil).toISOString() : null,
+        realtime: this.realtime?.stats(a.key) ?? { sockets: 0, people: 0 },
+        changed_collections: [...(changed ? (changed.get(a.key) ?? []) : a.changed)].sort(),
       }));
   }
 

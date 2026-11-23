@@ -20,6 +20,8 @@ NotificationCode = Literal[
     "asset.deleted",
     "channel.chat_disabled",
     "project.invited",
+    "sheets.access_requested",
+    "sheets.auto_sync_stopped",
 ]
 EventKind = Literal["asset.created", "asset.added", "asset.updated", "asset.deleted"]
 EVENT_KINDS: tuple[EventKind, ...] = get_args(EventKind)
@@ -91,6 +93,8 @@ def link_of(payload: dict[str, Any]) -> str | None:
         return f"/projects/{payload['ps']}" if payload.get("ps") else None
     if not slug:
         return None
+    if code in ("sheets.access_requested", "sheets.auto_sync_stopped"):
+        return f"/v/{slug}?tab=sheets"
     version, first = payload.get("v"), payload.get("fv")
     if (
         code == "asset.updated"

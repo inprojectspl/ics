@@ -178,6 +178,53 @@ export function LimitEditor({
   );
 }
 
+/** A whole-number limit, like rows of a sheet sync. */
+export function CountLimitEditor({
+  title,
+  desc,
+  unit,
+  value,
+  max,
+  busy,
+  onChange,
+}: {
+  title: string;
+  desc: string;
+  unit: string;
+  value: number;
+  max: number;
+  busy: boolean;
+  onChange: (count: number) => void;
+}) {
+  const [text, setText] = useState(() => String(value));
+  const parsed = Number(text);
+  const valid = text.trim() !== "" && Number.isInteger(parsed) && parsed >= 0 && parsed <= max;
+  const changed = valid && parsed !== value;
+
+  return (
+    <SettingRow title={title} desc={desc}>
+      <label className="flex items-center gap-2">
+        <span className="sr-only">{title}</span>
+        <input
+          type="number"
+          min={0}
+          max={max}
+          step={1}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          disabled={busy}
+          aria-invalid={!valid || undefined}
+          className={`${COMPACT} w-28 text-right tabular-nums`}
+        />
+        <span className="text-meta text-text-secondary">{unit}</span>
+      </label>
+      <Button variant="secondary" size="sm" onClick={() => onChange(parsed)} busy={busy} disabled={!changed}>
+        {t("common.apply")}
+      </Button>
+    </SettingRow>
+  );
+}
+
 export function LockEditor({
   busy,
   onLock,

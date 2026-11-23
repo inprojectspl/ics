@@ -13,7 +13,7 @@ An app's page is any HTML, CSS and JavaScript, libraries included, and its serve
 
 ![Race Track: a 3D race with the lap timer, the speed, a map of the track and the board of the fastest drivers](images/micro-app-racing.png)
 
-The repository has three examples to start from, in `examples/microapps`: Request register (requests and approval), Equipment booking (a catalogue and bookings that change two tables in one transaction) and Race Track.
+The repository has four examples to start from, in `examples/microapps`: Request register (requests and approval), Equipment booking (a catalogue and bookings that change two tables in one transaction), Race Track and Star Hunt (a game for several players in rooms, over a live channel).
 
 ## How an app differs from a document
 
@@ -40,9 +40,13 @@ Apps published before the short addresses opened at `https://a-<32 characters>-p
 
 An app that has not been used for a while (its author sets how long, between one minute and an hour) is put to sleep and frees its resources. The next request wakes it up; you may notice a short delay on the first click.
 
+### Live updates
+
+Apps used by several people at once can show changes as they happen: a record someone else saved, a value that came in from a linked Google Sheet, or a move in a shared board or game appears on your open page within about a second, without reloading. The app decides what it shows live; nothing is stored beyond the app's own records, and if your connection drops, the page catches up by itself when it is back. App authors find the details in the [micro-applications API](../microapps-api.md#realtime).
+
 ## The app's page in ICS
 
-The page of an app has up to four tabs. Each has its own address (`?tab=data`, `?tab=access`, `?tab=logs`), so you can send someone straight to one.
+The page of an app has up to five tabs. Each has its own address (`?tab=data`, `?tab=access`, `?tab=logs`, `?tab=sheets`), so you can send someone straight to one.
 
 | Tab | Who sees it | What it shows |
 |---|---|---|
@@ -50,13 +54,14 @@ The page of an app has up to four tabs. Each has its own address (`?tab=data`, `
 | **Data** | everyone who can open the document | the app's content as the app renders it for you, with your records filled in |
 | **Access** | the owner of the app or of its project | who has which roles in the app |
 | **Logs** | the people who run or publish the app | recent log lines of the app and its publications |
+| **Google Sheets** | the people who run the app and the owner | the app's link to a Google Sheets tab (set up by the agent) and its syncs |
 
 ### App
 
 - **State.** **Enabled** or **Suspended** is what the app is set to; next to it is what it is doing now: **Ready in memory**, **Running a request**, **Sleeping: no resources**, **Finishing requests**, **Not accepting requests**. **Sample now** or **Sample 2 minutes ago** says how fresh this is.
 - **Release.** The package version that runs, for example **Active release: package v2**. When a newer package failed to publish, **Newer package v3 is not active** says so, and the last publication shows its status and the step where it stopped.
 - **Data.** The size of the app's data and an estimate of its records, for example **≈4 rows in 1 table**, and the schema version.
-- **Usage.** When the app was last used.
+- **Usage.** When the app was last used and how many people have it open right now (their open pages, counted by the platform; nothing about what they do).
 
 ### Data
 
@@ -69,6 +74,24 @@ The **Data** tab shows the app's own view of its content, the same one an AI age
 The **Logs** tab lists recent lines: publication steps (accepted, database applied, release activated), control actions and messages of the app's handlers. Secrets never reach the log.
 
 ![The Logs tab with publication steps and an approved request](images/micro-app-logs.png)
+
+### Google Sheets
+
+An app can keep one of its collections in step with a tab of a Google spreadsheet, so a team can go on typing in the sheet while the app keeps its rules ([ADR-0031](../decisions/0031-google-sheets-links.md)). The link is optional: an app works the same without one, and linking or unlinking needs no new release.
+
+The link is set up by the AI agent that builds the app, not in this tab: ask it to build an app from your spreadsheet. It reads the sheet as it is (headers, the kind of data in each column), designs the app around it and links them. Nobody adds an id column or renames anything: ICS recognises each row by a column with unique values (a request number, an e-mail), when there is one, or by its content and position, so sorting the sheet or inserting rows is fine. A row both moved and heavily edited between two syncs may show up as a removed record plus a new row; the preview shows it before anything changes.
+
+1. **Connect Google.** Each person connects their own Google account once, from this tab or from the link the agent gives. ICS keeps the access encrypted; **Disconnect** removes it.
+2. **Whose Google account works** (chosen when linking). **Owner's account**: the owner's, for everyone who may run the sync. **Each person's account**: everyone uses their own and needs access to the file; **Ask the owner for access** sends the owner a notification, and the owner shares the file in Google.
+3. **Preview.** ICS reads the sheet and the app and lists what would change: values to bring into the app, values to write to the sheet, rows that become records, records that get a new row, and problems (an unreadable value, a row someone deleted, a row of a record deleted in the app). A record the app no longer lets you change (for example an approved request) is listed, not changed. The first sync of a new app brings in the whole sheet this way.
+4. **Decide conflicts.** When both the sheet and the app changed the same value since the last sync, pick **Keep app value** or **Take sheet value**. Nothing decides by time.
+5. **Apply.** The app's records change in one go, under your roles in the app; then the sheet gets all its cells in one write, only into existing columns and new rows under the last one. If someone edited the sheet or the app after the preview, nothing is written: preview again.
+
+**Automatic sync.** The agent normally links with automatic sync on: ICS then runs the sync itself, as the owner, on the owner's Google account. A change saved in the app reaches the sheet within seconds. An edit typed into the sheet comes into the app within about 30 seconds while someone has the app open, within two minutes while the app is awake (your administrator may set other intervals), and as soon as the app wakes up or someone reads its data in ICS when it sleeps. When both sides changed the same cell, or something needs a person (no access to the file, a renamed header), automatic syncing waits: the owner gets a notification, and a preview here shows what to decide. Once it is applied, automatic syncing goes on. Without automatic sync, nothing changes until someone runs a sync.
+
+A sync handles up to the app owner's row limit (5000 by default); an administrator changes it in the user's settings (see [Administration](administration.md#change-storage-and-bundle-limits)).
+
+If Google's answer is lost, the write shows as **uncertain**. **Check result** reads the cells back and says whether it landed; an uncertain write is never sent twice, and the next preview offers again whatever is missing. Text from the app is always written as text, never as a formula.
 
 ## Run an app
 

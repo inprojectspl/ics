@@ -69,6 +69,27 @@ ics.collection(name).remove(id, revision)  // adds Idempotency-Key
 ics.call(method, "/v1/custom/...", { body, query, ifMatch, idempotencyKey })
 // Errors: ics.IcsApiError { status, code, field, body }. 409 release_changed or
 // data_generation_changed means: reload the page.
+
+// Live updates (one WebSocket per page at /__ics/realtime, opened on first use):
+ics.collection(name).watch(callback)       -> unwatch()
+// callback() runs when the collection changed (any writer: people, handlers,
+// a Google Sheets sync), at most every 250 ms, and once after each reconnect.
+// It carries no records: fetch again with list/get, under the usual rules.
+// Needs the collection's list permission. Nothing to declare in the manifest.
+const ch = ics.realtime.channel("<name>" | "<name>/<room key>")
+// <name>: a channel of the manifest's "realtime": {"channels": {"<name>":
+//   {"permission", "presence"?, "maxMessageBytes"?, "messagesPerSecond"?}}};
+// room key: 1-64 of [A-Za-z0-9_-] (a board, a game, a document id).
+ch.send(data)                              // any JSON; needs the channel's permission
+ch.on("message", (data, from) => {})       // from: { id, name }; never your own messages
+ch.on("presence", (members) => {})         // [{ id, name, n }], channels with "presence"
+ch.leave()
+ics.realtime.on("status", (s) => {})       // "connecting" | "open" | "closed"
+ics.realtime.status
+ics.realtime.on("error", (e) => {})        // { code, ref? }
+// Messages go to the other subscribers of the same room, best effort: nothing
+// is stored, a page that reconnects fetches its data again instead of
+// receiving what it missed. Limits: see limits.realtime_*.
 """
 
 PROCEDURE = [
@@ -92,6 +113,9 @@ PROCEDURE = [
     "content as people see it, records filled in (each item with its comments, totals, "
     "states). ICS runs it as the reader; ics_asset_read returns it first, so this is how "
     "agents and people read the app. The template has one.",
+    "When several people use the app at once, keep open pages current with "
+    "ics.collection(name).watch(reload) instead of polling; declare realtime.channels only "
+    "for messages between open pages (cursors, moves of a game, typing), never to store data.",
     "Call ics_microapp_plan with the complete package and a one-sentence change_note; fix "
     "diagnostics by file/pointer/code. Tell the user its app_changes (what the release "
     "changes for the people using the app) before applying.",

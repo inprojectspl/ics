@@ -35,6 +35,7 @@ from app.routes import (
     relations,
     shared,
     shares,
+    sheets,
 )
 from app.session_store import session_cookie_name
 from app.storage import close_storages
@@ -159,6 +160,7 @@ def create_app() -> FastAPI:
     app.include_router(notifications.watches_router)
     app.include_router(shared.router)
     app.include_router(html_viewer.router)
+    app.include_router(sheets.router)
     app.include_router(micro_applications.router)
     app.include_router(micro_applications.internal_router)
     return app

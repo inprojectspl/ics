@@ -4,11 +4,14 @@ import {
   FilePlus2,
   FolderInput,
   MessageSquareWarning,
+  RefreshCwOff,
+  Sheet,
   Trash2,
   UserPlus,
   type LucideIcon,
 } from "lucide-react";
 import type { NotificationCode, NotificationItem } from "../../api/notificationTypes";
+import { messageForCode } from "../../lib/errorMessages";
 import { t, tn } from "../../lib/i18n";
 import { projectRoleName } from "../../lib/roles";
 
@@ -19,6 +22,8 @@ export const NOTIFICATION_ICON: Record<NotificationCode, LucideIcon> = {
   "asset.deleted": Trash2,
   "channel.chat_disabled": MessageSquareWarning,
   "project.invited": UserPlus,
+  "sheets.access_requested": Sheet,
+  "sheets.auto_sync_stopped": RefreshCwOff,
 };
 
 const TITLE = "{title}";
@@ -45,6 +50,13 @@ function template(item: NotificationItem): string {
       return t("notifications.text.chatDisabled");
     case "project.invited":
       return t("notifications.text.invited", { role: projectRoleName(String(item.params.role)) });
+    case "sheets.access_requested":
+      return t("notifications.text.sheetsAccessRequested", { email: String(item.params.email ?? "") });
+    case "sheets.auto_sync_stopped": {
+      const reason = String(item.params.reason ?? "");
+      if (reason === "conflicts") return tn("notifications.text.sheetsAutoConflicts", Number(item.params.conflicts ?? 0));
+      return t("notifications.text.sheetsAutoStopped", { reason: messageForCode(reason) ?? reason });
+    }
   }
 }
 

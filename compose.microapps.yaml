@@ -57,6 +57,10 @@ services:
     environment:
       <<: *microapps-env
 
+  sheets-worker:
+    environment:
+      <<: *microapps-env
+
   # The shared gateway and data broker of every app. It holds no role able to
   # create databases or roles and never sees SSO secrets.
   broker:
@@ -86,6 +90,13 @@ services:
       ICS_MICROAPPS_REDIS_URL: redis://redis:6379/1
       ICS_MICROAPPS_RATE_USER_PER_SECOND: ${ICS_MICROAPPS_RATE_USER_PER_SECOND:-20}
       ICS_MICROAPPS_RATE_LINK_PER_SECOND: ${ICS_MICROAPPS_RATE_LINK_PER_SECOND:-100}
+      # Realtime sockets of app pages (ADR-0032), fanned out through the same
+      # Redis. The proxy must pass WebSocket upgrades on the app origins.
+      ICS_MICROAPPS_RT_MAX_MESSAGE_BYTES: ${ICS_MICROAPPS_RT_MAX_MESSAGE_BYTES:-131072}
+      ICS_MICROAPPS_RT_MESSAGES_PER_SECOND: ${ICS_MICROAPPS_RT_MESSAGES_PER_SECOND:-30}
+      ICS_MICROAPPS_RT_MAX_SOCKETS_PER_APP: ${ICS_MICROAPPS_RT_MAX_SOCKETS_PER_APP:-2000}
+      ICS_MICROAPPS_RT_MAX_SOCKETS_PER_PERSON: ${ICS_MICROAPPS_RT_MAX_SOCKETS_PER_PERSON:-20}
+      ICS_MICROAPPS_RT_MAX_SUBSCRIPTIONS: ${ICS_MICROAPPS_RT_MAX_SUBSCRIPTIONS:-50}
     volumes:
       - runner1_sock:/run/ics-runners/1
       - runner2_sock:/run/ics-runners/2

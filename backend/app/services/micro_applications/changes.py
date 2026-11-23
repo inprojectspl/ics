@@ -1,5 +1,6 @@
 """What changed in an app between two manifests, in the app's own terms:
-roles, permissions, endpoints, capabilities, data model and settings.
+roles, permissions, endpoints, capabilities, data model, realtime channels and
+settings.
 
 The file diff of two package versions says which lines moved; this says
 what that means for the people using the app (a role lost a permission, a
@@ -79,6 +80,7 @@ def _areas(m: dict[str, Any]) -> dict[str, dict[str, Any]]:
         "endpoint": {e["name"]: e for e in m.get("endpoints", [])},
         "capability": m.get("capabilities") or {},
         "collection": (m.get("database") or {}).get("collections") or {},
+        "realtime_channel": (m.get("realtime") or {}).get("channels") or {},
         "setting": {
             **{k: m[k] for k in _SETTINGS if k in m},
             **{k: m.get(k) or {} for k in ("metadata", "frontend")},
@@ -95,7 +97,8 @@ _DETAIL: dict[str, Detail] = {
 
 def manifest_changes(old: dict[str, Any], new: dict[str, Any]) -> list[dict[str, str]]:
     """Changes from `old` to `new`, by area in a stable order: roles,
-    permissions, endpoints, capabilities, collections, settings."""
+    permissions, endpoints, capabilities, collections, realtime channels,
+    settings."""
     before, after = _areas(old), _areas(new)
     return [
         c

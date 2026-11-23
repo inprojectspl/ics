@@ -363,6 +363,8 @@ export type AdminUser = {
   storage_quota_bytes: number;
   bundle_max_bytes: number;
   microapp_data_max_bytes: number;
+  /** Rows a sync of a sheet linked to this user's micro-applications may handle. */
+  sheet_max_rows: number;
   html_autobypass: boolean;
   asset_count: number;
   asset_bytes: number;

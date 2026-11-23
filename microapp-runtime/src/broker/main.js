@@ -8,6 +8,7 @@ import { PoolRegistry } from "./db.js";
 import { Gateway } from "./gateway.js";
 import { IcsClient } from "./ics.js";
 import { RateLimiter } from "./ratelimit.js";
+import { Realtime, RedisBus, limitsFromEnv } from "./realtime.js";
 import { RunnerPool } from "./runners.js";
 
 function required(name) {
@@ -44,6 +45,8 @@ const config = {
     userPerSecond: Number(process.env.ICS_MICROAPPS_RATE_USER_PER_SECOND ?? 20),
     linkPerSecond: Number(process.env.ICS_MICROAPPS_RATE_LINK_PER_SECOND ?? 100),
   },
+  // Realtime sockets of app pages (ADR-0032); fan-out through the same Redis.
+  realtime: limitsFromEnv(process.env),
   port: Number(process.env.PORT ?? 8080),
   adminPort: Number(process.env.ADMIN_PORT ?? 8081),
 };
@@ -62,6 +65,9 @@ const server = http.createServer({ requestTimeout: 15000, headersTimeout: 10000 
     res.end();
   });
 });
+const realtime = new Realtime({ gateway, incarnation, limits: config.realtime, bus: limiter.redis ? new RedisBus(limiter.redis) : null });
+apps.realtime = realtime;
+realtime.attach(server);
 server.listen(config.port, "0.0.0.0");
 const admin = http.createServer(adminHandler({ config, apps, runners, gateway, incarnation }));
 admin.listen(config.adminPort, "0.0.0.0");
@@ -69,11 +75,13 @@ admin.listen(config.adminPort, "0.0.0.0");
 setInterval(() => apps.sweepIdle().catch(() => {}), 15000).unref();
 setInterval(async () => {
   const logs = apps.drainLogs();
+  const changed = apps.drainChanged();
   try {
-    await ics.report({ incarnation, sampled_at: new Date().toISOString(), apps: apps.snapshot(), slots: runners.snapshot(), logs });
+    await ics.report({ incarnation, sampled_at: new Date().toISOString(), apps: apps.snapshot(changed), slots: runners.snapshot(), logs });
   } catch {
-    // ICS down: keep the logs for the next report instead of dropping them
+    // ICS down: keep the logs and changes for the next report instead of dropping them
     apps.logs.unshift(...logs.slice(-200));
+    apps.restoreChanged(changed);
   }
 }, 10000).unref();
 
@@ -82,7 +90,11 @@ for (const signal of ["SIGTERM", "SIGINT"]) {
   process.on(signal, () => {
     server.close();
     admin.close();
-    limiter.close();
+    // The bus publishes through the limiter's client: close it last.
+    realtime
+      .shutdown()
+      .catch(() => {})
+      .finally(() => limiter.close());
     setTimeout(() => process.exit(0), 2000).unref();
   });
 }

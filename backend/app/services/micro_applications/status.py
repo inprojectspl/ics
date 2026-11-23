@@ -36,6 +36,8 @@ from app.storage import read_all, storage_from_url
 
 # Broker reports arrive every ~10 s; older samples are shown as unknown.
 RUNTIME_SAMPLE_TTL = timedelta(seconds=45)
+# Runtime states in which the app's context is up (`runtime_view`).
+AWAKE_STATES = frozenset({"ready", "running"})
 
 
 def _iso(value: datetime | None) -> str | None:
@@ -56,7 +58,7 @@ async def broker_incarnation() -> str | None:
     return value
 
 
-def _runtime(
+def runtime_view(
     env: MicroAppEnvironment, stats: MicroAppStats | None, broker: str | None = None
 ) -> dict[str, Any]:
     now = datetime.now(UTC)
@@ -97,6 +99,11 @@ def _runtime(
         "inflight": stats.inflight if stats and fresh else 0,
         "queued": stats.queued if stats and fresh else 0,
         "open_connections": stats.open_connections if stats and fresh else 0,
+        # Open pages of the app (realtime sockets) and the people behind them.
+        "realtime": {
+            "sockets": stats.realtime_sockets if stats and fresh else 0,
+            "people": stats.realtime_people if stats and fresh else 0,
+        },
         "last_used_at": _iso(history.last_used_at) if history else None,
         "last_error": (
             {"code": history.last_error_code, "at": _iso(history.last_error_at)}
@@ -178,7 +185,7 @@ async def _view(
             if last_op and r.control
             else None
         ),
-        "runtime": _runtime(env, stats, broker),
+        "runtime": runtime_view(env, stats, broker),
         "data": _data(stats, env),
         "rights": r.as_dict(),
         "suspended_at": _iso(env.suspended_at),

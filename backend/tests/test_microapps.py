@@ -200,6 +200,57 @@ def test_roles_name_only_declared_permissions(change, code, pointer):
     assert any(c == code and (pointer is None or p == pointer) for c, p in found), found
 
 
+def _channels(m, **channels) -> None:
+    m["realtime"] = {"channels": channels}
+
+
+def test_realtime_channels_pass_with_a_declared_permission():
+    pkg = manifest.load_package(
+        _with_manifest(
+            lambda m: _channels(
+                m,
+                board={"permission": "requests.read", "presence": True},
+                cursors={
+                    "permission": "requests.read",
+                    "maxMessageBytes": 131072,
+                    "messagesPerSecond": 10,
+                },
+            )
+        )
+    )
+    assert pkg.ok, [d.as_dict() for d in pkg.diagnostics]
+
+
+@pytest.mark.parametrize(
+    ("channels", "code", "pointer"),
+    [
+        (
+            {"board": {"permission": "requests.fly"}},
+            "permission_not_declared",
+            "/realtime/channels/board/permission",
+        ),
+        ({"Board": {"permission": "requests.read"}}, "manifest_schema", None),
+        ({"board": {}}, "manifest_schema", None),
+        (
+            {"board": {"permission": "requests.read", "maxMessageBytes": 131073}},
+            "manifest_schema",
+            None,
+        ),
+        (
+            {"board": {"permission": "requests.read", "messagesPerSecond": 0}},
+            "manifest_schema",
+            None,
+        ),
+        ({"board": {"permission": "requests.read", "history": True}}, "manifest_schema", None),
+    ],
+)
+def test_realtime_channels_name_a_declared_permission_within_the_limits(channels, code, pointer):
+    pkg = manifest.load_package(_with_manifest(lambda m: _channels(m, **channels)))
+    found = {(d.code, d.pointer) for d in pkg.diagnostics}
+    assert not pkg.ok
+    assert any(c == code and (pointer is None or p == pointer) for c, p in found), found
+
+
 @pytest.mark.parametrize(
     "path", ["../x.mjs", "/abs.js", "handlers/../../etc", "public/.hidden", "a\\b", "other/x.txt"]
 )
@@ -1037,6 +1088,19 @@ def test_app_changes_speak_in_the_apps_terms():
     assert ("endpoint", "document", "removed") in got
     assert ("setting", "document", "removed") in got
     assert manifest_changes(old, old) == []
+    old["realtime"] = {
+        "channels": {"board": {"permission": "requests.read"}, "chat": {"permission": "a.b"}}
+    }
+    new["realtime"] = {
+        "channels": {
+            "board": {"permission": "requests.read", "presence": True},
+            "cursors": {"permission": "requests.read"},
+        }
+    }
+    got = {(c["area"], c["name"], c["change"]): c["detail"] for c in manifest_changes(old, new)}
+    assert got[("realtime_channel", "board", "changed")] == "presence"
+    assert ("realtime_channel", "cursors", "added") in got
+    assert ("realtime_channel", "chat", "removed") in got
 
 
 async def test_links_point_at_an_app_never_into_its_package(client, session):

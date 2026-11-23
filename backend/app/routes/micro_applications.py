@@ -479,8 +479,10 @@ async def internal_binding(
 
 
 @internal_router.post("/report")
-async def internal_report(request: Request, _: Service, session: Session) -> dict[str, Any]:
+async def internal_report(
+    request: Request, _: Service, session: Session, settings: AppSettings
+) -> dict[str, Any]:
     payload = await request.json()
     if not isinstance(payload, dict):
         raise ApiError(status.HTTP_400_BAD_REQUEST, "bad_report", "report must be an object")
-    return await runtime.report(session, payload)
+    return await runtime.report(session, settings, payload)

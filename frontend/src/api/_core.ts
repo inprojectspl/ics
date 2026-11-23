@@ -25,6 +25,9 @@ export class ApiError extends Error {
   readonly code: string | null;
   /** Input field the error is about (e.g. `metadata_invalid`), when the server names one. */
   readonly field: string | null;
+  /** Other top-level keys of the error body (e.g. `action`, `choices`), for
+   * errors that tell the UI what to offer next. */
+  readonly extra: Readonly<Record<string, unknown>>;
 
   constructor(
     status: number,
@@ -32,6 +35,7 @@ export class ApiError extends Error {
     message: string,
     code: string | null = null,
     field: string | null = null,
+    extra: Record<string, unknown> = {},
   ) {
     super(message);
     this.name = "ApiError";
@@ -39,6 +43,7 @@ export class ApiError extends Error {
     this.detail = detail;
     this.code = code;
     this.field = field;
+    this.extra = extra;
   }
 }
 
@@ -53,15 +58,20 @@ export async function req<T>(path: string, init?: RequestInit): Promise<T> {
     let detail: string | null = null;
     let code: string | null = null;
     let field: string | null = null;
+    let extra: Record<string, unknown> = {};
     try {
       const body = await r.json();
       if (body && typeof body.detail === "string") detail = body.detail;
       if (body && typeof body.code === "string") code = body.code;
       if (body && typeof body.field === "string") field = body.field;
+      if (body && typeof body === "object" && !Array.isArray(body)) {
+        const { detail: _d, code: _c, field: _f, ...rest } = body as Record<string, unknown>;
+        extra = rest;
+      }
     } catch {
       // not JSON, fall through to statusText
     }
-    throw new ApiError(r.status, detail, detail ?? `${r.status} ${r.statusText}`, code, field);
+    throw new ApiError(r.status, detail, detail ?? `${r.status} ${r.statusText}`, code, field, extra);
   }
   notifyDocumentChange(path, init?.method);
   // 204 No Content (most DELETEs) has no body to parse.

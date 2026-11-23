@@ -7,7 +7,9 @@ export type NotificationCode =
   | "asset.updated"
   | "asset.deleted"
   | "channel.chat_disabled"
-  | "project.invited";
+  | "project.invited"
+  | "sheets.access_requested"
+  | "sheets.auto_sync_stopped";
 
 export type EventKind = "asset.created" | "asset.added" | "asset.updated" | "asset.deleted";
 /** Channels the user picks per event; in-app is always on and not listed. */

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Star Hunt</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header>
+    <h1>Star Hunt</h1>
+    <form id="room-form"><label>Room <input id="room" maxlength="64" pattern="[A-Za-z0-9_-]{1,64}" required></label><button>Join</button></form>
+    <span id="status" class="status">offline</span>
+  </header>
+  <main>
+    <section class="stage">
+      <canvas id="arena" width="800" height="500" tabindex="0" aria-label="Arena: move with the arrow keys or WASD"></canvas>
+      <p id="banner" class="banner"></p>
+    </section>
+    <aside>
+      <h2>In this room</h2>
+      <ol id="players"></ol>
+      <h2>Best scores</h2>
+      <ol id="board"></ol>
+      <p class="hint">Arrow keys or WASD. A round lasts 60 seconds; everyone in the room plays the same stars.</p>
+    </aside>
+  </main>
+  <script src="/__ics/sdk.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

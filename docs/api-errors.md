@@ -357,3 +357,67 @@ and a `diagnostics` list of `{code, message, file, pointer, severity}`.
 | `app_permissions_invalid` | 400 | A micro-application share link must name roles the active release defines or permissions it declares; `allowed` and `allowed_roles` list them. |
 | `app_permissions_not_applicable` | 400 | `app_roles` or `app_permissions` were sent for a document share link. |
 | `microapp_source_restricted` | 403 | A generic read route refused a micro-application's package; publishers use `/api/micro-applications/{id}/package`. |
+
+## Google Sheets links
+
+`/api/integrations/google/*` and `/api/micro-applications/{id}/sheets/*`
+([ADR-0031](decisions/0031-google-sheets-links.md)). Errors that need the
+person carry `action`: `connect_google` or `request_access`. The consent
+callback does not answer with JSON: it returns to the page that started it
+with `?google=<code>`.
+
+| Code | Status | Meaning |
+| --- | --- | --- |
+| `google_sheets_disabled` | 503 | No Google Sheets OAuth client is configured on this server. |
+| `google_state_invalid` | 400 | The connection request expired or was used; start again. |
+| `google_state_mismatch` | 403 | The consent came back to another ICS user than the one who started it. |
+| `google_scope_missing` | 400 | Access to Sheets was not granted on the consent screen. |
+| `google_no_refresh_token` | 400 | Google returned no refresh token; connect again. |
+| `google_account_unverified` | 400 | The Google account has no verified e-mail. |
+| `google_not_connected` | 409 | The account the sync needs (the owner's or the caller's) is not connected; `action: connect_google`. |
+| `google_grant_invalid` | 409 | The stored grant was revoked or expired; `action: connect_google`. |
+| `google_no_access` | 409 | That Google account cannot open the spreadsheet; `action: request_access`. |
+| `google_not_found` | 409 | The spreadsheet does not exist or is not visible; `action: request_access`. |
+| `google_office_file` | 409 | The file is an Excel file kept on Drive; only a native Google spreadsheet can be read (File, Save as Google Sheets gives one). |
+| `google_rejected` | 409 | Google refused the request for another reason. |
+| `google_rate_limited` | 503 | Google's rate limit; repeat later. |
+| `google_unavailable` | 503 | Google did not answer; repeat the same request. |
+| `sheet_link_not_found` | 404 | The application has no sheet link. |
+| `spreadsheet_invalid` | 400 | Not a Google Sheets address or id. |
+| `spreadsheet_already_linked` | 409 | Another application already writes to this spreadsheet. |
+| `collection_not_found` | 400 | The active release has no such collection; `choices` lists them. |
+| `columns_invalid` | 400 | The link needs at least one column. |
+| `key_field_invalid` | 400 | `key_field` is not one of the linked fields. |
+| `auto_sync_needs_owner_account` | 400 | Automatic sync runs on the owner's Google account; it needs `account_mode: owner_account`. |
+| `field_not_found` | 400 | A column names an unknown field (`field` is `columns/<i>`). |
+| `field_type_unsupported` | 400 | A JSON field cannot be linked. |
+| `owner_invalid` | 400 | A column's owner is not `sheet`, `app` or `both`. |
+| `header_invalid` | 400 | A column needs a header of 1 to 100 characters. |
+| `column_duplicate` | 400 | A field or header appears twice. |
+| `field_not_writable` | 400 | The app's update rule does not let the field change; make the app own it. |
+| `account_mode_invalid` | 400 | `account_mode` is not `owner_account` or `per_user`. |
+| `owner_account_owner_only` | 403 | Only the asset's owner can lend their own Google account. |
+| `sheet_title_invalid` | 400 | The tab name needs 1 to 100 characters. |
+| `sheet_link_changed` | 409 | The link (or the account it writes with) changed since it was read or previewed. |
+| `sheet_link_paused` | 409 | The link is paused. |
+| `sheet_link_outdated` | 409 | A linked field is gone from the active release; fix the link. |
+| `app_not_ready` | 409 | The application has no active release. |
+| `sheet_tab_not_found` | 404 | The spreadsheet has no tab of that name; `tabs` lists them. |
+| `sheet_headers_missing` | 409 | The sheet's first row lacks linked headers; `missing` lists them. |
+| `sheet_headers_duplicate` | 409 | A linked header appears more than once in the first row; `duplicates` lists them. |
+| `sheet_too_large` | 413 | The tab has more rows than the app owner's limit (`limit`; `users.sheet_max_rows`, set by an administrator). |
+| `collection_too_large` | 413 | The collection has more records the caller can see than the app owner's limit (`limit`). |
+| `sheet_operation_not_found` | 404 | No such operation (or, for apply, no such preview of the caller's). |
+| `sheet_operation_stale` | 409 | The preview went stale; preview again. |
+| `sheet_operation_superseded` | 409 | A newer preview replaced this one. |
+| `sheet_operation_failed` | 409 | The operation failed; preview again. |
+| `sheet_sync_in_progress` | 409 | A sync of this sheet is being applied; previews and link changes wait for it. |
+| `sheet_check_actor_only` | 403 | With each person's own Google account, only the person who ran a sync checks its write. |
+| `decisions_missing` | 400 | Not every conflict has a decision; `undecided` lists them. |
+| `sheet_changed` | 409 | The sheet changed since the preview; nothing was written. |
+| `app_changed` | 409 | A record, or the app's active release, changed since the preview; nothing was written. |
+| `app_rule_refused` | 409 | The app's rules do not let a record change now; nothing was written. |
+| `broker_unavailable` | 503 | The app runtime did not finish; repeat the same apply, it resumes without applying twice. |
+| `access_request_not_needed` | 409 | The link uses the owner's account, or the caller owns the app. |
+| `owner_unavailable` | 409 | The application's owner cannot be notified. |
+

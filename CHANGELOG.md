@@ -10,6 +10,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - First public release.
+- Live updates and channels of micro-applications ([ADR-0032](docs/decisions/0032-micro-application-realtime.md)).
+  An open app page keeps one WebSocket to the broker (`/__ics/realtime`): `ics.collection(name).watch(cb)`
+  hears when a collection it may list changed (any committed write, a Google Sheets sync included),
+  and `ics.realtime.channel("<name>/<room>")` carries the app's own messages and presence between
+  pages, declared in the manifest under `realtime.channels` with a permission. Redis pub/sub fans
+  out between brokers; limits on message size (64 KB by default, at most 128 KB), rate, sockets and
+  subscriptions. The broker reports open pages and changed collections; the App tab shows how many
+  people have the app open, and Google Sheets automatic sync follows that activity on its own
+  worker (`sheets-worker`): a sleeping app does not sync. Example `examples/microapps/stars`.
+- Google Sheets links of micro-applications ([ADR-0031](docs/decisions/0031-google-sheets-links.md),
+  docs/guide/micro-applications.md). An agent builds an app around an existing spreadsheet
+  through ICS-MCP: `POST /api/integrations/google/inspect` reads its headers and proposes field
+  names and types, and the agent links the collection to the tab; nobody fills in a form or
+  changes the sheet. The sheet carries no ids: rows match records by an optional unique
+  `key_field` or by content and the row last seen, so sorting and inserting rows is fine.
+  One collection of an app syncs with one tab of a spreadsheet
+  on request: **Preview** compares the app, the sheet and the values agreed at the last sync,
+  conflicts are decided by a person, **Apply** changes the app's records in one broker transaction
+  (once per operation, whatever the retries) and writes the sheet in one atomic `batchUpdate`; a
+  lost Google answer stays `uncertain` until **Check result** reads the cells back. Columns are
+  owned by the sheet, the app or both; rows matching no record become records, records without a
+  row are appended, deletions are never inferred. A sync handles up to the app owner's
+  `sheet_max_rows` (5000 by default, set per user by an administrator, capped by
+  `ICS_GOOGLE_SHEETS_MAX_ROWS`). Each person connects their own Google account
+  (`/api/integrations/google`, encrypted refresh token, bound to the ICS session); a link writes
+  with the owner's account or each person's own, and a person without access to the file can ask
+  the owner through a `sheets.access_requested` notification. With `auto_sync` (the agent's
+  default) ICS syncs on its own as the owner: app changes reach the sheet within seconds, sheet
+  edits come in every `ICS_GOOGLE_SHEETS_POLL_SECONDS` (120); conflicts and errors wait for a
+  person and notify the owner (`sheets.auto_sync_stopped`). API under
+  `/api/micro-applications/{id}/sheets`, broker `sheets/read` and `sheets/apply`, migration `0055`,
+  `ICS_GOOGLE_SHEETS_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI` / `_MAX_ROWS`.
 - Copyable addresses of HTML bundles and micro-applications opened through a share link
   ([ADR-0030](docs/decisions/0030-copyable-share-addresses.md), docs/copyable-addresses.md). The
   page address keeps the link as `ics_share=<token>` across pages, `history.pushState`, GET forms
@@ -145,6 +177,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A micro-application's list rule no longer leaks fields its `readFields` hide: `sort` and
+  `filters` of `GET /api/v1/collections/{name}` (and `data.list` in handlers) accept only readable
+  fields, so neither the order nor the cursor, which carries the last sort value, reveals a hidden
+  one. Without `sort` the list keeps the newest first, or uses the id order when `created_at` is
+  hidden.
 - Purging the trash no longer deletes the files of a document restored at the same moment: the
   purge locks and checks its rows again, deletes them in one commit with their storage prefixes
   queued in `storage_cleanup` (migration `0053`), and removes the files after it; the

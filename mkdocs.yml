@@ -148,3 +148,5 @@ nav:
       - decisions/0028-short-micro-application-hosts.md
       - decisions/0029-asset-archive-and-trash.md
       - decisions/0030-copyable-share-addresses.md
+      - decisions/0031-google-sheets-links.md
+      - decisions/0032-micro-application-realtime.md

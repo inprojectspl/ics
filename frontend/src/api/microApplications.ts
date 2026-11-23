@@ -50,6 +50,9 @@ export interface MicroApp {
     last_used_at: string | null;
     last_error: { code: string; at: string | null } | null;
     breaker_open_until: string | null;
+    /** Open live pages (`sockets`) and the distinct people behind them; 0
+     * when the runtime sample is stale. */
+    realtime: { sockets: number; people: number };
   };
   data: {
     measured: boolean;

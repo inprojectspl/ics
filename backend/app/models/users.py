@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Integer,
     String,
     Text,
     func,
@@ -13,7 +14,12 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import TIMESTAMP
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.constants import DEFAULT_BUNDLE_MAX_BYTES, DEFAULT_MICROAPP_DATA_MAX_BYTES, AuthMethod
+from app.constants import (
+    DEFAULT_BUNDLE_MAX_BYTES,
+    DEFAULT_MICROAPP_DATA_MAX_BYTES,
+    DEFAULT_SHEET_MAX_ROWS,
+    AuthMethod,
+)
 from app.db import Base
 
 
@@ -52,6 +58,10 @@ class User(Base):
         BigInteger,
         default=DEFAULT_MICROAPP_DATA_MAX_BYTES,
         server_default=str(DEFAULT_MICROAPP_DATA_MAX_BYTES),
+    )
+    # Rows a Google Sheets link of an app the user owns may sync (ADR-0031).
+    sheet_max_rows: Mapped[int] = mapped_column(
+        Integer, default=DEFAULT_SHEET_MAX_ROWS, server_default=str(DEFAULT_SHEET_MAX_ROWS)
     )
     # Language of e-mails and pages the backend renders for this user (`pl`,
     # `en`). NULL means "not chosen": the request's Accept-Language decides.

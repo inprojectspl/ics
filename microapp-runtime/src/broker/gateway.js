@@ -50,6 +50,27 @@ export class Gateway {
     if (!(await this.limiter.take(buckets))) throw new HttpError(429, "rate_limited", "too many requests", { retryAfter: 1 });
   }
 
+  /**
+   * The access check of every request and realtime socket of an app:
+   * `{auth, app, bundle, model}` or an HttpError. `token`: a share link
+   * named in the page address; another link than the session's (or a dead
+   * one) throws with `reenter`, a new entry through that link.
+   */
+  async admit(target, session, token = null) {
+    const auth = await this.ics.authorize(target.assetHex, target.environment, session.uid, session.sh ?? null, token);
+    if (!auth.found || auth.deleted) throw new HttpError(404, "not_found", "application not found");
+    // A member keeps their own session.
+    if (token && (!auth.share_token_id || (session.sh && auth.share_token_id !== session.sh))) throw new HttpError(400, "launch_invalid", "another share link", { reenter: true });
+    if (!auth.app_use || !auth.user) throw new HttpError(403, "forbidden", "you no longer have access to this application");
+    const app = this.apps.get(target.assetHex, target.environment);
+    await this.apps.sync(app, auth);
+    if (auth.desired_state !== "enabled" || app.blocked) throw new HttpError(503, "app_suspended", "the application is suspended");
+    if (!auth.release) throw new HttpError(503, "app_not_ready", "the application has no active release");
+    app.releaseId = auth.release.id;
+    const { bundle, model } = await this.apps.model(auth.release.id);
+    return { auth, app, bundle, model };
+  }
+
   async handle(req, res) {
     const requestId = `req_${crypto.randomBytes(9).toString("base64url")}`;
     try {
@@ -86,18 +107,14 @@ export class Gateway {
       const named = page ? readToken(url.search) : { state: "none", token: null };
       if (named.state === "invalid") return recoveryPage(res, target, url, 400);
       await this.rateLimit(target, session);
-      const auth = await this.ics.authorize(target.assetHex, target.environment, session.uid, session.sh ?? null, named.token);
-      if (!auth.found || auth.deleted) throw new HttpError(404, "not_found", "application not found");
-      // Another link than the one this visitor came through (or a dead one)
-      // is a new entry through that link; a member keeps their own session.
-      if (named.token && (!auth.share_token_id || (session.sh && auth.share_token_id !== session.sh))) return recoveryPage(res, target, url);
-      if (!auth.app_use || !auth.user) throw new HttpError(403, "forbidden", "you no longer have access to this application");
-      const app = this.apps.get(target.assetHex, target.environment);
-      await this.apps.sync(app, auth);
-      if (auth.desired_state !== "enabled" || app.blocked) throw new HttpError(503, "app_suspended", "the application is suspended");
-      if (!auth.release) throw new HttpError(503, "app_not_ready", "the application has no active release");
-      app.releaseId = auth.release.id;
-      const { bundle, model } = await this.apps.model(auth.release.id);
+      let admitted;
+      try {
+        admitted = await this.admit(target, session, named.token);
+      } catch (err) {
+        if (err?.reenter) return recoveryPage(res, target, url);
+        throw err;
+      }
+      const { auth, app, bundle, model } = admitted;
       const rc = { req, res, url, target, session, cookies, auth, app, bundle, model, requestId, permissions: new Set(auth.permissions) };
       if (!isApi) return await this.serveStatic(rc);
       return await this.api(rc);
@@ -295,16 +312,33 @@ export class Gateway {
   async mutate(rc, { routeKey, key, bodyForHash, ifRevision, readOnly = false, run }) {
     const binding = await this.apps.binding(rc.app, rc.auth.credential_generation);
     const ctx = this.ctxFor(rc, binding);
-    const schema = binding.schema;
     const requestHash = crypto
       .createHash("sha256")
       .update(canonical([rc.req.method, rc.url.pathname, bodyForHash ?? null, ifRevision ?? null]))
       .digest("hex");
+    const checkRelease = () => this.checkRelease(rc);
+    const outcome = await this.transact(rc, binding, ctx, { routeKey, key, requestHash, readOnly, checkRelease, run });
+    const headers = { ...(outcome.headers ?? {}) };
+    if (outcome.replay) headers["idempotent-replayed"] = "true";
+    send(rc.res, outcome.status, outcome.status === 204 ? undefined : outcome.body, headers);
+  }
+
+  /**
+   * The transaction behind `mutate`, without sending: the idempotency key (if
+   * any) is reserved in the same transaction as the change and its result,
+   * so a retry after a lost answer or an unknown commit replays the stored
+   * result and never writes twice. Also used by the broker admin API.
+   */
+  async transact(rc, binding, ctx, { routeKey, key, requestHash, readOnly = false, checkRelease, run }) {
+    const schema = binding.schema;
     const deadline = Date.now() + (rc.limits?.wallMs ?? LIMITS.wallMs);
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), Math.max(0, deadline - Date.now()));
     timer.unref();
-    this.apps.begin(rc.app);
+    // Collections the writes below touch (data.js adds to it).
+    const changed = new Set();
+    ctx.changed = changed;
+    this.apps.begin(rc.app, !rc.platform);
     try {
       const outcome = await inTransaction(this.pools, rc.app.key, binding, { readOnly, statementTimeoutMs: Math.min(2000, deadline - Date.now()), signal: abort.signal }, async (client) => {
         if (rc.app.blocked) throw new HttpError(503, "app_suspended", "the application is suspended");
@@ -321,7 +355,7 @@ export class Gateway {
             if (!row || row.request_hash !== requestHash) throw new HttpError(409, "idempotency_key_reused", "this Idempotency-Key was used with a different request");
             return { replay: true, status: row.status, body: row.response, headers: row.headers ?? {} };
           }
-          this.checkRelease(rc);
+          checkRelease?.();
           const result = await run(client, ctx);
           if (rc.app.blocked) throw new HttpError(503, "app_suspended", "the application is suspended");
           await client.query(`UPDATE ${table} SET status = $5, response = $6, headers = $7 WHERE data_generation = $1 AND actor = $2 AND route = $3 AND key = $4`, [
@@ -335,31 +369,32 @@ export class Gateway {
           ]);
           return result;
         }
-        if (!readOnly) this.checkRelease(rc);
+        if (!readOnly) checkRelease?.();
         const result = await run(client, ctx);
         if (rc.app.blocked && !readOnly) throw new HttpError(503, "app_suspended", "the application is suspended");
         return result;
       });
-      const headers = { ...(outcome.headers ?? {}) };
-      if (outcome.replay) headers["idempotent-replayed"] = "true";
-      send(rc.res, outcome.status, outcome.status === 204 ? undefined : outcome.body, headers);
+      if (changed.size) this.apps.markChanged(rc.app, changed, routeKey);
+      return outcome;
     } catch (err) {
       if (err?.code === "execution_deadline" || err?.code === "commit_unknown") this.apps.recordFailure(rc.app, ctx.releaseId, err.code, rc.requestId);
+      // The commit may have happened: a needless refetch beats a missed change.
+      if (err?.code === "commit_unknown" && changed.size) this.apps.markChanged(rc.app, changed, routeKey);
       throw err;
     } finally {
       clearTimeout(timer);
-      this.apps.end(rc.app);
+      this.apps.end(rc.app, !rc.platform);
     }
   }
 
   async read(rc, fn) {
     const binding = await this.apps.binding(rc.app, rc.auth.credential_generation);
     const ctx = this.ctxFor(rc, binding);
-    this.apps.begin(rc.app);
+    this.apps.begin(rc.app, !rc.platform);
     try {
       return await inTransaction(this.pools, rc.app.key, binding, { readOnly: true, statementTimeoutMs: 2000 }, (client) => fn(client, ctx));
     } finally {
-      this.apps.end(rc.app);
+      this.apps.end(rc.app, !rc.platform);
     }
   }
 
@@ -474,7 +509,7 @@ export class Gateway {
   /** A read-only endpoint in one read-only transaction; `{ status, body }`. */
   async runReadOnly(rc, endpoint, input) {
     const { app, limits } = rc;
-    this.apps.begin(app);
+    this.apps.begin(app, !rc.platform);
     try {
       const binding = await this.apps.binding(app, rc.auth.credential_generation);
       const ctx = this.ctxFor(rc, binding);
@@ -489,7 +524,7 @@ export class Gateway {
         clearTimeout(timer);
       }
     } finally {
-      this.apps.end(app);
+      this.apps.end(app, !rc.platform);
     }
   }
 

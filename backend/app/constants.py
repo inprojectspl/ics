@@ -27,6 +27,9 @@ DEFAULT_BUNDLE_MAX_BYTES = 5 * 1024 * 1024
 # Default per-user cap on the data (tables, indexes, audit) of all the
 # micro-applications a user owns (`users.microapp_data_max_bytes`).
 DEFAULT_MICROAPP_DATA_MAX_BYTES = 100 * 1024 * 1024
+# Rows a Google Sheets link of an app may sync, per app owner
+# (`users.sheet_max_rows`); `settings.google_sheets_max_rows` caps it.
+DEFAULT_SHEET_MAX_ROWS = 5000
 
 # Assets
 
@@ -140,6 +143,7 @@ AuditAction = Literal[
     "user_quota_changed",
     "user_bundle_limit_changed",
     "user_microapp_data_limit_changed",
+    "user_sheet_rows_limit_changed",
     "user_autobypass_changed",
     "user_display_name_changed",
     "user_locked_by_admin",
@@ -203,5 +207,12 @@ AuditAction = Literal[
     "microapp_controlled",
     "microapp_grant_added",
     "microapp_grant_removed",
+    # Google Sheets links of micro-applications (ADR-0031)
+    "google_connected",
+    "google_disconnected",
+    "sheet_link_saved",
+    "sheet_link_removed",
+    "sheet_sync_applied",
+    "sheet_access_requested",
 ]
 AUDIT_ACTIONS: tuple[AuditAction, ...] = get_args(AuditAction)

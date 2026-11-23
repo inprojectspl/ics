@@ -3,7 +3,7 @@
   "$id": "urn:ics:microapp:manifest:v1alpha1",
   "title": "ICS micro_application manifest v1alpha1",
   "description": "Manifest of an ICS micro-application (ics.microapp/v1alpha1). This schema checks structure; the semantic validator (backend/app/services/micro_applications/manifest.py) enforces the rules listed in $comment.",
-  "$comment": "Validation has two stages. This schema validates structure and a small author-schema language. A bounded semantic validator must additionally enforce reserved system field names; collection, field, permission (including roles; every permission in a role) and capability references; enum/default membership and field-default constraints; min/max order; decimal precision/scale and safe integer policy; schemaMin <= schemaMax; required/properties and path/params agreement; unique route/name and equivalent parameterized-route checks; GET requires transaction=read_only, and every read_only transaction may resolve only read capabilities; writeFields/returnFields/allowedValues/conditions consistency; immutable system fields; handler files and path normalization/symlinks; public-directory isolation; maxDepth, total nodes, serialized bytes and resource quotas; actual permissions and plan/apply authorization. Arrays require items and maxItems <= 200 at every level; these local bounds do not replace semantic maxDepth and cumulative-size checks. Use an explicit FormatChecker or equivalent for uuid/date/date-time defaults; JSON Schema format is otherwise only annotation in common validators. All $ref values in this document are local. Manifest-provided $ref/pattern/custom keywords are rejected in input/output schemas. Arbitrary composite defaults, SQL defaults and migrations are outside v1alpha1.",
+  "$comment": "Validation has two stages. This schema validates structure and a small author-schema language. A bounded semantic validator must additionally enforce reserved system field names; collection, field, permission (including roles; every permission in a role) and capability references; realtime channel permissions; enum/default membership and field-default constraints; min/max order; decimal precision/scale and safe integer policy; schemaMin <= schemaMax; required/properties and path/params agreement; unique route/name and equivalent parameterized-route checks; GET requires transaction=read_only, and every read_only transaction may resolve only read capabilities; writeFields/returnFields/allowedValues/conditions consistency; immutable system fields; handler files and path normalization/symlinks; public-directory isolation; maxDepth, total nodes, serialized bytes and resource quotas; actual permissions and plan/apply authorization. Arrays require items and maxItems <= 200 at every level; these local bounds do not replace semantic maxDepth and cumulative-size checks. Use an explicit FormatChecker or equivalent for uuid/date/date-time defaults; JSON Schema format is otherwise only annotation in common validators. All $ref values in this document are local. Manifest-provided $ref/pattern/custom keywords are rejected in input/output schemas. Arbitrary composite defaults, SQL defaults and migrations are outside v1alpha1.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -114,6 +114,26 @@
       },
       "required": [
         "endpoint"
+      ]
+    },
+    "realtime": {
+      "description": "Live channels between open pages of the app (ADR-0032). A page subscribes to a channel or to a room of it (\"<name>/<key>\") with the channel's permission; a message reaches every other subscriber of the room and is not stored. Collection change signals (ics.collection(name).watch) need no declaration.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "channels": {
+          "type": "object",
+          "additionalProperties": false,
+          "patternProperties": {
+            "^[a-z][a-z0-9_]{0,47}$": {
+              "$ref": "#/$defs/realtimeChannel"
+            }
+          },
+          "maxProperties": 20
+        }
+      },
+      "required": [
+        "channels"
       ]
     },
     "permissions": {
@@ -1138,6 +1158,35 @@
       },
       "required": [
         "label"
+      ]
+    },
+    "realtimeChannel": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "permission": {
+          "$ref": "#/$defs/dottedIdentifier",
+          "description": "A permission of the app's \"permissions\"; needed to subscribe and to send."
+        },
+        "presence": {
+          "type": "boolean",
+          "description": "Subscribers get the room's members."
+        },
+        "maxMessageBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 131072,
+          "description": "Largest message in bytes of its JSON; 65536 when absent, at most 131072."
+        },
+        "messagesPerSecond": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "description": "Messages one socket may send to the channel a second; the platform's cap per socket (30 a second, burst 60) applies as well."
+        }
+      },
+      "required": [
+        "permission"
       ]
     }
   }

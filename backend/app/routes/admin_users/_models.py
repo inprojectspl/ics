@@ -21,6 +21,9 @@ class PatchUserIn(BaseModel):
     # `settings.max_asset_bytes` (100 MiB), which applies independently.
     bundle_max_bytes: int | None = Field(default=None, ge=0, le=1024**3)
     microapp_data_max_bytes: int | None = Field(default=None, ge=0, le=10 * 1024**4)
+    # Rows a Google Sheets link of the user's apps may sync; the deployment's
+    # `google_sheets_max_rows` still caps it.
+    sheet_max_rows: int | None = Field(default=None, ge=0, le=1_000_000)
     html_autobypass: bool | None = None
 
 

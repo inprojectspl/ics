@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +27,7 @@ from app.models import (
     MicroAppSchemaBinding,
     MicroAppStats,
     ShareLink,
+    SheetLink,
     User,
 )
 from app.redis_client import get_redis
@@ -283,7 +284,16 @@ def _ts(value: Any) -> datetime | None:
 BROKER_HEARTBEAT_KEY = "microapp:broker:heartbeat"
 
 
-async def report(session: AsyncSession, payload: dict[str, Any]) -> dict[str, int]:
+def _count(value: Any) -> int:
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+async def report(
+    session: AsyncSession, settings: Settings, payload: dict[str, Any]
+) -> dict[str, int]:
     now = datetime.now(UTC)
     # Which broker process is alive now: a sample from an older incarnation
     # describes a context that no longer exists.
@@ -309,8 +319,16 @@ async def report(session: AsyncSession, payload: dict[str, Any]) -> dict[str, in
         if by_asset
         else []
     )
+    # Collections with committed writes since the previous report, sleeping
+    # apps included: their automatic sheet syncs are due.
+    changed: dict[UUID, list[str]] = {}
     for env in envs:
         a = by_asset[str(env.asset_id)]
+        rt = a.get("realtime")
+        realtime: dict[str, Any] = rt if isinstance(rt, dict) else {}
+        names = a.get("changed_collections")
+        if isinstance(names, list) and names:
+            changed[env.asset_id] = [str(n)[:64] for n in names[:100]]
         values = {
             "environment_id": env.id,
             "runtime_state": str(a.get("state", "unknown"))[:16],
@@ -319,6 +337,8 @@ async def report(session: AsyncSession, payload: dict[str, Any]) -> dict[str, in
             "inflight": int(a.get("inflight") or 0),
             "queued": int(a.get("queued") or 0),
             "open_connections": int(a.get("open_connections") or 0),
+            "realtime_sockets": _count(realtime.get("sockets")),
+            "realtime_people": _count(realtime.get("people")),
             "last_used_at": _ts(a.get("last_used_at")),
             "last_error_code": (
                 str(a["last_error_code"])[:64] if a.get("last_error_code") else None
@@ -371,5 +391,17 @@ async def report(session: AsyncSession, payload: dict[str, Any]) -> dict[str, in
             )
         )
         stored += 1
+    if changed:
+        # Recorded on the link only: the sheets sweeper decides when to run.
+        await session.execute(
+            update(SheetLink)
+            .where(
+                SheetLink.auto_sync.is_(True),
+                tuple_(SheetLink.asset_id, SheetLink.collection).in_(
+                    [(asset_id, name) for asset_id, names in changed.items() for name in names]
+                ),
+            )
+            .values(app_changed_at=now)
+        )
     await session.commit()
     return {"apps": len(envs), "logs": stored}

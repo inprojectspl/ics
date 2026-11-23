@@ -22,6 +22,7 @@ from app.domain_errors import (
     InvalidInputError,
     LimitExceededError,
     NotFoundError,
+    UnavailableError,
 )
 
 VALIDATION_ERROR = "validation_error"
@@ -73,6 +74,7 @@ _DOMAIN_STATUS: dict[type[DomainError], int] = {
     NotFoundError: 404,
     ConflictError: 409,
     LimitExceededError: 413,
+    UnavailableError: 503,
 }
 
 

@@ -1,15 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import type { AdminUser } from "../../api";
 import { t, tn } from "../../lib/i18n";
 import { UserDetailDialog } from "./UserDetailDialog";
 
 const adminRevokeUserTokens = vi.fn();
+const adminUserPatch = vi.fn();
 const confirm = vi.fn();
 
 vi.mock("../../api", () => ({
-  api: { adminRevokeUserTokens: (...a: unknown[]) => adminRevokeUserTokens(...a) },
+  api: {
+    adminRevokeUserTokens: (...a: unknown[]) => adminRevokeUserTokens(...a),
+    adminUserPatch: (...a: unknown[]) => adminUserPatch(...a),
+  },
 }));
 vi.mock("../ConfirmDialog", () => ({ useConfirm: () => confirm }));
 
@@ -26,6 +30,7 @@ const user: AdminUser = {
   storage_quota_bytes: 1000,
   bundle_max_bytes: 100,
   microapp_data_max_bytes: 1000,
+  sheet_max_rows: 5000,
   html_autobypass: false,
   asset_count: 0,
   asset_bytes: 0,
@@ -35,6 +40,7 @@ const user: AdminUser = {
 
 beforeEach(() => {
   adminRevokeUserTokens.mockReset().mockResolvedValue({ revoked: 3 });
+  adminUserPatch.mockReset().mockResolvedValue(user);
   confirm.mockReset().mockResolvedValue(true);
 });
 
@@ -95,5 +101,35 @@ describe("UserDetailDialog micro-application limit", () => {
     unmount();
     render(<UserDetailDialog user={user} onClose={vi.fn()} onChanged={vi.fn()} onDeleted={vi.fn()} microappsEnabled />);
     expect(screen.getAllByText(t("userDetail.microappDataTitle")).length).toBeGreaterThan(0);
+  });
+});
+
+describe("UserDetailDialog Google Sheets row limit", () => {
+  // The input is named by the row title followed by its unit.
+  const sheetRowsName = (name: string) => name.startsWith(t("userDetail.sheetRowsTitle"));
+
+  it("is offered only where micro-applications are on", () => {
+    const { unmount } = render(<UserDetailDialog user={user} onClose={vi.fn()} onChanged={vi.fn()} onDeleted={vi.fn()} />);
+    expect(screen.queryByRole("spinbutton", { name: sheetRowsName })).toBeNull();
+    unmount();
+    render(<UserDetailDialog user={user} onClose={vi.fn()} onChanged={vi.fn()} onDeleted={vi.fn()} microappsEnabled />);
+    expect(screen.getByRole("spinbutton", { name: sheetRowsName })).toHaveValue(5000);
+  });
+
+  it("saves a whole number of rows and refuses a fraction or a value over the ceiling", async () => {
+    const onChanged = vi.fn();
+    render(<UserDetailDialog user={user} onClose={vi.fn()} onChanged={onChanged} onDeleted={vi.fn()} microappsEnabled />);
+    const input = screen.getByRole("spinbutton", { name: sheetRowsName });
+    const row = input.closest("div.border-t") as HTMLElement;
+    const apply = within(row).getByRole("button", { name: t("common.apply") });
+    expect(apply).toBeDisabled();
+    fireEvent.change(input, { target: { value: "12.5" } });
+    expect(apply).toBeDisabled();
+    fireEvent.change(input, { target: { value: "1000001" } });
+    expect(apply).toBeDisabled();
+    fireEvent.change(input, { target: { value: "20000" } });
+    fireEvent.click(apply);
+    await waitFor(() => expect(adminUserPatch).toHaveBeenCalledWith("u2", { sheet_max_rows: 20000 }));
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
 });

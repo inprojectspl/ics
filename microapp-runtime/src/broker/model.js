@@ -11,7 +11,9 @@ const SYSTEM_TYPES = {
   updated_at: { type: "timestamptz" },
   revision: { type: "integer" },
 };
-const IDENT_RE = /^[a-z][a-z0-9_]{0,47}$/;
+export const IDENT_RE = /^[a-z][a-z0-9_]{0,47}$/;
+// An app channel's message size when the manifest names none (ADR-0032).
+const RT_APP_MESSAGE_BYTES = 65536;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function quoteIdent(name) {
@@ -30,6 +32,7 @@ export class Model {
     }
     this.capabilities = manifest.capabilities ?? {};
     this.endpoints = (manifest.endpoints ?? []).map((e) => ({ ...e, matcher: compilePath(e.path) }));
+    this.channels = parseChannels(manifest);
   }
 
   collection(name) {
@@ -46,6 +49,27 @@ export class Model {
     }
     return null;
   }
+}
+
+/**
+ * `realtime.channels` of the manifest: name -> {name, permission, presence,
+ * maxMessageBytes, messagesPerSecond}. ICS validated the manifest at
+ * publication; only the name is checked again, because it becomes part of
+ * Redis keys. The broker's frame cap (ws maxPayload) bounds any size.
+ */
+export function parseChannels(manifest) {
+  const channels = new Map();
+  for (const [name, def] of Object.entries(manifest.realtime?.channels ?? {})) {
+    if (!IDENT_RE.test(name)) throw new Error(`realtime channel ${name}: name must match ^[a-z][a-z0-9_]{0,47}$`);
+    channels.set(name, {
+      name,
+      permission: def.permission,
+      presence: def.presence === true,
+      maxMessageBytes: def.maxMessageBytes ?? RT_APP_MESSAGE_BYTES,
+      messagesPerSecond: def.messagesPerSecond ?? null,
+    });
+  }
+  return channels;
 }
 
 function compilePath(template) {

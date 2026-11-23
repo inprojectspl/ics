@@ -160,11 +160,47 @@ app and remove `ICS_BOOTSTRAP_ADMIN_PASSWORD` from the configuration.
    create an *OAuth 2.0 Client ID* of type *Web application*.
 2. Authorised redirect URI: `https://ics.example.com/api/auth/google/callback`
    (that is, `{ICS_BASE_URL}/api/auth/google/callback`).
-3. Set `ICS_GOOGLE_OIDC_CLIENT_ID` and `ICS_GOOGLE_OIDC_CLIENT_SECRET`.
+3. Set `ICS_GOOGLE_OIDC_CLIENT_ID` and `ICS_GOOGLE_OIDC_CLIENT_SECRET`
+   (`ICS_GOOGLE_OIDC_REDIRECT_URI` only when the redirect differs from the
+   one above).
 4. Recreate the backend, for example
    `docker compose -p ics -f compose.yaml -f compose.prod.yaml up -d --force-recreate backend`.
 5. The login screen now shows the Google button. Only addresses in
    `ICS_ALLOWED_DOMAINS` can sign in.
+
+## Step 5a: Google Sheets links of micro-applications (optional)
+
+Apps can sync a collection with a Google Sheets tab
+([ADR-0031](decisions/0031-google-sheets-links.md)). It needs its own OAuth
+client, since it asks for the Sheets scope and keeps a refresh token:
+
+1. In the Google Cloud project, enable the *Google Sheets API*.
+2. Create an *OAuth 2.0 Client ID* of type *Web application* with the
+   redirect URI `{ICS_BASE_URL}/api/integrations/google/callback`. On the
+   consent screen add the scope `.../auth/spreadsheets` (a sensitive scope:
+   an *Internal* app of a Workspace organisation needs no Google review).
+3. Set `ICS_GOOGLE_SHEETS_CLIENT_ID` and `ICS_GOOGLE_SHEETS_CLIENT_SECRET`
+   and recreate the backend. `ICS_GOOGLE_SHEETS_REDIRECT_URI` overrides the
+   redirect URI when the public address differs.
+
+Refresh tokens are encrypted with a key derived from `ICS_SECRET_KEY`;
+rotating that key disconnects every Google account.
+
+A sync handles at most the app owner's `sheet_max_rows` (5000 by default,
+changed in the admin user settings), capped for everyone by
+`ICS_GOOGLE_SHEETS_MAX_ROWS` (50000): a preview is stored in one row and the
+runtime holds the records in memory.
+
+Links with automatic sync are run by `sheets-worker`, an arq worker on its own
+queue (`ICS_GOOGLE_SHEETS_QUEUE_NAME`, `arq:sheets`; `ICS_GOOGLE_SHEETS_MAX_JOBS`
+at once, 4), so syncs never delay publications or notifications. It follows
+the apps' activity from the broker's reports (ADR-0032) and asks the broker
+and Google nothing for an app nobody uses: a change in the app syncs at once,
+the sheet is read every `ICS_GOOGLE_SHEETS_ACTIVE_POLL_SECONDS` (30) while
+someone has the app open and every `ICS_GOOGLE_SHEETS_POLL_SECONDS` (120)
+while it is only awake; a sleeping app does not sync and syncs when it wakes
+up. Each read is one Sheets API request on the owner's account (Google's
+default quota: 300 a minute per project, 60 per user).
 
 ## Step 6: MCP clients (optional)
 
@@ -311,6 +347,31 @@ limit_req zone=microapps burst=100 nodelay;
 
 Raise the rate when many people reach the apps from one address (an office
 behind NAT).
+
+Open app pages keep one WebSocket each at `/__ics/realtime` on their app
+origin (live change signals and the apps' own channels, ADR-0032). The apps
+server block must pass the upgrade: `proxy_http_version 1.1`, the `Upgrade`
+and `Connection` headers (the `$connection_upgrade` map) and a read timeout
+longer than the broker's 30-second ping, as in the example's
+`location = /__ics/realtime`. Behind Cloudflare, WebSockets are on by default
+(Network settings). Without the upgrade apps still work; pages just do not
+hear about changes until they reload. A socket opens only from the app's own
+origin with its session cookie, and counts against the same per-person
+request budget as one request.
+
+The broker limits the sockets in its environment (defaults in
+`compose.microapps.yaml`); apps may ask for less in their manifest:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `ICS_MICROAPPS_RT_MAX_MESSAGE_BYTES` | `131072` | largest frame a page may send; an app's channels default to 64 KiB under it |
+| `ICS_MICROAPPS_RT_MESSAGES_PER_SECOND` | `30` | frames one socket may send a second (burst twice that) |
+| `ICS_MICROAPPS_RT_MAX_SOCKETS_PER_APP` | `2000` | open sockets of one app on one broker |
+| `ICS_MICROAPPS_RT_MAX_SOCKETS_PER_PERSON` | `20` | open sockets of one person in one app on one broker |
+| `ICS_MICROAPPS_RT_MAX_SUBSCRIPTIONS` | `50` | channels and watched collections of one socket |
+
+Several broker processes share rooms, presence and change signals through
+`ICS_MICROAPPS_REDIS_URL`; with one broker Redis is optional.
 
 ### PostgreSQL
 
