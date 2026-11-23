@@ -119,6 +119,18 @@ async def patch_user(
         )
         audited.append("microapp_data_max_bytes")
 
+    if body.sheet_max_rows is not None and body.sheet_max_rows != user.sheet_max_rows:
+        old_rows = user.sheet_max_rows
+        user.sheet_max_rows = body.sheet_max_rows
+        await audit.record(
+            session,
+            actor=admin,
+            action="user_sheet_rows_limit_changed",
+            target=f"user:{user.id}",
+            payload={"from_rows": old_rows, "to_rows": body.sheet_max_rows},
+        )
+        audited.append("sheet_max_rows")
+
     if body.html_autobypass is not None and body.html_autobypass != user.html_autobypass:
         old_autobypass = user.html_autobypass
         user.html_autobypass = body.html_autobypass

@@ -47,6 +47,17 @@ services:
         reservations:
           memory: 128m
 
+  sheets-worker:
+    image: ${ICS_IMAGE_REGISTRY}/backend:${IMAGE_TAG:-latest}
+    build: !reset null
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+        reservations:
+          memory: 128m
+
   ocr-worker:
     image: ${ICS_IMAGE_REGISTRY}/backend:${IMAGE_TAG:-latest}
     build: !reset null

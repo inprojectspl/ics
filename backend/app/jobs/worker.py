@@ -1,5 +1,5 @@
 """Arq worker entrypoint: `arq app.jobs.worker.WorkerSettings`. OCR runs are in
-`ocr_worker`."""
+`ocr_worker`, automatic sheet syncs in `sheets_worker`."""
 
 from __future__ import annotations
 

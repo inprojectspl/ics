@@ -30,3 +30,9 @@ export function statusCode(err: unknown): number | null {
   const m = msg.match(/^(\d{3})\b/);
   return m ? Number(m[1]) : null;
 }
+
+/** Strings of a server error's list extra (`choices`, `missing`, `tabs`). */
+export function extraList(err: unknown, key: string): string[] {
+  const value = err instanceof ApiError ? err.extra[key] : undefined;
+  return Array.isArray(value) ? value.map(String) : [];
+}

@@ -54,6 +54,7 @@ export const adminUserPatch = (
     storage_quota_bytes?: number;
     bundle_max_bytes?: number;
     microapp_data_max_bytes?: number;
+    sheet_max_rows?: number;
     html_autobypass?: boolean;
   },
 ) =>

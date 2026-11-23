@@ -1,0 +1,51 @@
+{
+  "apiVersion": "ics.microapp/v1alpha1",
+  "kind": "micro_application",
+  "metadata": {
+    "title": "Star Hunt",
+    "description": "A multiplayer game in rooms: catch the stars before the others do; the best scores stay on the board."
+  },
+  "frontend": {
+    "entry": "public/index.html"
+  },
+  "runtime": {
+    "profile": "js-capabilities-v1",
+    "sdkVersion": "1.0",
+    "idleSeconds": 600
+  },
+  "database": {
+    "collections": {
+      "scores": {
+        "fields": {
+          "player": { "type": "string", "required": true, "minLength": 1, "maxLength": 60 },
+          "room": { "type": "string", "required": true, "minLength": 1, "maxLength": 64 },
+          "stars": { "type": "integer", "required": true, "minimum": 1, "maximum": 1000 }
+        },
+        "crud": {
+          "create": { "permission": "stars.play", "rowScope": "own", "writeFields": ["player", "room", "stars"] },
+          "list": { "permission": "stars.play", "rowScope": "all", "readFields": ["id", "player", "room", "stars", "created_at"] },
+          "get": { "permission": "stars.play", "rowScope": "all", "readFields": ["id", "player", "room", "stars", "created_at"] },
+          "delete": { "permission": "stars.judge", "rowScope": "all" }
+        },
+        "indexes": [{ "fields": ["stars", "id"] }, { "fields": ["created_at", "id"] }]
+      }
+    }
+  },
+  "realtime": {
+    "channels": {
+      "arena": { "permission": "stars.play", "presence": true, "maxMessageBytes": 4096, "messagesPerSecond": 30 }
+    }
+  },
+  "permissions": {
+    "stars.play": { "label": "Play" },
+    "stars.judge": { "label": "Remove scores from the board" }
+  },
+  "roles": {
+    "player": { "label": "Player", "description": "Plays in any room and saves scores.", "permissions": ["stars.play"] },
+    "judge": { "label": "Judge", "description": "Plays and removes unfair scores.", "permissions": ["stars.play", "stars.judge"] }
+  },
+  "compatibility": { "schemaMin": 1, "schemaMax": 1 },
+  "capabilities": {},
+  "endpoints": [],
+  "limitsRequested": { "wallMs": 5000, "maxDbCalls": 20, "maxResponseBytes": 262144 }
+}

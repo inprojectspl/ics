@@ -58,6 +58,8 @@ async def test_contract_sections_and_operation_reads(client, session):
         await client.get("/api/micro-applications/contract?section=limits", headers=bearer(user))
     ).json()
     assert one["content"]["max_files"] == 50 and one["contract_hash"] == full["contract_hash"]
+    assert one["content"]["realtime_max_message_bytes"] == 131072
+    assert ".watch(callback)" in full["sections"]["browser_sdk"]
     bad = await client.get("/api/micro-applications/contract?section=nope", headers=bearer(user))
     assert bad.status_code == 422
     _, r = await _plan_and_apply(client, user)
@@ -553,7 +555,7 @@ def test_runtime_state_follows_the_live_broker():
     from datetime import UTC, datetime, timedelta
 
     from app.models import MicroAppEnvironment
-    from app.services.micro_applications.status import _runtime
+    from app.services.micro_applications.status import runtime_view
 
     env = MicroAppEnvironment(
         desired_state="enabled", updated_at=datetime.now(UTC) - timedelta(hours=1)
@@ -566,9 +568,9 @@ def test_runtime_state_follows_the_live_broker():
         queued=0,
         open_connections=2,
     )
-    assert _runtime(env, fresh, "b1")["state"] == "ready"
+    assert runtime_view(env, fresh, "b1")["state"] == "ready"
     # A newer broker never served the app: nothing runs for it.
-    assert _runtime(env, fresh, "b2")["state"] == "sleeping"
+    assert runtime_view(env, fresh, "b2")["state"] == "sleeping"
     stale = MicroAppStats(
         runtime_state="ready",
         runtime_sampled_at=datetime.now(UTC) - timedelta(minutes=5),
@@ -578,9 +580,9 @@ def test_runtime_state_follows_the_live_broker():
         open_connections=0,
     )
     # No broker heartbeat and an old sample: honestly unknown.
-    assert _runtime(env, stale, None)["state"] == "unknown"
+    assert runtime_view(env, stale, None)["state"] == "unknown"
     env.desired_state = "suspended"
-    assert _runtime(env, fresh, "b1")["state"] == "suspended"
+    assert runtime_view(env, fresh, "b1")["state"] == "suspended"
 
 
 @needs_pg

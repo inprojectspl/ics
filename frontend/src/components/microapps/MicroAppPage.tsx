@@ -12,14 +12,17 @@ import { MicroAppAccess } from "./MicroAppAccess";
 import { MicroAppData } from "./MicroAppData";
 import { MicroAppLogs } from "./MicroAppLogs";
 import { MicroAppOverview } from "./MicroAppOverview";
+import { MicroAppSheets } from "./MicroAppSheets";
 import { microAppKey } from "./useMicroAppControl";
 
-type Tab = "app" | "data" | "access" | "logs";
+type Tab = "app" | "data" | "access" | "sheets" | "logs";
 
 const TABS: ReadonlyArray<{ key: Tab; label: MessageKey; allowed: (app: MicroApp) => boolean }> = [
   { key: "app", label: "microapps.tab.app", allowed: () => true },
   { key: "data", label: "microapps.tab.data", allowed: () => true },
   { key: "access", label: "microapps.tab.access", allowed: (a) => a.rights.manage_access },
+  // Configuring the link needs manage_access, running the sync control.
+  { key: "sheets", label: "microapps.tab.sheets", allowed: (a) => a.rights.control || a.rights.manage_access },
   // The same rights as the logs endpoint.
   { key: "logs", label: "microapps.tab.logs", allowed: (a) => a.rights.control || a.rights.publish },
 ];
@@ -82,6 +85,7 @@ export function MicroAppPage({ assetId, title, base }: { assetId: string; title:
           <div className={`${column} pt-8 pb-16`}>
             {tab === "app" && <MicroAppOverview app={a} />}
             {tab === "access" && <MicroAppAccess assetId={assetId} />}
+            {tab === "sheets" && <MicroAppSheets assetId={assetId} base={base} />}
             {tab === "logs" && <MicroAppLogs assetId={assetId} />}
           </div>
         )

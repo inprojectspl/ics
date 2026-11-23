@@ -68,7 +68,7 @@ function projection(fields) {
   return fields.map(quoteIdent).join(", ");
 }
 
-function readFieldsOf(rule, collection) {
+export function readFieldsOf(rule, collection) {
   return rule.readFields ?? collection.allFields();
 }
 
@@ -116,12 +116,15 @@ function decodeCursor(ctx, binding, cursor) {
   return parsed.v;
 }
 
-function parseSort(sort, collection) {
-  const raw = sort ?? "-created_at";
-  const desc = raw.startsWith("-");
-  const field = desc ? raw.slice(1) : raw;
+// Only fields the rule lets the caller read: an order (and the cursor, which
+// carries the last sort value) must not reveal a hidden one. Without `sort`
+// the newest come first, or the id order when `created_at` is hidden.
+function parseSort(sort, collection, readable) {
+  if (sort == null) return readable.has("created_at") ? { field: "created_at", desc: true } : { field: "id", desc: false };
+  const desc = sort.startsWith("-");
+  const field = desc ? sort.slice(1) : sort;
   const type = collection.fieldType(field);
-  if (!type || type.type === "json") throw new ValidationError("/sort", "field cannot be sorted");
+  if (!type || type.type === "json" || !readable.has(field)) throw new ValidationError("/sort", "field cannot be sorted");
   return { field, desc };
 }
 
@@ -138,10 +141,11 @@ export async function list(client, ctx, collection, rule, query) {
   const limit = query.limit ?? DEFAULT_LIMIT;
   if (!Number.isInteger(limit) || limit < 1 || limit > MAX_LIMIT) throw new ValidationError("/limit", `must be 1..${MAX_LIMIT}`);
   const readFields = readFieldsOf(rule, collection);
+  const readable = new Set(readFields);
   const filters = query.filters ?? [];
-  const sort = parseSort(query.sort, collection);
+  const sort = parseSort(query.sort, collection, readable);
   const sql = new Sql();
-  const where = [...scopeClauses(sql, rule, ctx.actorId, collection), ...filterClauses(sql, collection, filters, new Set(collection.allFields()))];
+  const where = [...scopeClauses(sql, rule, ctx.actorId, collection), ...filterClauses(sql, collection, filters, readable)];
   const binding = cursorKey(ctx, rule, filters, query.sort ?? null);
   if (query.cursor) {
     const [value, id] = decodeCursor(ctx, binding, query.cursor);
@@ -174,18 +178,27 @@ async function audit(client, ctx, action, collection, recordId, details = {}) {
   );
 }
 
+// The transaction (gateway.transact) collects what it wrote and announces
+// it to realtime watchers only after COMMIT; a rollback announces nothing.
+function markChanged(ctx, collection) {
+  ctx.changed?.add(collection.name);
+}
+
 function assertRoom(ctx) {
   if (ctx.dataFull) throw new DataError(507, "app_data_quota_exceeded", "the owner's micro-application data quota is full; delete records to make room");
 }
 
-export async function insert(client, ctx, collection, rule, data, { returnFields } = {}) {
+/** `id`: only the broker admin API passes one (ICS names a record it creates
+ * from a sheet before the commit); apps never choose ids. */
+export async function insert(client, ctx, collection, rule, data, { returnFields, id: givenId } = {}) {
   assertRoom(ctx);
   collection.checkWrite(data, rule.writeFields, { partial: false, allowedValues: rule.allowedValues });
   for (const [field, value] of Object.entries(rule.conditions ?? {})) {
     // An insert under a condition must create a row that satisfies it.
     if (Object.hasOwn(data, field) && data[field] !== value) throw new ValidationError(`/${escapePointer(field)}`, "value is not allowed for this operation");
   }
-  const id = crypto.randomUUID();
+  if (givenId !== undefined && !isUuid(givenId)) throw new ValidationError("/id", "must be a UUID");
+  const id = givenId ?? crypto.randomUUID();
   const sql = new Sql();
   const cols = ["id", "created_by"];
   const vals = [sql.bind(id), sql.bind(ctx.actorId)];
@@ -196,6 +209,7 @@ export async function insert(client, ctx, collection, rule, data, { returnFields
   const ret = returnFields ?? rule.returnFields ?? ["id", "revision"];
   const res = await client.query(`INSERT INTO ${collection.table} (${cols.join(", ")}) VALUES (${vals.join(", ")}) RETURNING ${projection(ret)}`, sql.params);
   await audit(client, ctx, "insert", collection, id, { fields: Object.keys(data) });
+  markChanged(ctx, collection);
   return res.rows[0];
 }
 
@@ -232,6 +246,7 @@ export async function update(client, ctx, collection, rule, id, patch, ifRevisio
   const res = await client.query(`UPDATE ${collection.table} SET ${sets.join(", ")} WHERE ${where.join(" AND ")} RETURNING ${projection(ret)}`, sql.params);
   if (!res.rows[0]) throw await explainMiss(client, ctx, collection, rule, id, ifRevision);
   await audit(client, ctx, "update", collection, id, { fields: Object.keys(patch), fromRevision: ifRevision });
+  markChanged(ctx, collection);
   return res.rows[0];
 }
 
@@ -243,6 +258,7 @@ export async function remove(client, ctx, collection, rule, id, ifRevision) {
   const res = await client.query(`DELETE FROM ${collection.table} WHERE ${where.join(" AND ")} RETURNING id`, sql.params);
   if (!res.rows[0]) throw await explainMiss(client, ctx, collection, rule, id, ifRevision);
   await audit(client, ctx, "delete", collection, id, { revision: ifRevision });
+  markChanged(ctx, collection);
 }
 
 export async function count(client, ctx, collection, rule, filters) {

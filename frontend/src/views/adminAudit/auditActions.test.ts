@@ -16,7 +16,10 @@ describe("auditCategory", () => {
     ["project_member_kicked", "projects"],
     ["asset_project_changed", "projects"],
     ["binding_sync_failed", "integrations"],
+    ["google_connected", "integrations"],
+    ["sheet_sync_applied", "integrations"],
     ["user_role_changed", "admin"],
+    ["user_sheet_rows_limit_changed", "admin"],
     ["user_locked_by_admin", "admin"],
     ["user_reinvited", "admin"],
     ["user_invited", "admin"],
@@ -40,6 +43,8 @@ describe("isAlarm", () => {
 describe("labels", () => {
   it("names known actions and fields, and falls back to the code", () => {
     expect(actionLabel("share_created")).toBe(t("auditAction.share_created"));
+    expect(actionLabel("user_sheet_rows_limit_changed")).toBe(t("auditAction.user_sheet_rows_limit_changed"));
+    expect(fieldLabel("to_rows")).toBe(t("auditField.to_rows"));
     expect(actionLabel("not_a_real_action")).toBe("not_a_real_action");
     expect(fieldLabel("asset_id")).toBe(t("auditField.asset_id"));
     expect(fieldLabel("mystery_field")).toBe("mystery_field");

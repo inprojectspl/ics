@@ -6,7 +6,7 @@ import crypto from "node:crypto";
 import * as data from "./data.js";
 import { HttpError } from "./http.js";
 
-async function readerContext(gateway, { assetHex, environment, userId }, prefix) {
+export async function readerContext(gateway, { assetHex, environment, userId }, prefix) {
   const requestId = `${prefix}_${crypto.randomBytes(9).toString("base64url")}`;
   const auth = await gateway.ics.authorize(assetHex, environment, userId, null);
   if (!auth.found || auth.deleted) throw new HttpError(404, "not_found", "application not found");
@@ -16,7 +16,8 @@ async function readerContext(gateway, { assetHex, environment, userId }, prefix)
   const app = gateway.apps.get(assetHex, environment);
   await gateway.apps.sync(app, auth);
   const { bundle, model } = await gateway.apps.model(auth.release.id);
-  return { target: { assetHex, environment, host: null }, auth, app, bundle, model, requestId, permissions: new Set(auth.permissions) };
+  // `platform`: ICS reads and writes, never counted as use of the app.
+  return { target: { assetHex, environment, host: null }, auth, app, bundle, model, requestId, permissions: new Set(auth.permissions), platform: true };
 }
 
 /**

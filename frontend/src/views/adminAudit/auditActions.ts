@@ -24,13 +24,13 @@ export const CATEGORY_LABEL: Record<AuditCategory, MessageKey> = {
   integrations: "adminAudit.category.integrations",
 };
 
-const ADMIN_USER_ACTIONS = /^user_(role|quota|bundle_limit|autobypass|display_name)_changed$|^user_.*_by_admin$|^user_reinvited$/;
+const ADMIN_USER_ACTIONS = /^user_(role|quota|bundle_limit|sheet_rows_limit|autobypass|display_name)_changed$|^user_.*_by_admin$|^user_reinvited$/;
 
 /** Category from the action code; the vocabulary is `AuditAction` in `app/constants.py`. */
 export function auditCategory(action: string): AuditCategory {
   if (action.startsWith("share_") || action.startsWith("asset_share_") || action.startsWith("asset_project_share_")) return "sharing";
   if (action.startsWith("project_") || action === "asset_project_changed") return "projects";
-  if (action.startsWith("binding_")) return "integrations";
+  if (action.startsWith("binding_") || action.startsWith("google_") || action.startsWith("sheet_")) return "integrations";
   if (
     ADMIN_USER_ACTIONS.test(action) ||
     action === "user_invited" ||

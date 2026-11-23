@@ -241,6 +241,9 @@ class MicroAppStats(Base):
     inflight: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     queued: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     open_connections: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Open realtime sockets of the app and the distinct people behind them.
+    realtime_sockets: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    realtime_people: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     last_used_at: Mapped[datetime | None] = mapped_column(TS)
     last_error_code: Mapped[str | None] = mapped_column(String(64))
     last_error_at: Mapped[datetime | None] = mapped_column(TS)

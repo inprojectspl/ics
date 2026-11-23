@@ -35,6 +35,8 @@ OAUTH_AUTHORIZE = RateLimit("oauth_authorize", limit=30, window_seconds=60)
 
 # MCP endpoints, per user: catches a runaway agent loop, not a human.
 MCP_API = RateLimit("mcp_api", limit=600, window_seconds=60)
+# Each Google Sheets sync step reads the whole sheet (ADR-0031).
+SHEETS_SYNC = RateLimit("sheets_sync", limit=30, window_seconds=60)
 
 # Personal access tokens (ADR-0020): the same budget as MCP traffic, in a
 # bucket of its own so a local script does not eat the agent's quota.

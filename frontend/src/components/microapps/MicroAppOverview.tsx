@@ -50,6 +50,11 @@ export function MicroAppOverview({ app }: { app: MicroApp }) {
               {rt.inflight > 0 ? ` · ${t("microapps.inflight", { n: rt.inflight })}` : ""}
             </span>
           </div>
+          <div className="text-meta text-text-secondary" data-field="live-people">
+            {rt.realtime.people > 0
+              ? tn("microapps.live.people", rt.realtime.people, { tabs: tn("microapps.live.tabs", rt.realtime.sockets) })
+              : t("microapps.live.nobody")}
+          </div>
           {rt.sampled_at && (
             <div className="text-meta text-text-tertiary">{t("microapps.sampled", { when: formatRelative(rt.sampled_at) })}</div>
           )}

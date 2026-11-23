@@ -37,6 +37,7 @@ def _user_row(u: User, *, asset_count: int = 0, asset_bytes: int = 0) -> dict:
         "storage_quota_bytes": u.storage_quota_bytes,
         "bundle_max_bytes": u.bundle_max_bytes,
         "microapp_data_max_bytes": u.microapp_data_max_bytes,
+        "sheet_max_rows": u.sheet_max_rows,
         "html_autobypass": u.html_autobypass,
         "asset_count": asset_count,
         "asset_bytes": asset_bytes,

@@ -29,9 +29,19 @@ x-backend-env: &backend-env
   ICS_HTML_VIEWER_BASE: "https://html.ics.localhost:8443"
   # Tunnel origins, when shared: ",https://<ics tunnel host>" (empty otherwise).
   ICS_CORS_ORIGINS: "https://ics.localhost:8443${ICS_PUBLIC_EXTRA_ORIGINS:-}"
-  ICS_ALLOWED_DOMAINS: "example.com"
-  ICS_GOOGLE_OIDC_CLIENT_ID: ""
-  ICS_GOOGLE_OIDC_CLIENT_SECRET: ""
+  # Your own domain after a comma lets Google sign-in admit your account.
+  ICS_ALLOWED_DOMAINS: "${ICS_ALLOWED_DOMAINS:-example.com}"
+  # Google sign-in, optional: the same Desktop client as the Sheets link
+  # works, through the same loopback bounce. Empty id: sign-in is off.
+  ICS_GOOGLE_OIDC_CLIENT_ID: "${ICS_GOOGLE_OIDC_CLIENT_ID:-}"
+  ICS_GOOGLE_OIDC_CLIENT_SECRET: "${ICS_GOOGLE_OIDC_CLIENT_SECRET:-}"
+  ICS_GOOGLE_OIDC_REDIRECT_URI: "http://127.0.0.1:8480/api/auth/google/callback"
+  # Google Sheets links (ADR-0031): an OAuth client of type "Desktop app"
+  # accepts the loopback redirect below, which the proxy bounces to the
+  # backend over HTTPS. Empty id: the feature is off.
+  ICS_GOOGLE_SHEETS_CLIENT_ID: "${ICS_GOOGLE_SHEETS_CLIENT_ID:-}"
+  ICS_GOOGLE_SHEETS_CLIENT_SECRET: "${ICS_GOOGLE_SHEETS_CLIENT_SECRET:-}"
+  ICS_GOOGLE_SHEETS_REDIRECT_URI: "http://127.0.0.1:8480/api/integrations/google/callback"
   ICS_OAUTH_ISSUER: "https://ics.localhost:8443"
   ICS_OAUTH_PRIVATE_KEY_PEM_PATH: "/run/ics-local/oauth.pem"
   ICS_OAUTH_KID: "ics-microapps-local"
@@ -187,6 +197,15 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Automatic Google Sheets syncs on their own queue (ADR-0031, ADR-0032).
+  sheets-worker:
+    <<: *backend
+    command: ["arq", "--watch", "/app/app", "app.jobs.sheets_worker.WorkerSettings"]
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./frontend
@@ -233,6 +252,11 @@ services:
       ICS_MICROAPPS_DB_MAX_CONNECTIONS: "24"
       ICS_MICROAPPS_IDLE_SECONDS: "600"
       ICS_MICROAPPS_REDIS_URL: "redis://redis:6379/1"
+      ICS_MICROAPPS_RT_MAX_MESSAGE_BYTES: "131072"
+      ICS_MICROAPPS_RT_MESSAGES_PER_SECOND: "30"
+      ICS_MICROAPPS_RT_MAX_SOCKETS_PER_APP: "2000"
+      ICS_MICROAPPS_RT_MAX_SOCKETS_PER_PERSON: "20"
+      ICS_MICROAPPS_RT_MAX_SUBSCRIPTIONS: "50"
       ICS_MICROAPPS_PUBLIC_ALIASES: "${ICS_MICROAPPS_PUBLIC_ALIASES:-}"
       ICS_MICROAPPS_PUBLIC_ICS_URL: "${ICS_MICROAPPS_PUBLIC_ICS_URL:-}"
     volumes:
@@ -272,6 +296,8 @@ services:
     ports:
       - "127.0.0.1:8443:8443"
       - "[::1]:8443:8443"
+      # Loopback redirect of the Google Sheets connection (Desktop OAuth client).
+      - "127.0.0.1:8480:8480"
       # Plain HTTP for a local tunnel agent only (loopback).
       - "127.0.0.1:8481:8481"
       - "127.0.0.1:8482:8482"

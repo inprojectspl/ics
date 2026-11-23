@@ -48,3 +48,18 @@ def is_host_locked_https(url: str, hosts: Collection[str], suffixes: tuple[str, 
     if port not in (None, 443):
         return False
     return host in hosts or (bool(suffixes) and host.endswith(suffixes))
+
+
+def safe_return_path(path: str | None) -> str | None:
+    """`path` when it is an app-relative path a browser cannot read as another
+    origin: one leading slash, no backslash (browsers treat it as a slash),
+    no control characters (some are ignored). None otherwise."""
+    if (
+        not path
+        or not path.startswith("/")
+        or path.startswith("//")
+        or "\\" in path
+        or any(ord(char) < 32 or ord(char) == 127 for char in path)
+    ):
+        return None
+    return path

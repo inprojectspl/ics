@@ -42,6 +42,28 @@ class Settings(BaseSettings):
     secret_key: str = _DEFAULT_SECRET_KEY
     google_oidc_client_id: str = ""
     google_oidc_client_secret: str = ""
+    # Empty: {base_url}/api/auth/google/callback. Set when Google cannot reach
+    # base_url directly, e.g. a loopback redirect of a Desktop client locally.
+    google_oidc_redirect_uri: str = ""
+    # Google Sheets links of micro-applications (ADR-0031): a separate OAuth
+    # client, since it asks for the Sheets scope and keeps a refresh token.
+    # Empty id: the feature is off. Empty redirect: {base_url}/api/integrations/google/callback.
+    google_sheets_client_id: str = ""
+    google_sheets_client_secret: str = ""
+    google_sheets_redirect_uri: str = ""
+    # Hard cap on rows per link whatever a user's limit says: a preview keeps
+    # the whole plan in one row and the broker holds the records in memory.
+    google_sheets_max_rows: int = 50000
+    # Automatic syncs (ADR-0032): how often the sheet is read for edits typed
+    # into it while the app is awake, and while people have it open. App
+    # changes go out within seconds; a sleeping app's sheet is not read.
+    google_sheets_poll_seconds: int = 120
+    google_sheets_active_poll_seconds: int = 30
+    # Sync jobs have their own Arq queue and worker
+    # (`arq app.jobs.sheets_worker.WorkerSettings`), so a backlog of
+    # syncs never delays publications or notifications.
+    google_sheets_queue_name: str = "arq:sheets"
+    google_sheets_max_jobs: int = 4
 
     dev_stub_sso: bool = False
     allow_self_register: bool = False

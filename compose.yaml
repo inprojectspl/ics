@@ -24,6 +24,16 @@ x-smtp-env: &smtp-env
   ICS_SMTP_PASSWORD: ${ICS_SMTP_PASSWORD:-}
   ICS_SMTP_USE_TLS: ${ICS_SMTP_USE_TLS:-false}
 
+x-google-sheets-env: &google-sheets-env
+  # Google Sheets links of micro-applications (ADR-0031), optional.
+  ICS_GOOGLE_SHEETS_CLIENT_ID: ${ICS_GOOGLE_SHEETS_CLIENT_ID:-}
+  ICS_GOOGLE_SHEETS_CLIENT_SECRET: ${ICS_GOOGLE_SHEETS_CLIENT_SECRET:-}
+  ICS_GOOGLE_SHEETS_REDIRECT_URI: ${ICS_GOOGLE_SHEETS_REDIRECT_URI:-}
+  ICS_GOOGLE_SHEETS_MAX_ROWS: ${ICS_GOOGLE_SHEETS_MAX_ROWS:-50000}
+  ICS_GOOGLE_SHEETS_POLL_SECONDS: ${ICS_GOOGLE_SHEETS_POLL_SECONDS:-120}
+  ICS_GOOGLE_SHEETS_ACTIVE_POLL_SECONDS: ${ICS_GOOGLE_SHEETS_ACTIVE_POLL_SECONDS:-30}
+  ICS_GOOGLE_SHEETS_MAX_JOBS: ${ICS_GOOGLE_SHEETS_MAX_JOBS:-4}
+
 x-notifications-env: &notifications-env
   # Notifications (ADR-0023). Web Push is off without the VAPID key.
   ICS_VAPID_PRIVATE_KEY: ${ICS_VAPID_PRIVATE_KEY:-}
@@ -96,6 +106,7 @@ services:
       # Google OIDC (optional).
       ICS_GOOGLE_OIDC_CLIENT_ID: ${ICS_GOOGLE_OIDC_CLIENT_ID:-}
       ICS_GOOGLE_OIDC_CLIENT_SECRET: ${ICS_GOOGLE_OIDC_CLIENT_SECRET:-}
+      ICS_GOOGLE_OIDC_REDIRECT_URI: ${ICS_GOOGLE_OIDC_REDIRECT_URI:-}
 
       # OAuth 2.1 authorization server for MCP. Required when MCP is enabled:
       # generate an RSA key with `openssl genrsa -out priv.pem 2048` and pass
@@ -119,7 +130,7 @@ services:
       ICS_LOCKOUT_MINUTES: ${ICS_LOCKOUT_MINUTES:-15}
 
       # SMTP (optional) and notifications: shared with `arq-worker`.
-      <<: [*smtp-env, *notifications-env]
+      <<: [*smtp-env, *notifications-env, *google-sheets-env]
     volumes:
       # Used only with ICS_STORAGE_URL=fs://...; harmless with S3/R2.
       - asset_storage:/data/storage
@@ -157,7 +168,7 @@ services:
     command: ["arq", "app.jobs.worker.WorkerSettings"]
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    environment:
+    environment: &worker-env
       # Same DB and Redis as the backend, so everything stays in one process group.
       ICS_DATABASE_URL: ${ICS_DATABASE_URL:-postgresql+asyncpg://ics:${ICS_PG_PASSWORD}@host.docker.internal:5432/ics}
       ICS_REDIS_URL: ${ICS_REDIS_URL:-redis://redis:6379/0}
@@ -197,6 +208,15 @@ services:
   ocr-worker:
     <<: *worker
     command: ["arq", "app.jobs.ocr_worker.OcrWorkerSettings"]
+
+  # Automatic Google Sheets syncs (ADR-0031, ADR-0032): an own queue, so a
+  # burst of syncs never delays publications or notifications. Idle without
+  # micro-applications or a Sheets OAuth client.
+  sheets-worker:
+    <<: *worker
+    command: ["arq", "app.jobs.sheets_worker.WorkerSettings"]
+    environment:
+      <<: [*worker-env, *google-sheets-env]
 
   # The render cache (ICS_RENDER_CACHE_REDIS_URL): rebuildable, so it evicts
   # the least recently used entries at its limit and keeps nothing on disk.

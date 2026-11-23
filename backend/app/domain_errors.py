@@ -49,3 +49,7 @@ class ConflictError(DomainError):
 
 class LimitExceededError(DomainError):
     """A size, count or quota limit would be exceeded."""
+
+
+class UnavailableError(DomainError):
+    """A dependency did not answer; the same request may be repeated."""

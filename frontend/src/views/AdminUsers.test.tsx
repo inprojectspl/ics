@@ -61,6 +61,7 @@ function user(over: Partial<AdminUser> = {}): AdminUser {
     storage_quota_bytes: 1000,
     bundle_max_bytes: 100,
     microapp_data_max_bytes: 1000,
+    sheet_max_rows: 5000,
     html_autobypass: false,
     asset_count: 1,
     asset_bytes: 500,

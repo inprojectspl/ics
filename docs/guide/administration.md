@@ -102,6 +102,8 @@ You cannot lock or delete your own account, and the last administrator cannot be
 
 When micro-applications are enabled, the account details also show the **Micro-application data limit**: the total data of all [micro-applications](micro-applications.md#data-limit) the person owns, 100 MB by default. Once it is reached, their apps refuse new and changed records until some are deleted; reading and deleting still work. Changing it is recorded in the audit log.
 
+When Google Sheets links are configured, the account details also show the **Google Sheets row limit**: how many rows a sync of a [Google Sheets link](micro-applications.md#google-sheets) of the person's apps may handle, 5000 by default. The server's configuration caps it for everyone. Changing it is recorded in the audit log.
+
 The storage limit is the bar people see at the bottom of their sidebar. Independently of these limits, the server has a size limit for a single upload set in its configuration.
 
 ## Approve HTML bundles in the review queue

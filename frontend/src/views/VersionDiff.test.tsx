@@ -162,6 +162,7 @@ describe("VersionDiff", () => {
         app_changes: [
           { area: "role", name: "reviewer", change: "changed", detail: "+requests.export" },
           { area: "permission", name: "requests.export", change: "added", detail: "" },
+          { area: "realtime_channel", name: "board", change: "added", detail: "" },
         ],
       }),
     );
@@ -171,6 +172,8 @@ describe("VersionDiff", () => {
     expect(section).toHaveTextContent("reviewer");
     expect(section).toHaveTextContent("+requests.export");
     expect(section).toHaveTextContent("permission");
+    expect(section).toHaveTextContent("live channel");
+    expect(section).toHaveTextContent("board");
   });
 
   it("says when a micro-application's roles and data did not change", async () => {

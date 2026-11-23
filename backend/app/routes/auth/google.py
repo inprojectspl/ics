@@ -22,6 +22,7 @@ from app.redis_client import get_redis
 from app.services.account_lock import locked_by_admin
 from app.util import ip_hash as compute_ip_hash
 from app.util import now as utc_now
+from app.util import safe_return_path
 
 from ._router import router
 
@@ -31,14 +32,7 @@ _RETURN_TTL = 600
 def _return_url(settings: Settings, path: str | None) -> str | None:
     if path is None:
         return None
-    # Browsers interpret backslashes as slashes and ignore some control
-    # characters. Reject them before resolving a user-supplied destination.
-    if (
-        not path.startswith("/")
-        or path.startswith("//")
-        or "\\" in path
-        or any(ord(char) < 32 or ord(char) == 127 for char in path)
-    ):
+    if safe_return_path(path) is None:
         raise ApiError(status.HTTP_400_BAD_REQUEST, "invalid_return_path", "invalid return path")
     base = urlsplit(settings.base_url)
     target = urljoin(f"{settings.base_url.rstrip('/')}/", path)
@@ -76,7 +70,9 @@ async def google_login(
         # Keep each return under its OIDC state so a different login request
         # cannot overwrite the destination later consumed by this callback.
         await get_redis().setex(f"google_login_return:{state}", _RETURN_TTL, target)
-    redirect_uri = f"{settings.base_url}/api/auth/google/callback"
+    redirect_uri = (
+        settings.google_oidc_redirect_uri or f"{settings.base_url}/api/auth/google/callback"
+    )
     return await get_oauth().google.authorize_redirect(request, redirect_uri, state=state)
 
 

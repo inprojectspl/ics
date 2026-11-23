@@ -108,7 +108,7 @@ Every app runs on its own origin, `https://<name>.<ICS_MICROAPPS_APP_HOST_SUFFIX
 | `GET /api/v1/session` | the person, the app and its release, the person's permissions and roles, the CSRF token |
 | `GET /api/v1/schema` | the collections and fields the person may use |
 | `GET /api/v1/openapi.json` | an OpenAPI description of the app's API for this person |
-| `GET /api/v1/collections/{name}?limit=&cursor=&sort=&filters=` | list records the person may read |
+| `GET /api/v1/collections/{name}?limit=&cursor=&sort=&filters=` | list records the person may read; `sort` and `filters` take only fields of the list rule's `readFields` (without `sort`: newest first, or by id when `created_at` is not readable) |
 | `GET /api/v1/collections/{name}/{id}` | one record, with an `ETag` of its revision |
 | `POST /api/v1/collections/{name}` | create a record |
 | `PATCH /api/v1/collections/{name}/{id}` | change a record |
@@ -127,6 +127,28 @@ Every generic operation is allowed only by the permission the manifest names for
 
 Notable answers: `401 app_session_required` (open the app through ICS), `403 forbidden` or `csrf_failed`, `422 validation_failed` with a JSON Pointer, `429 rate_limited` with `Retry-After`, `507 app_data_quota_exceeded` (the owner's data limit is full; reads and deletes still work), `503 app_suspended`, `503 circuit_open` (the app failed repeatedly; wait for `Retry-After`), `504 execution_deadline`, `cpu_budget` or `commit_unknown` (retry with the same `Idempotency-Key`).
 
+## Realtime
+
+An open page can hear about changes and talk to other open pages of the same app ([ADR-0032](decisions/0032-micro-application-realtime.md)). The SDK opens one WebSocket per page at `/__ics/realtime` on first use, signed in with the app session, and reconnects by itself.
+
+```js
+const unwatch = ics.collection("requests").watch(() => reload());
+const room = ics.realtime.channel("board/" + boardId);
+room.on("message", (data, from) => {});    // from: {id, name}
+room.on("presence", (members) => {});      // [{id, name, n}], channels with presence
+room.send({ x, y });
+room.leave();
+ics.realtime.on("status", (s) => {});      // "connecting" | "open" | "closed"
+ics.realtime.on("error", (e) => {});
+```
+
+- `watch(callback)` calls back when the collection changed (people, handlers or a Google Sheets sync wrote to it), at most every 250 ms, and once after each reconnect. The signal names only the collection: the page fetches again under its own rules. It needs the collection's `list` permission and nothing in the manifest.
+- Channels are declared in the manifest: `"realtime": {"channels": {"board": {"permission": "board.use", "presence": true, "maxMessageBytes": 8192, "messagesPerSecond": 10}}}`. The name follows `^[a-z][a-z0-9_]{0,47}$`, `permission` is one of the app's permissions, `maxMessageBytes` 1 to 131072 (65536 when absent), `messagesPerSecond` 1 to 1000. A page subscribes to `<name>` or a room `<name>/<key>` (`key`: 1 to 64 of `A-Za-z0-9_-`) and needs the permission to subscribe and send.
+- A message goes to the other subscribers of the same room, never back to its sender. Nothing is stored and delivery is best effort: a page that reconnects fetches its data again instead of receiving what it missed.
+- A plan lists added, removed and changed channels in `app_changes` (area `realtime_channel`).
+
+`GET /api/micro-applications/{asset_id}` reports `runtime.realtime: {sockets, people}`: the open pages of the app and the people behind them, from the broker's last report (0 when the report is older than 45 seconds).
+
 ## Limits
 
 | Limit | Value |
@@ -142,5 +164,28 @@ Notable answers: `401 app_session_required` (open the app through ICS), `403 for
 | Idle time before sleep | 60 to 3600 s, set by the app |
 | Data of all apps of one owner | 100 MB by default, set per user by an administrator |
 | Requests | 20 per second per person and app, 100 per second per share link, by default |
+| Realtime | 20 channels per app; a message 64 KiB by default, at most 128 KiB; 30 messages a second per socket (burst 60); 20 sockets per person and app; 50 subscriptions per socket |
 
 The values for a server are in the `limits` section of the contract.
+
+## Google Sheets links
+
+A collection of an app can be linked to a tab of a Google spreadsheet and synced on request or automatically ([ADR-0031](decisions/0031-google-sheets-links.md); automatic syncs follow the app's activity, [ADR-0032](decisions/0032-micro-application-realtime.md)). The link is set up by an agent through ICS-MCP (`ics_sheets_inspect`, `ics_sheets_link`); the panel connects Google and runs syncs. Both use the same API; the actor is always the signed-in person. The sheet needs no id column: rows match records by an optional `key_field` or by content.
+
+| Request | Purpose |
+|---|---|
+| `GET /api/integrations/google` | `{enabled, connected, email}` of the caller's Google connection |
+| `GET /api/integrations/google/connect?next=` | starts the consent (302 to Google); back at `next` with `?google=connected` or an error code |
+| `DELETE /api/integrations/google` | disconnect the caller's Google account |
+| `POST /api/integrations/google/inspect` | `{spreadsheet, tab?}`: tabs, headers and per column a proposed field name and type, fill rate, uniqueness and samples, read with the caller's own Google account |
+| `GET /api/micro-applications/{id}/sheets` | the link, the caller's rights and Google connection, `row_limit`, recent operations |
+| `PUT /api/micro-applications/{id}/sheets` | `{collection, spreadsheet, sheet_title, columns: [{field, header, owner}], account_mode, key_field?, paused?, auto_sync?}`: create or change the link (owner-like role; `owner_account` only by the asset owner); `expected_revision` guards concurrent edits |
+| `DELETE /api/micro-applications/{id}/sheets` | remove the link |
+| `POST /api/micro-applications/{id}/sheets/preview` | read both sides and store a preview (needs `app.control`) |
+| `GET /api/micro-applications/{id}/sheets/operations/{op}` | one operation; its details only for the person who made it |
+| `POST /api/micro-applications/{id}/sheets/operations/{op}/apply` | `{decisions: {"<record id>:<field>": "app" \| "sheet"}}`; repeat the same call after a `503` |
+| `POST /api/micro-applications/{id}/sheets/operations/{op}/check` | read back an `uncertain` write; never writes |
+| `POST /api/micro-applications/{id}/sheets/request-access` | `per_user` links: notify the owner to share the file (once an hour) |
+
+Errors that need the person carry `action`: `connect_google` (`google_not_connected`, `google_grant_invalid`) or `request_access` (`google_no_access`, `google_not_found`). `409 sheet_changed`, `app_changed` and `sheet_link_changed` mean preview again; `app_rule_refused` means the app's rules do not let the record change now.
+
