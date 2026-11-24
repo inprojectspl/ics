@@ -2,127 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 
 import { setLocale } from "../../lib/i18n";
-import { renderWithClient } from "../../test-utils";
-import { ConfirmProvider } from "../ConfirmDialog";
-import { MicroAppPage } from "./MicroAppPage";
-
-const RIGHTS = { use: true, publish: false, control: true, manage_access: true, prepare: false };
-
-function app(rights: Partial<typeof RIGHTS> = {}) {
-  return {
-    asset_id: "a1", slug: "s1", title: "Requests", description: null, environment: "prod",
-    app_url: "https://k7m2q9x4.apps.example/", owner: { id: "u", display_name: "Alice" }, project: null,
-    desired_state: "enabled", generation: 3, package_version: 2,
-    active_release: { id: "r1", package_version: 2, digest: "sha256:abcdef0123456789", activated_at: null, schema: [1, 1] },
-    last_publication: null,
-    runtime: { state: "sleeping", sampled_at: null, fresh: false, inflight: 0, queued: 0, open_connections: 0, last_used_at: null, last_error: null, breaker_open_until: null, realtime: { sockets: 0, people: 0 } },
-    data: { measured: true, sampled_at: null, bytes: 16384, rows_estimate: 3, tables: 1, schema_version: 1 },
-    rights: { ...RIGHTS, ...rights },
-    suspended_at: null,
-  };
-}
-
-const LINK = {
-  collection: "requests",
-  spreadsheet_id: "1AbCdEfGhIjKlMnOpQrStUvWxYz",
-  spreadsheet_url: "https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/edit",
-  sheet_title: "Requests",
-  key_field: null,
-  columns: [
-    { field: "title", header: "Title", owner: "both" },
-    { field: "status", header: "Status", owner: "sheet" },
-  ],
-  account_mode: "per_user",
-  revision: 4,
-  paused: false,
-  auto_sync: false,
-  auto_checked_at: null,
-  auto_error: null,
-};
-
-function sheets(over: Record<string, unknown> = {}) {
-  return {
-    enabled: true,
-    rights: { configure: true, run: true, owner: false },
-    my_google: { email: "bob@gmail.com" },
-    link: LINK,
-    row_limit: 5000,
-    auto_interval_seconds: 120,
-    operations: [],
-    ...over,
-  };
-}
-
-const PREVIEW = {
-  id: "op1",
-  state: "previewed",
-  google_status: "none",
-  error: null,
-  mine: true,
-  auto: false,
-  created_at: "2026-11-22T10:00:00Z",
-  summary: { imports: 1, exports: 0, conflicts: 2, creates: 0, appends: 0, issues: 1 },
-  result: null,
-  headers: { title: "Title", status: "Status" },
-  updates: [
-    {
-      record_id: "r1",
-      row: 2,
-      import: { status: "done" },
-      export: {},
-      conflicts: [{ field: "title", base: "Old", app: "App title", sheet: "Sheet title" }],
-    },
-    {
-      record_id: "r2",
-      row: 3,
-      import: {},
-      export: {},
-      conflicts: [{ field: "title", base: null, app: "Mine", sheet: "Theirs" }],
-    },
-  ],
-  creates: [],
-  appends: [],
-  issues: [{ kind: "duplicate_key", row: 5, first_row: 2 }],
-};
-
-/** A JSON reply with a status; plain values are answered with 200. */
-class Reply {
-  constructor(
-    readonly status: number,
-    readonly body: unknown,
-  ) {}
-}
-
-type Route = (url: string, init?: RequestInit) => unknown;
-
-function mockFetch(routes: Record<string, Route | unknown>) {
-  const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-    const path = url.split("?")[0] ?? url;
-    const hit = routes[`${init?.method ?? "GET"} ${path}`];
-    if (hit === undefined) return new Response(JSON.stringify({ detail: "not found" }), { status: 404 });
-    const body = typeof hit === "function" ? (hit as Route)(url, init) : hit;
-    if (body instanceof Reply) return new Response(JSON.stringify(body.body), { status: body.status });
-    return new Response(JSON.stringify(body), { status: 200 });
-  });
-  vi.stubGlobal("fetch", fetchMock);
-  return fetchMock;
-}
-
-const sent = (m: ReturnType<typeof mockFetch>, method: string, path: string) =>
-  m.mock.calls.filter(([u, i]) => (i?.method ?? "GET") === method && u.split("?")[0] === path);
-const bodyOf = (m: ReturnType<typeof mockFetch>, method: string, path: string, n = 0) =>
-  JSON.parse(String(sent(m, method, path)[n]?.[1]?.body));
-
-const S = "/api/micro-applications/a1/sheets";
-
-function renderPage(search = "?tab=sheets") {
-  window.history.replaceState({}, "", `/v/s1${search}`);
-  return renderWithClient(
-    <ConfirmProvider>
-      <MicroAppPage assetId="a1" title="Requests" base="/v/s1" />
-    </ConfirmProvider>,
-  );
-}
+import { LINK, MAPPING, PREVIEW, Reply, S, app, bodyOf, mockFetch, renderPage, sent, sheets } from "./sheetsFixtures";
 
 beforeEach(() => setLocale("en", { persist: false }));
 afterEach(() => vi.unstubAllGlobals());
@@ -210,12 +90,13 @@ describe("Google Sheets tab, the link", () => {
   it("shows the link read-only, with the key field and the owner's row limit", async () => {
     mockFetch({
       "GET /api/micro-applications/a1": app(),
-      [`GET ${S}`]: sheets({ link: { ...LINK, key_field: "title", account_mode: "owner_account" }, row_limit: 2500 }),
+      [`GET ${S}`]: sheets({ link: { ...LINK, mappings: [{ ...MAPPING, key_field: "title" }], account_mode: "owner_account" }, row_limit: 2500 }),
     });
     renderPage();
     const open = await screen.findByRole("link", { name: "Open in Google Sheets" });
     expect(open).toHaveAttribute("href", LINK.spreadsheet_url);
-    expect(screen.getByText("requests")).toBeInTheDocument();
+    expect(screen.getByText("Collection requests")).toBeInTheDocument();
+    expect(screen.getByText("Tab: Requests")).toBeInTheDocument();
     expect(screen.getByText(": Edited in the sheet")).toBeInTheDocument();
     expect(screen.getByText("By the Title column (title): its values are unique in the sheet.")).toBeInTheDocument();
     expect(screen.getByText("The owner's account")).toBeInTheDocument();
@@ -338,7 +219,7 @@ describe("Google Sheets tab, the sync", () => {
     const changes = await screen.findByRole("list", { name: "Changes per record" });
     expect(within(changes).getByText("Status: done")).toBeInTheDocument();
     expect(within(changes).getAllByRole("group", { name: "Title: changed in the app and in the sheet" })).toHaveLength(2);
-    expect(screen.getByText("Row 5: the same ID as row 2; the row is skipped.")).toBeInTheDocument();
+    expect(screen.getByText("Row 5: the same ID as in row 2; the row is skipped.")).toBeInTheDocument();
 
     const apply = screen.getByRole("button", { name: "Apply" });
     expect(apply).toBeDisabled();
@@ -360,7 +241,7 @@ describe("Google Sheets tab, the sync", () => {
       "GET /api/micro-applications/a1": app(),
       [`GET ${S}`]: sheets(),
       [`POST ${S}/preview`]: { ...PREVIEW, summary: { imports: 1 }, updates: [{ ...PREVIEW.updates[0], conflicts: [] }], issues: [] },
-      [`POST ${S}/operations/op1/apply`]: { ...PREVIEW, state: "applied", google_status: "uncertain", result: { app_changes: 1 } },
+      [`POST ${S}/operations/op1/apply`]: { ...PREVIEW, state: "applied", google_status: "uncertain", unsettled: true, result: { app_changes: 1 } },
       [`POST ${S}/operations/op1/check`]: { ...PREVIEW, state: "applied", google_status: "confirmed", result: { app_changes: 1 } },
     });
     renderPage();
@@ -376,7 +257,7 @@ describe("Google Sheets tab, the sync", () => {
   it("resumes my unconfirmed write after a reload", async () => {
     mockFetch({
       "GET /api/micro-applications/a1": app(),
-      [`GET ${S}`]: sheets({ operations: [{ ...PREVIEW, state: "applied", google_status: "uncertain", result: { app_changes: 1 } }] }),
+      [`GET ${S}`]: sheets({ operations: [{ ...PREVIEW, state: "applied", google_status: "uncertain", unsettled: true, result: { app_changes: 1 } }] }),
     });
     renderPage();
     expect(await screen.findByRole("button", { name: "Check result" })).toBeInTheDocument();
@@ -432,8 +313,8 @@ describe("Google Sheets tab, the sync", () => {
       [`POST ${S}/preview`]: {
         ...PREVIEW,
         issues: [
-          { kind: "record_not_in_app", row: 7, record_id: "r9" },
-          { kind: "unmatched_row", row: 8 },
+          { kind: "record_not_in_app", collection: "requests", tab: "Requests", row: 7, record_id: "r9" },
+          { kind: "unmatched_row", collection: "requests", tab: "Requests", row: 8 },
         ],
       },
     });
@@ -452,7 +333,7 @@ describe("Google Sheets tab, the sync", () => {
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: "Preview" }));
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("The sheet tab has more rows than the app owner's limit allows.");
+    expect(alert).toHaveTextContent("The linked tabs have more rows together than the app owner's limit allows.");
     expect(alert).toHaveTextContent("The app owner's limit is 5,000 rows.");
   });
 });

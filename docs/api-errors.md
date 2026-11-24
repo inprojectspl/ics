@@ -386,8 +386,17 @@ with `?google=<code>`.
 | `spreadsheet_invalid` | 400 | Not a Google Sheets address or id. |
 | `spreadsheet_already_linked` | 409 | Another application already writes to this spreadsheet. |
 | `collection_not_found` | 400 | The active release has no such collection; `choices` lists them. |
-| `columns_invalid` | 400 | The link needs at least one column. |
-| `key_field_invalid` | 400 | `key_field` is not one of the linked fields. |
+| `columns_invalid` | 400 | A mapping needs at least one column. |
+| `key_field_invalid` | 400 | `key_field` is not one of the mapping's linked fields. |
+| `mappings_invalid` | 400 | A link needs 1 to 20 mappings in `mappings`. |
+| `mapping_duplicate` | 400 | A collection is mapped twice. |
+| `tabs_invalid` | 400 | A mapping needs 1 to 50 tabs. |
+| `tab_duplicate` | 400 | A tab appears twice in one mapping. |
+| `sheet_tab_ambiguous` | 400 (link) / 409 (sync) | A tab belongs to more than one mapping; `tab` names it. |
+| `key_field_required` | 400 | A mapping of several tabs needs `key_field`, unique across them. |
+| `append_tab_required` | 400 | A mapping of several tabs that can add records needs `append_to`, the tab new records go to. |
+| `append_tab_invalid` | 400 | `append_to` is not one of the mapping's tabs. |
+| `tab_field_invalid` | 400 | `tab_field` is not a string field of the collection, or is one of the linked columns. |
 | `auto_sync_needs_owner_account` | 400 | Automatic sync runs on the owner's Google account; it needs `account_mode: owner_account`. |
 | `field_not_found` | 400 | A column names an unknown field (`field` is `columns/<i>`). |
 | `field_type_unsupported` | 400 | A JSON field cannot be linked. |
@@ -402,16 +411,17 @@ with `?google=<code>`.
 | `sheet_link_paused` | 409 | The link is paused. |
 | `sheet_link_outdated` | 409 | A linked field is gone from the active release; fix the link. |
 | `app_not_ready` | 409 | The application has no active release. |
-| `sheet_tab_not_found` | 404 | The spreadsheet has no tab of that name; `tabs` lists them. |
-| `sheet_headers_missing` | 409 | The sheet's first row lacks linked headers; `missing` lists them. |
-| `sheet_headers_duplicate` | 409 | A linked header appears more than once in the first row; `duplicates` lists them. |
-| `sheet_too_large` | 413 | The tab has more rows than the app owner's limit (`limit`; `users.sheet_max_rows`, set by an administrator). |
+| `sheet_tab_not_found` | 404 | The spreadsheet has no such tab (`tab`); `tabs` lists them. |
+| `sheet_headers_missing` | 409 | The first row of a linked tab (`tab`) lacks linked headers; `missing` lists them. |
+| `sheet_headers_duplicate` | 409 | A linked header appears more than once in the first row of a tab (`tab`); `duplicates` lists them. |
+| `sheet_too_large` | 413 | The linked tabs together have more rows than the app owner's limit (`limit`; `users.sheet_max_rows`, set by an administrator). |
 | `collection_too_large` | 413 | The collection has more records the caller can see than the app owner's limit (`limit`). |
 | `sheet_operation_not_found` | 404 | No such operation (or, for apply, no such preview of the caller's). |
 | `sheet_operation_stale` | 409 | The preview went stale; preview again. |
 | `sheet_operation_superseded` | 409 | A newer preview replaced this one. |
 | `sheet_operation_failed` | 409 | The operation failed; preview again. |
 | `sheet_sync_in_progress` | 409 | A sync of this sheet is being applied; previews and link changes wait for it. |
+| `sheet_sync_unsettled` | 409 | The sheet write of an earlier sync (`operation_id`) is not confirmed; check it before another sync plans rows. |
 | `sheet_check_actor_only` | 403 | With each person's own Google account, only the person who ran a sync checks its write. |
 | `decisions_missing` | 400 | Not every conflict has a decision; `undecided` lists them. |
 | `sheet_changed` | 409 | The sheet changed since the preview; nothing was written. |

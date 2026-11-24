@@ -9,10 +9,11 @@ import {
   type SheetIssue,
   type SheetLink,
   type SheetOperation,
+  type SheetPlace,
   type SheetStatus,
   type SheetUpdate,
 } from "../../api/sheets";
-import { extraList, formatApiError } from "../../lib/apiError";
+import { extraList, extraString, formatApiError } from "../../lib/apiError";
 import { formatRelative } from "../../lib/format";
 import { t, tn, type MessageKey } from "../../lib/i18n";
 import { Badge, type BadgeTone } from "../ui/Badge";
@@ -59,9 +60,36 @@ const conflictKey = (recordId: string, field: string) => `${recordId}:${field}`;
 function resumable(ops: SheetOperation[]): SheetOperation | null {
   const last = ops[0];
   if (!last?.mine) return null;
-  const open = last.state === "previewed" || last.state === "applying" || last.google_status === "uncertain";
+  const open = last.state === "previewed" || last.state === "applying" || last.unsettled;
   return open ? last : null;
 }
+
+
+/** How a change names its place: the collection when the link has several,
+ * the tab when there is more than one, and the row in that tab. */
+interface Places {
+  collections: boolean;
+  tabs: boolean;
+}
+
+function placesOf(link: SheetLink): Places {
+  return {
+    collections: link.mappings.length > 1,
+    tabs: link.mappings.reduce((n, m) => n + m.tabs.length, 0) > 1,
+  };
+}
+
+function placeLabel(item: SheetPlace, places: Places): string {
+  const where =
+    item.row === undefined
+      ? (places.tabs && item.tab) || ""
+      : places.tabs && item.tab
+        ? t("microapps.sheets.rowIn", { tab: item.tab, row: item.row })
+        : t("microapps.sheets.row", { row: item.row });
+  return [places.collections ? item.collection : "", where].filter(Boolean).join(" · ");
+}
+
+type HeaderOf = (collection: string, field: string) => string;
 
 function formatValue(value: unknown): string {
   if (value === null || value === undefined || value === "") return t("microapps.sheets.value.empty");
@@ -162,6 +190,7 @@ export function SheetSync({
         {op && (
           <OperationView
             op={op}
+            places={placesOf(link)}
             chosen={chosen}
             busy={busy}
             onDecide={decide}
@@ -209,11 +238,13 @@ function SyncError({
   const limit = error instanceof ApiError && ROW_LIMIT_CODES.has(error.code ?? "") && typeof error.extra.limit === "number" ? error.extra.limit : null;
   const missing = extraList(error, "missing");
   const tabs = extraList(error, "tabs");
+  const tab = extraString(error, "tab");
   const canAsk = link.account_mode === "per_user" && !isOwner;
   return (
     <div role="alert" className="space-y-2 text-ui text-danger">
       <p>{formatApiError(error)}</p>
       {limit !== null && <p>{tn("microapps.sheets.error.limit", limit)}</p>}
+      {tab && <p>{t("microapps.sheets.error.tab", { name: tab })}</p>}
       {missing.length > 0 && <p>{t("microapps.sheets.error.missing", { names: missing.join(", ") })}</p>}
       {tabs.length > 0 && <p>{t("microapps.sheets.error.tabs", { names: tabs.join(", ") })}</p>}
       {action === "connect_google" && (
@@ -235,6 +266,7 @@ function SyncError({
 
 function OperationView({
   op,
+  places,
   chosen,
   busy,
   onDecide,
@@ -242,13 +274,14 @@ function OperationView({
   onCheck,
 }: {
   op: SheetOperation;
+  places: Places;
   chosen: Record<string, Side>;
   busy: Busy;
   onDecide: (key: string, side: Side) => void;
   onApply: () => void;
   onCheck: () => void;
 }) {
-  const header = (field: string) => op.headers?.[field] ?? field;
+  const header: HeaderOf = (collection, field) => op.headers?.[collection]?.[field] ?? field;
   const pending = op.state === "previewed" || op.state === "applying";
 
   if (op.state === "applied") {
@@ -258,7 +291,7 @@ function OperationView({
         <p className={op.google_status === "confirmed" || op.google_status === "none" ? "text-success" : op.google_status === "pending" ? "text-text-secondary" : "text-warning"}>
           {t(`microapps.sheets.result.${op.google_status}` as MessageKey)}
         </p>
-        {op.google_status === "uncertain" && (
+        {op.unsettled && (
           <Button size="sm" variant="secondary" busy={busy === "check"} disabled={blocked(busy, "check")} onClick={onCheck}>
             {t("microapps.sheets.sync.check")}
           </Button>
@@ -293,15 +326,15 @@ function OperationView({
       {updates.length > 0 && (
         <ul aria-label={t("microapps.sheets.changes")} className="space-y-3">
           {shownUpdates.map((u) => (
-            <UpdateRow key={u.record_id} update={u} opId={op.id} headers={op.headers} editable={op.state === "previewed"} chosen={chosen} onDecide={onDecide} />
+            <UpdateRow key={u.record_id} update={u} opId={op.id} label={placeLabel(u, places)} header={header} editable={op.state === "previewed"} chosen={chosen} onDecide={onDecide} />
           ))}
           {hiddenUpdates > 0 && <li className="text-meta text-text-secondary">{t("microapps.sheets.more", { n: hiddenUpdates })}</li>}
         </ul>
       )}
 
-      <ListSection title={t("microapps.sheets.creates")} items={op.creates ?? []} render={(c) => `${t("microapps.sheets.row", { row: c.row })}: ${describe(c.data, header)}`} />
-      <ListSection title={t("microapps.sheets.appends")} items={op.appends ?? []} render={(a) => describe(a.values, header)} />
-      <ListSection title={t("microapps.sheets.issues")} items={op.issues ?? []} render={(issue) => issueText(issue, header)} tone="text-warning" />
+      <ListSection title={t("microapps.sheets.creates")} items={op.creates ?? []} render={(c) => withPlace(placeLabel(c, places), describe(c.data, (f) => header(c.collection, f)))} />
+      <ListSection title={t("microapps.sheets.appends")} items={op.appends ?? []} render={(a) => withPlace(placeLabel(a, places), describe(a.values, (f) => header(a.collection, f)))} />
+      <ListSection title={t("microapps.sheets.issues")} items={op.issues ?? []} render={(issue) => issueText(issue, places, header)} tone="text-warning" />
 
       {/* With nothing to change, applying only remembers values both sides
           already share, so later edits merge without conflicts. */}
@@ -321,7 +354,8 @@ function OperationView({
 interface UpdateRowProps {
   update: SheetUpdate;
   opId: string;
-  headers: Record<string, string> | undefined;
+  label: string;
+  header: HeaderOf;
   editable: boolean;
   chosen: Record<string, Side>;
   onDecide: (key: string, side: Side) => void;
@@ -329,11 +363,11 @@ interface UpdateRowProps {
 
 /** One record's changes and its conflict choices. Memoized on its own
  * choices, so deciding one conflict redraws one row, not thousands. */
-const UpdateRow = memo(function UpdateRow({ update: u, opId, headers, editable, chosen, onDecide }: UpdateRowProps) {
-  const header = (field: string) => headers?.[field] ?? field;
+const UpdateRow = memo(function UpdateRow({ update: u, opId, label, header: headerOf, editable, chosen, onDecide }: UpdateRowProps) {
+  const header = (field: string) => headerOf(u.collection, field);
   return (
     <li className="rounded-control border border-border p-3 text-ui">
-      <p className="mb-1 font-medium text-text-primary">{t("microapps.sheets.row", { row: u.row })}</p>
+      <p className="mb-1 font-medium text-text-primary">{label}</p>
       <ValueList title={t("microapps.sheets.toApp")} values={u.import} header={header} />
       <ValueList title={t("microapps.sheets.toSheet")} values={u.export} header={header} />
       {u.conflicts.map((c) => {
@@ -366,7 +400,7 @@ const UpdateRow = memo(function UpdateRow({ update: u, opId, headers, editable, 
 }, sameRow);
 
 function sameRow(a: UpdateRowProps, b: UpdateRowProps): boolean {
-  if (a.update !== b.update || a.opId !== b.opId || a.headers !== b.headers || a.editable !== b.editable || a.onDecide !== b.onDecide) return false;
+  if (a.update !== b.update || a.opId !== b.opId || a.label !== b.label || a.editable !== b.editable || a.onDecide !== b.onDecide) return false;
   return a.update.conflicts.every((c) => {
     const key = conflictKey(a.update.record_id, c.field);
     return a.chosen[key] === b.chosen[key];
@@ -378,6 +412,8 @@ function describe(values: Record<string, unknown>, header: (field: string) => st
     .map(([field, value]) => `${header(field)}: ${formatValue(value)}`)
     .join("; ");
 }
+
+const withPlace = (place: string, text: string) => (place ? `${place}: ${text}` : text);
 
 function ValueList({
   title,
@@ -419,13 +455,24 @@ function ListSection<T>({ title, items, render, tone = "" }: { title: string; it
   );
 }
 
-function issueText(issue: SheetIssue, header: (field: string) => string): string {
+function issueText(issue: SheetIssue, places: Places, headerOf: HeaderOf): string {
+  // The row is in the issue's own text; the place adds the collection and tab.
+  const place = placeLabel({ collection: issue.collection, tab: issue.tab }, places);
+  return withPlace(place, issueBody(issue, places, (field) => headerOf(issue.collection, field)));
+}
+
+function issueBody(issue: SheetIssue, places: Places, header: (field: string) => string): string {
   const row = issue.row ?? 0;
   switch (issue.kind) {
     case "invalid_value":
       return t("microapps.sheets.issue.invalid_value", { row, header: header(issue.field ?? "") });
-    case "duplicate_key":
-      return t("microapps.sheets.issue.duplicate_key", { row, first: issue.first_row ?? 0 });
+    case "duplicate_key": {
+      const first =
+        places.tabs && issue.first_tab
+          ? t("microapps.sheets.issue.firstRowIn", { tab: issue.first_tab, row: issue.first_row ?? 0 })
+          : t("microapps.sheets.issue.firstRow", { row: issue.first_row ?? 0 });
+      return t("microapps.sheets.issue.duplicate_key", { row, first });
+    }
     case "record_not_in_app":
       return t("microapps.sheets.issue.record_not_in_app", { row });
     case "unmatched_row":
@@ -436,5 +483,7 @@ function issueText(issue: SheetIssue, header: (field: string) => string): string
       return t("microapps.sheets.issue.removed_from_sheet", { id: issue.record_id ?? "" });
     case "not_editable":
       return t("microapps.sheets.issue.not_editable", { row, fields: (issue.fields ?? []).map(header).join(", ") });
+    case "key_missing":
+      return t("microapps.sheets.issue.key_missing", { id: issue.record_id ?? "" });
   }
 }

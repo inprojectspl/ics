@@ -1,10 +1,11 @@
-"""Reading a linked sheet and comparing it with the app's records (ADR-0031).
+"""Comparing the linked tabs of a file with the app's records (ADR-0031,
+ADR-0033).
 
-`compare` is pure: given the link, the field definitions, the sheet, the
-app's rows and the base it returns the plan of a sync, so every rule of the
-three-way comparison is testable without Google or the broker.
+`compare` is pure: given the mapping, the field definitions, the sheet,
+the app's rows and the base it returns the plan of a sync, so every rule of
+the three-way comparison is testable without Google or the broker.
 
-The sheet carries no ids. A row is matched to a record by the link's
+The sheet carries no ids. A row is matched to a record by the mapping's
 `key_field` when it has one; otherwise by content (a row equal to what was
 last agreed, wherever it moved), then by the row it was last seen in and by
 similarity. Every sync works the matching out again from the sheet as it is.
@@ -15,15 +16,12 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
-from dataclasses import field as dataclass_field
 from typing import Any
 
-from app.domain_errors import ConflictError, LimitExceededError, NotFoundError
-from app.models import SheetLink
-from app.util import short_sha256
+from app.models import SheetMapping
 
-from . import google, values
+from . import mapping_rules, values
+from .book import Sheet, row_print
 
 # Set in the base of a record appended to the sheet until the write is
 # confirmed: without a row it is appended again, not reported as removed.
@@ -31,151 +29,6 @@ UNCONFIRMED = "~unconfirmed"
 # Above this many unmatched row/record pairs only exact and same-row matches
 # are tried, so a reshuffled big sheet costs no quadratic scan.
 _SIMILARITY_PAIRS = 250_000
-
-
-def norm_header(name: Any) -> str:
-    return str(name).strip().casefold()
-
-
-# ---------------------------------------------------------------- the sheet
-
-
-@dataclass
-class Sheet:
-    sheet_id: int
-    title: str
-    tz: str
-    row_count: int
-    header: dict[str, int]
-    rows: list[list[Any]]
-    # Headers the first row carries more than once.
-    duplicates: set[str] = dataclass_field(default_factory=set)
-
-    def cell(self, row: int, col: int) -> Any:
-        """Value at 1-based sheet row `row` (row 1 is the header), 0-based column."""
-        cells = self.rows[row - 2] if 2 <= row < len(self.rows) + 2 else []
-        return cells[col] if col < len(cells) else None
-
-
-def column_letter(index: int) -> str:
-    letters = ""
-    index += 1
-    while index:
-        index, rem = divmod(index - 1, 26)
-        letters = chr(65 + rem) + letters
-    return letters
-
-
-async def read_sheet(token: str, link: SheetLink, max_rows: int) -> Sheet:
-    """The tab's header row, then only the linked columns, so a wide sheet
-    costs no more than a narrow one."""
-    meta = await google.spreadsheet_meta(token, link.spreadsheet_id)
-    tabs = [s["properties"] for s in meta.get("sheets", [])]
-    tab = next((t for t in tabs if t["title"] == link.sheet_title), None)
-    if tab is None:
-        raise NotFoundError(
-            "sheet_tab_not_found",
-            f"the spreadsheet has no tab {link.sheet_title!r}",
-            extra={"tabs": [t["title"] for t in tabs][:50]},
-        )
-    grid = tab.get("gridProperties", {})
-    row_count = int(grid.get("rowCount", 1000))
-    a1 = google.a1_tab(link.sheet_title)
-    last_col = column_letter(max(int(grid.get("columnCount", 26)), 1) - 1)
-    first_row = await google.read_values(token, link.spreadsheet_id, f"{a1}!A1:{last_col}1")
-    header: dict[str, int] = {}
-    duplicates: set[str] = set()
-    for i, name in enumerate(first_row[0] if first_row else []):
-        key = norm_header(name)
-        if key in header:
-            duplicates.add(key)
-        elif key:
-            header[key] = i
-    wanted = sorted(
-        {header[k] for k in (norm_header(c["header"]) for c in link.columns) if k in header}
-    )
-    last_row = min(row_count, max_rows + 2)
-    columns = (
-        await google.read_columns(
-            token,
-            link.spreadsheet_id,
-            [f"{a1}!{column_letter(c)}2:{column_letter(c)}{last_row}" for c in wanted],
-        )
-        if wanted and last_row >= 2
-        else []
-    )
-    height = max((len(c) for c in columns), default=0)
-    if height > max_rows:
-        raise LimitExceededError(
-            "sheet_too_large",
-            f"the app owner's limit is {max_rows} rows",
-            extra={"limit": max_rows},
-        )
-    width = (wanted[-1] + 1) if wanted else 0
-    rows: list[list[Any]] = [[None] * width for _ in range(height)]
-    for col, column in zip(wanted, columns, strict=True):
-        for i, value in enumerate(column):
-            rows[i][col] = value
-    return Sheet(
-        sheet_id=int(tab["sheetId"]),
-        title=link.sheet_title,
-        tz=str(meta.get("properties", {}).get("timeZone") or "UTC"),
-        row_count=row_count,
-        header=header,
-        rows=rows,
-        duplicates=duplicates,
-    )
-
-
-def layout(link: SheetLink, sheet: Sheet) -> dict[str, int]:
-    """Each linked field's column; a missing or doubled header stops the sync
-    rather than read the wrong column."""
-    wanted = [c["header"] for c in link.columns]
-    missing = [h for h in wanted if norm_header(h) not in sheet.header]
-    if missing:
-        raise ConflictError(
-            "sheet_headers_missing",
-            "the sheet's first row lacks linked headers",
-            extra={"missing": missing},
-        )
-    doubled = [h for h in wanted if norm_header(h) in sheet.duplicates]
-    if doubled:
-        raise ConflictError(
-            "sheet_headers_duplicate",
-            "a linked header appears more than once in the sheet's first row",
-            extra={"duplicates": doubled},
-        )
-    return {c["field"]: sheet.header[norm_header(c["header"])] for c in link.columns}
-
-
-def row_print(sheet: Sheet, row: int, cols: Mapping[str, int]) -> str:
-    return short_sha256(json.dumps([sheet.cell(row, c) for c in cols.values()], default=str), 24)
-
-
-def locate(
-    snapshot: Mapping[str, str], sheet: Sheet, cols: Mapping[str, int]
-) -> dict[int, int] | None:
-    """Where the rows a preview touched are now: in place, or moved as a
-    whole to one other row (rows inserted or sorted above). None when one
-    changed or cannot be told apart from another."""
-    where: dict[int, int] = {}
-    index: dict[str, list[int]] | None = None
-    for key, fingerprint in snapshot.items():
-        row = int(key)
-        if row_print(sheet, row, cols) == fingerprint:
-            where[row] = row
-            continue
-        if index is None:
-            index = {}
-            for r in range(2, len(sheet.rows) + 2):
-                index.setdefault(row_print(sheet, r, cols), []).append(r)
-        found = index.get(fingerprint, [])
-        if len(found) != 1:
-            return None
-        where[row] = found[0]
-    if len(set(where.values())) != len(where):
-        return None
-    return where
 
 
 # ------------------------------------------------------------ the comparison
@@ -234,7 +87,7 @@ def _pair(
 
 
 def compare(
-    link: SheetLink,
+    mapping: SheetMapping,
     fields: dict[str, dict[str, Any]],
     sheet: Sheet,
     app_rows: list[dict[str, Any]],
@@ -249,11 +102,19 @@ def compare(
     `seen_at`: the row each record was last seen in. `conditions`: the app's
     update rule conditions on linked fields; a record that fails them cannot
     take the sheet's values, so those are reported. A new row gets its
-    record's id here (`new_id`), before the app or the sheet is written."""
-    cols = layout(link, sheet)
-    owner = {c["field"]: c["owner"] for c in link.columns}
+    record's id here (`new_id`), before the app or the sheet is written.
+
+    `tab_field` reads like a column the sheet owns whose value is the name of
+    the row's tab. A mapping whose columns are all the sheet's (a list the
+    app only reads) never appends rows; otherwise a record the sheet lacks
+    is appended to the mapping's append tab with the columns the app owns or
+    shares and the values it has for the sheet's own columns."""
+    cols = sheet.cols
+    owner = mapping_rules.owners(mapping)
+    tab_field = mapping.tab_field
     linked = list(owner)
     from_sheet = [f for f, kind in owner.items() if kind != "app"]
+    can_append = not mapping_rules.read_only(mapping.columns)
     app = {str(r["id"]): r for r in app_rows}
     seen_at = seen_at or {}
     updates: list[dict[str, Any]] = []
@@ -271,10 +132,9 @@ def compare(
             continue
         parsed[row] = {}
         for field in linked:
+            raw = sheet.at(row)[0].title if field == tab_field else sheet.cell(row, cols[field])
             try:
-                parsed[row][field] = values.from_cell(
-                    fields[field], sheet.cell(row, cols[field]), tz=sheet.tz
-                )
+                parsed[row][field] = values.from_cell(fields[field], raw, tz=sheet.tz)
             except values.CellError as e:
                 parsed[row][field] = _BAD
                 errors.setdefault(row, {})[field] = str(e)
@@ -295,8 +155,8 @@ def compare(
         if rid not in refs:
             refs[rid] = {f: values.from_app(fields[f], record.get(f)) for f in linked}
     paired: dict[int, str] = {}
-    if link.key_field:
-        key = link.key_field
+    key = mapping.key_field
+    if key:
         first: dict[str, int] = {}
         doubled: set[int] = set()
         for row in sorted(parsed):
@@ -402,6 +262,7 @@ def compare(
             touched.add(row)
 
     appends: list[dict[str, Any]] = []
+    target = sheet.append_tab()
     for record_id, record in app.items():
         if record_id in rows:
             continue
@@ -409,15 +270,26 @@ def compare(
             # Its row is gone from the sheet: deleting is never inferred.
             issues.append({"kind": "removed_from_sheet", "record_id": record_id})
             continue
+        if not can_append or target is None:
+            continue
+        own = {f: values.from_app(fields[f], record.get(f)) for f in cols}
+        if key and own.get(key) is None:
+            # Without its key the row could never be told from a new one.
+            issues.append({"kind": "key_missing", "record_id": record_id})
+            continue
         appends.append(
             {
                 "record_id": record_id,
-                "values": {f: values.from_app(fields[f], record.get(f)) for f in owner},
+                "sheet_id": target.sheet_id,
+                "values": own,
+                # A column the sheet owns gets only a value the app has: an
+                # empty one would overwrite a formula or default of the sheet.
+                "blank": [f for f, v in own.items() if owner[f] == "sheet" and v is None],
             }
         )
 
     return {
-        "sheet": {"sheet_id": sheet.sheet_id, "title": sheet.title, "cols": cols},
+        "sheet": {"cols": cols, "tabs": [t.view() for t in sheet.tabs]},
         "updates": updates,
         "creates": creates,
         "appends": appends,

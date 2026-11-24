@@ -64,14 +64,15 @@ export function adminHandler({ config, apps, runners, gateway, incarnation }) {
       }
       const sheets = /^\/admin\/apps\/([0-9a-f]{32})\/(prod)\/sheets\/(read|apply)$/.exec(url.pathname);
       if (sheets && req.method === "POST") {
-        const { user_id: userId, collection, fields, key, changes, release, limit } = await body(req, SHEETS_BODY_BYTES);
-        if (typeof userId !== "string" || typeof collection !== "string") return json(res, 400, { code: "bad_request", detail: "user_id and collection required" });
-        const target = { assetHex: sheets[1], environment: sheets[2], userId, collection };
+        const { user_id: userId, collections, fields, key, changes, release, limit } = await body(req, SHEETS_BODY_BYTES);
+        if (typeof userId !== "string") return json(res, 400, { code: "bad_request", detail: "user_id required" });
+        const target = { assetHex: sheets[1], environment: sheets[2], userId };
         if (sheets[3] === "read") {
-          if (!Array.isArray(fields) || fields.some((f) => typeof f !== "string")) return json(res, 400, { code: "bad_request", detail: "fields required" });
-          return json(res, 200, await readRows(gateway, { ...target, fields, limit }));
+          const valid = Array.isArray(collections) && collections.length > 0 && collections.every((c) => typeof c?.collection === "string" && Array.isArray(c.fields) && c.fields.every((f) => typeof f === "string"));
+          if (!valid) return json(res, 400, { code: "bad_request", detail: "collections: [{collection, fields}] required" });
+          return json(res, 200, await readRows(gateway, { ...target, collections, limit }));
         }
-        return json(res, 200, await applyChanges(gateway, { ...target, key, changes, release: typeof release === "string" ? release : null, fields: Array.isArray(fields) ? fields.filter((f) => typeof f === "string") : [] }));
+        return json(res, 200, await applyChanges(gateway, { ...target, key, changes, release: typeof release === "string" ? release : null, fields: fields && typeof fields === "object" && !Array.isArray(fields) ? fields : {} }));
       }
       if (url.pathname === "/admin/compile" && req.method === "POST") {
         const { files, seeds, values, fields } = await body(req);

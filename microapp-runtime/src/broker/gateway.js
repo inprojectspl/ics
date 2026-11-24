@@ -387,12 +387,12 @@ export class Gateway {
     }
   }
 
-  async read(rc, fn) {
+  async read(rc, fn, { snapshot = false } = {}) {
     const binding = await this.apps.binding(rc.app, rc.auth.credential_generation);
     const ctx = this.ctxFor(rc, binding);
     this.apps.begin(rc.app, !rc.platform);
     try {
-      return await inTransaction(this.pools, rc.app.key, binding, { readOnly: true, statementTimeoutMs: 2000 }, (client) => fn(client, ctx));
+      return await inTransaction(this.pools, rc.app.key, binding, { readOnly: true, snapshot, statementTimeoutMs: 2000 }, (client) => fn(client, ctx));
     } finally {
       this.apps.end(rc.app, !rc.platform);
     }

@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import timedelta
-from typing import Any
+from typing import Any, ClassVar
 from urllib.parse import parse_qs, unquote, urlsplit
 
 import httpx
@@ -24,6 +24,7 @@ from app.models import (
     MicroAppStats,
     SheetBase,
     SheetLink,
+    SheetMapping,
     SheetOperation,
 )
 from app.redis_client import get_redis
@@ -32,7 +33,8 @@ from app.services.micro_applications import document
 from app.services.micro_applications.runtime import BROKER_HEARTBEAT_KEY
 from app.services.notifications import inbox
 from app.services.sheets import auto, common, google, inspect, values, write
-from app.services.sheets.compare import UNCONFIRMED, Sheet, compare
+from app.services.sheets.book import Sheet, Tab, tab_columns
+from app.services.sheets.compare import UNCONFIRMED, compare
 from app.util import now as utc_now
 from tests.conftest import mk_user
 from tests.test_microapps import _enabled, apps_db, bearer, needs_pg  # noqa: F401 (fixtures)
@@ -101,26 +103,25 @@ FIELDS = {"title": STRING, "note": STRING, "status": ENUM}
 ID1, ID2, ID3 = (str(uuid.UUID(int=i)) for i in (1, 2, 3))
 
 
-def _link(key_field: str | None = None, **owners: str) -> SheetLink:
+def _link(key_field: str | None = None, **owners: str) -> SheetMapping:
     cols = {"title": "both", "note": "sheet", "status": "app", **owners}
-    return SheetLink(
+    return SheetMapping(
+        id=uuid.UUID(int=99),
+        collection="requests",
+        tabs=[{"sheet_id": 0, "title": "Data"}],
         key_field=key_field,
         columns=[{"field": f, "header": f.capitalize(), "owner": o} for f, o in cols.items()],
-        account_mode="owner_account",
-        revision=1,
     )
+
+
+def single(sheet_id: int, title: str, columns: list[str], rows: list[list[Any]]) -> Sheet:
+    """A one-tab sheet whose columns are the fields in this order."""
+    cols = {f: i for i, f in enumerate(columns)}
+    return Sheet("UTC", [Tab(sheet_id, title, 1000, 0, len(rows), dict(cols), True)], cols, rows)
 
 
 def _sheet(*rows: list[Any]) -> Sheet:
-    header = ["Title", "Note", "Status"]
-    return Sheet(
-        sheet_id=0,
-        title="Data",
-        tz="UTC",
-        row_count=100,
-        header={h.casefold(): i for i, h in enumerate(header)},
-        rows=[list(r) for r in rows],
-    )
+    return single(0, "Data", ["title", "note", "status"], [list(r) for r in rows])
 
 
 def _app(
@@ -168,8 +169,15 @@ def test_new_rows_create_records_and_records_without_rows_are_appended():
     assert plan["creates"] == [
         {"row": 2, "record_id": ID3, "data": {"title": "From the sheet", "note": "n"}}
     ]
+    # The sheet's own column gets nothing for an empty value: it may hold a
+    # formula or a default there.
     assert plan["appends"] == [
-        {"record_id": ID2, "values": {"title": "Only in the app", "note": None, "status": "new"}}
+        {
+            "record_id": ID2,
+            "sheet_id": 0,
+            "values": {"title": "Only in the app", "note": None, "status": "new"},
+            "blank": ["note"],
+        }
     ]
     # A row equal to an app record never synced is that record, not a new one.
     assert plan["converged"] == [
@@ -266,12 +274,14 @@ def test_a_record_the_app_rule_locks_does_not_take_sheet_values():
     assert plan["updates"][0]["export"] == {"status": "done"} and plan["updates"][0]["import"] == {}
 
 
-def test_a_missing_header_stops_the_comparison():
-    sheet = _sheet()
-    sheet.header.pop("note")
+def test_a_missing_header_stops_the_read_naming_the_tab():
     with pytest.raises(Exception) as e:
-        compare(_link(), FIELDS, sheet, [], {})
+        tab_columns(_link().columns, ["Title", "Status"], "March")
     assert getattr(e.value, "code", "") == "sheet_headers_missing"
+    assert e.value.extra == {"missing": ["Note"], "tab": "March"}
+    # Order, case and extra columns of a tab do not matter.
+    cols = tab_columns(_link().columns, ["Extra", "status", "NOTE ", "Title"], "April")
+    assert cols == {"title": 3, "note": 2, "status": 1}
 
 
 # --------------------------------------------------------- fake Google
@@ -285,13 +295,17 @@ def _col_index(letters: str) -> int:
 
 
 class FakeGoogle:
-    """One spreadsheet in memory, served like the Sheets API."""
+    """One spreadsheet in memory, served like the Sheets API. Its tabs are
+    `tabs` in order, each with its own grid; `grid`, `set` and `cell` work on
+    the first tab unless a tab is named."""
 
     def __init__(self) -> None:
         self.SPREADSHEET = "1Sheet" + uuid.uuid4().hex
-        self.grid: list[list[Any]] = []
-        self.row_count = 20
-        self.tabs = ["Requests"]
+        self.grids: dict[str, list[list[Any]]] = {}
+        self.row_counts: dict[str, int] = {}
+        self.ids: dict[str, int] = {}
+        self.tabs: list[str] = []
+        self.add_tab("Requests")
         self.fail_write: str | None = None
         self.deny = False
         self.writes: list[list[dict]] = []
@@ -299,26 +313,66 @@ class FakeGoogle:
         self.sub = "google-sub-1"
         self.scope = google.SCOPES
 
-    def cell(self, row: int, col: int) -> Any:
-        r = self.grid[row - 1] if row - 1 < len(self.grid) else []
+    def add_tab(self, title: str, header: list[str] | None = None) -> int:
+        """A new tab (ids as Google gives them: the first 0, then any)."""
+        self.ids[title] = 0 if not self.ids else 1000 + len(self.ids)
+        self.grids[title] = [list(header)] if header else []
+        self.row_counts[title] = 20
+        self.tabs.append(title)
+        return self.ids[title]
+
+    def rename(self, old: str, new: str) -> None:
+        for d in (self.grids, self.row_counts, self.ids):
+            d[new] = d.pop(old)
+        self.tabs[self.tabs.index(old)] = new
+
+    @property
+    def grid(self) -> list[list[Any]]:
+        return self.grids[self.tabs[0]]
+
+    @grid.setter
+    def grid(self, rows: list[list[Any]]) -> None:
+        self.grids[self.tabs[0]] = rows
+
+    @property
+    def row_count(self) -> int:
+        return self.row_counts[self.tabs[0]]
+
+    @row_count.setter
+    def row_count(self, n: int) -> None:
+        self.row_counts[self.tabs[0]] = n
+
+    def cell(self, row: int, col: int, tab: str | None = None) -> Any:
+        grid = self.grids[tab or self.tabs[0]]
+        r = grid[row - 1] if row - 1 < len(grid) else []
         return r[col] if col < len(r) else None
 
-    def set(self, row: int, col: int, value: Any) -> None:
-        while len(self.grid) < row:
-            self.grid.append([])
-        r = self.grid[row - 1]
+    def set(self, row: int, col: int, value: Any, tab: str | None = None) -> None:
+        grid = self.grids[tab or self.tabs[0]]
+        while len(grid) < row:
+            grid.append([])
+        r = grid[row - 1]
         while len(r) <= col:
             r.append(None)
         r[col] = value
 
-    def _values(self) -> list[list[Any]]:
-        rows = [[v for v in r] for r in self.grid]
+    def rows(self, tab: str) -> list[list[Any]]:
+        """The tab's data rows, trailing empties trimmed."""
+        return [r for r in self._values(tab)[1:]]
+
+    def _values(self, tab: str) -> list[list[Any]]:
+        rows = [[v for v in r] for r in self.grids[tab]]
         for r in rows:
             while r and r[-1] in (None, ""):
                 r.pop()
         while rows and not rows[-1]:
             rows.pop()
         return rows
+
+    @staticmethod
+    def _tab_of(a1: str) -> tuple[str, str]:
+        title, _, cells = a1.rpartition("!")
+        return title.strip("'").replace("''", "'"), cells
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         url = str(request.url)
@@ -351,20 +405,23 @@ class FakeGoogle:
             return httpx.Response(200, json={"replies": []})
         if path.endswith("/values:batchGet"):
             self.reads += 1
-            grid = self._values()
             out = []
+            by_rows = request.url.params.get("majorDimension") == "ROWS"
             for rng in request.url.params.get_list("ranges"):
-                col = _col_index(rng.split("!")[1].split(":")[0].rstrip("0123456789"))
-                out.append({"values": [[r[col] if col < len(r) else None for r in grid[1:]]]})
-            for vr in out:
-                column = vr["values"][0]
+                tab, cells = self._tab_of(rng)
+                grid = self._values(tab)
+                if by_rows:
+                    out.append({"values": grid[:1]})
+                    continue
+                col = _col_index(cells.split(":")[0].rstrip("0123456789"))
+                column = [r[col] if col < len(r) else None for r in grid[1:]]
                 while column and column[-1] in (None, ""):
                     column.pop()
+                out.append({"values": [column]})
             return httpx.Response(200, json={"valueRanges": out})
-        if "/values/" in path:
-            return httpx.Response(200, json={"values": self._values()[:1]})
         if request.url.params.get("includeGridData") == "true":
-            return httpx.Response(200, json=self._grid_data())
+            tab, _ = self._tab_of(request.url.params["ranges"])
+            return httpx.Response(200, json=self._grid_data(tab))
         return httpx.Response(
             200,
             json={
@@ -372,20 +429,29 @@ class FakeGoogle:
                 "sheets": [
                     {
                         "properties": {
-                            "sheetId": i,
+                            "sheetId": self.ids[t],
                             "title": t,
-                            "gridProperties": {"rowCount": self.row_count, "columnCount": 10},
+                            "gridProperties": {
+                                "rowCount": self.row_counts[t],
+                                "columnCount": 10,
+                            },
                         }
                     }
-                    for i, t in enumerate(self.tabs)
+                    for t in self.tabs
                 ],
             },
         )
 
-    def _grid_data(self) -> dict:
+    def _grid_data(self, tab: str) -> dict:
         def cell(value: Any) -> dict:
             if value is None:
                 return {}
+            if isinstance(value, tuple) and value[0] == "=":  # ("=", formula, result)
+                return {
+                    "userEnteredValue": {"formulaValue": value[1]},
+                    "effectiveValue": {"numberValue": value[2]},
+                    "formattedValue": str(value[2]),
+                }
             if isinstance(value, tuple):  # ("DATE", serial)
                 return {
                     "effectiveValue": {"numberValue": value[1]},
@@ -401,82 +467,110 @@ class FakeGoogle:
             )
             return {"effectiveValue": {key: value}, "formattedValue": str(value)}
 
-        rows = [{"values": [cell(v) for v in r]} for r in self.grid]
+        rows = [{"values": [cell(v) for v in r]} for r in self.grids[tab]]
         return {
             "properties": {"title": "Book", "timeZone": "Europe/Warsaw"},
-            "sheets": [{"properties": {"title": self.tabs[0]}, "data": [{"rowData": rows}]}],
+            "sheets": [{"properties": {"title": tab}, "data": [{"rowData": rows}]}],
         }
 
     def _apply(self, requests: list[dict]) -> None:
         self.writes.append(requests)
+        title = {v: k for k, v in self.ids.items()}
         for req in requests:
             if "appendDimension" in req:
-                self.row_count += req["appendDimension"]["length"]
+                tab = title[req["appendDimension"]["sheetId"]]
+                self.row_counts[tab] += req["appendDimension"]["length"]
                 continue
             rng = req["updateCells"]["range"]
-            assert rng["endRowIndex"] <= self.row_count, "write beyond the grid"
+            tab = title[rng["sheetId"]]
+            assert rng["endRowIndex"] <= self.row_counts[tab], "write beyond the grid"
             cells = req["updateCells"]["rows"][0]["values"]
             assert len(cells) == rng["endColumnIndex"] - rng["startColumnIndex"]
             for i, cell in enumerate(cells):
                 value = next(iter(cell.get("userEnteredValue", {}).values()), None)
-                self.set(rng["startRowIndex"] + 1, rng["startColumnIndex"] + i, value)
+                self.set(rng["startRowIndex"] + 1, rng["startColumnIndex"] + i, value, tab)
 
 
 class FakeBroker:
-    """The linked collection of the `requests` example, as the broker serves it."""
+    """The app's collections as the broker serves them: `requests` of the
+    `requests` example, and any other a test fills with `put`."""
+
+    # What a created record gets when the data leaves a field out.
+    DEFAULTS: ClassVar[dict[str, dict[str, Any]]] = {
+        "requests": {"description": "", "status": "submitted"},
+        "orders": {"status": "new", "total": None, "month": None},
+    }
 
     def __init__(self) -> None:
-        self.rows: dict[str, dict[str, Any]] = {}
+        self.data: dict[str, dict[str, dict[str, Any]]] = {"requests": {}}
         self.applied: dict[str, dict] = {}
         self.calls: list[tuple[str, dict]] = []
         self.down = False
         self.lose_answer = False
+        self.refuse: str | None = None
+
+    @property
+    def rows(self) -> dict[str, dict[str, Any]]:
+        return self.data["requests"]
+
+    def put(self, collection: str, rid: str | None = None, **values: Any) -> str:
+        rid = rid or str(uuid.uuid4())
+        row = {**self.DEFAULTS.get(collection, {}), **values}
+        self.data.setdefault(collection, {})[rid] = {"id": rid, "revision": 1, **row}
+        return rid
 
     def add(
         self, title: str, description: str = "", status: str = "submitted", rid: str | None = None
     ) -> str:
-        rid = rid or str(uuid.uuid4())
-        self.rows[rid] = {
-            "id": rid,
-            "revision": 1,
-            "title": title,
-            "description": description,
-            "status": status,
-        }
-        return rid
+        return self.put("requests", rid, title=title, description=description, status=status)
+
+    @staticmethod
+    def _error(status: int, code: str, change: int = 0) -> httpx.HTTPStatusError:
+        request = httpx.Request("POST", "http://broker")
+        resp = httpx.Response(status, json={"code": code, "change": change}, request=request)
+        return httpx.HTTPStatusError(str(status), request=request, response=resp)
 
     async def __call__(self, settings, method, path, body=None, timeout=15.0):
         self.calls.append((path, body))
         if self.down:
             raise httpx.ConnectError("broker down")
-        if path.endswith("/sheets/stamp"):
-            revisions = sum(r["revision"] for r in self.rows.values())
-            return {"release": "r1", "stamp": f"r1:{len(self.rows)}:{revisions}"}
         if path.endswith("/sheets/read"):
             return {
                 "release": "r1",
                 "truncated": False,
-                "rows": [dict(r) for r in self.rows.values()],
+                "collections": {
+                    c["collection"]: [dict(r) for r in self.data.get(c["collection"], {}).values()]
+                    for c in body["collections"]
+                },
             }
         if body["key"] in self.applied:
             return {**self.applied[body["key"]], "replayed": True}
+        # All or nothing: a copy takes the changes, then replaces the data.
+        data = {name: {k: dict(v) for k, v in rows.items()} for name, rows in self.data.items()}
         results = []
-        for c in body["changes"]:
+        for i, c in enumerate(body["changes"]):
+            rows = data.setdefault(c["collection"], {})
+            if c["collection"] == self.refuse:
+                raise self._error(403, "forbidden", i)
             if c["op"] == "update":
-                row = self.rows[c["id"]]
+                row = rows[c["id"]]
                 if row["revision"] != c["revision"]:
-                    request = httpx.Request("POST", "http://broker")
-                    resp = httpx.Response(
-                        412, json={"code": "revision_mismatch", "change": 0}, request=request
-                    )
-                    raise httpx.HTTPStatusError("412", request=request, response=resp)
+                    raise self._error(412, "revision_mismatch", i)
                 row.update(c["patch"])
                 row["revision"] += 1
                 results.append({"id": row["id"], "revision": row["revision"]})
             else:
-                rid = self.add(c["data"]["title"], c["data"].get("description", ""), rid=c["id"])
-                values = {f: v for f, v in self.rows[rid].items() if f in body.get("fields", [])}
-                results.append({"id": rid, "revision": 1, "values": values})
+                row = {
+                    "id": c["id"],
+                    "revision": 1,
+                    **self.DEFAULTS.get(c["collection"], {}),
+                    **c["data"],
+                }
+                rows[c["id"]] = row
+                linked = body.get("fields", {}).get(c["collection"], [])
+                values = {f: v for f, v in row.items() if f in linked}
+                results.append({"id": c["id"], "revision": 1, "values": values})
+        self.data = data
         out = {"release": "r1", "results": results}
         self.applied[body["key"]] = out
         if self.lose_answer:
@@ -637,7 +731,7 @@ async def test_link_rules(client, session, fake_google):
     r = await put(COLUMNS, expected_revision=99)
     assert r.status_code == 409 and r.json()["code"] == "sheet_link_changed"
     r = await put(COLUMNS, expected_revision=1)
-    assert r.status_code == 200 and r.json()["revision"] == 2
+    assert r.status_code == 200 and r.json()["revision"] == 2, r.text
 
     # Another app cannot write to the same spreadsheet.
     other_owner = await mk_user(session)
@@ -930,37 +1024,41 @@ def test_ambiguous_cells_are_refused_not_guessed():
     assert values.from_app(INT, "9007199254740993") == values.from_cell(INT, "9007199254740993")
 
 
-def test_a_doubled_linked_header_stops_the_comparison():
-    sheet = _sheet()
-    sheet.duplicates.add("title")
+def test_a_doubled_linked_header_stops_the_read():
     with pytest.raises(Exception) as e:
-        compare(_link(), FIELDS, sheet, [], {})
+        tab_columns(_link().columns, ["Title", "Note", "Status", "title"], "Data")
     assert getattr(e.value, "code", "") == "sheet_headers_duplicate"
 
 
-def test_writes_go_in_runs_of_adjacent_cells():
-    sheet = _sheet()
-    fields = {"title": STRING, "note": STRING, "due": DATE}
-    cells = [
-        {"row": 5, "col": 1, "field": "note", "value": None},
-        {"row": 5, "col": 0, "field": "title", "value": "A"},
-        {"row": 5, "col": 2, "field": "due", "value": "2026-11-22"},
-        {"row": 7, "col": 0, "field": "title", "value": "B"},
-    ]
-    requests = write._requests(cells, fields, sheet)
+def test_writes_go_in_runs_of_adjacent_cells_per_tab_in_one_request_list():
+    fields = {"m": {"title": STRING, "note": STRING, "due": DATE}}
+    cells = {
+        "m": [
+            [0, 5, 1, "note", None],
+            [0, 5, 0, "title", "A"],
+            [0, 5, 2, "due", "2026-11-22"],
+            [0, 7, 0, "title", "B"],
+            # Another tab, past its grid: it grows by the rows it needs.
+            [9, 12, 0, "title", "C"],
+        ]
+    }
+    requests = write._requests(cells, fields, {0: 100, 9: 10})
+    assert requests[0] == {"appendDimension": {"sheetId": 9, "dimension": "ROWS", "length": 2}}
     ranges = [
         (
+            r["updateCells"]["range"]["sheetId"],
             r["updateCells"]["range"]["startRowIndex"],
             r["updateCells"]["range"]["startColumnIndex"],
             r["updateCells"]["range"]["endColumnIndex"],
             r["updateCells"]["fields"],
         )
-        for r in requests
+        for r in requests[1:]
     ]
     assert ranges == [
-        (4, 0, 2, "userEnteredValue"),
-        (4, 2, 3, "userEnteredValue,userEnteredFormat.numberFormat"),
-        (6, 0, 1, "userEnteredValue"),
+        (0, 4, 0, 2, "userEnteredValue"),
+        (0, 4, 2, 3, "userEnteredValue,userEnteredFormat.numberFormat"),
+        (0, 6, 0, 1, "userEnteredValue"),
+        (9, 11, 0, 1, "userEnteredValue"),
     ]
 
 
@@ -980,6 +1078,13 @@ async def test_a_failed_sheet_write_after_a_create_does_not_create_twice(
     fake_google.fail_write = None
     assert [r["title"] for r in fake_broker.rows.values()] == ["Lamp"]
     lamp = next(iter(fake_broker.rows))
+
+    # No other sync of the file plans rows until that write is settled.
+    r = await client.post(f"{url}/preview", headers=bearer(owner))
+    assert r.status_code == 409 and r.json()["code"] == "sheet_sync_unsettled"
+    assert r.json()["operation_id"] == op["id"]
+    r = await client.post(f"{url}/operations/{op['id']}/check", json={}, headers=bearer(owner))
+    assert r.json()["google_status"] == "failed" and r.json()["error"] == "google_not_applied"
 
     # The row is recognised by its content as the record already made.
     again = (await client.post(f"{url}/preview", headers=bearer(owner))).json()
@@ -1020,9 +1125,25 @@ async def test_another_mapping_forgets_the_agreed_values_it_no_longer_vouches_fo
     await session.refresh(base)
     assert set(base.values) == {"description", "status"}
 
-    fake_google.tabs.append("Other")
+    # Another tab instead: what was agreed stays, so the record whose row is
+    # not in the new tab is reported, never appended there as new.
+    fake_google.add_tab("Other", ["Name", "Description", "Status"])
+    h = bearer(owner)
+    r = await client.put(url, json={**body, "sheet_title": "Other", "columns": renamed}, headers=h)
+    assert r.status_code == 200
+    session.expire_all()
+    assert await session.scalar(select(SheetBase).where(SheetBase.record_id == uuid.UUID(rid)))
+    op = (await client.post(f"{url}/preview", headers=h)).json()
+    assert op["appends"] == []
+    assert {"kind": "removed_from_sheet", "record_id": rid, "collection": "requests"} in op[
+        "issues"
+    ]
+
+    # Another file forgets everything.
     r = await client.put(
-        url, json={**body, "sheet_title": "Other", "columns": renamed}, headers=bearer(owner)
+        url,
+        json={**body, "spreadsheet": "1Other" + "x" * 30, "columns": renamed},
+        headers=h,
     )
     assert r.status_code == 200
     session.expire_all()
@@ -1244,7 +1365,8 @@ async def test_an_automatic_sync_applies_both_sides_leaves_quiet_runs_no_trace_a
     # Only an export: no base row is rewritten for the app's side, and the
     # record did not move.
     applied = (await operations())[-1]
-    assert applied.export["rows"] == {} and not any(applied.export["local_base"].values())
+    (own,) = applied.export["mappings"].values()
+    assert own["rows"] == {} and not any(own["local_base"].values())
 
     fake_google.set(2, 1, "for the reception")
     assert await tick() == "synced"

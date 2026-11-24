@@ -1,12 +1,15 @@
-"""Preview, apply and check one sync of a sheet link (ADR-0031).
+"""Preview, apply and check one sync of a sheet link (ADR-0031, ADR-0033).
 
 A person runs these, and so does the automatic sync (`auto`, ADR-0032)
-as the asset owner. `preview` reads the sheet and the app's records and
-stores what would change; `apply` takes the person's decisions,
-checks that neither side moved, commits the app's part through the broker
-(once per operation, whatever the retries) and then writes the sheet in one
-atomic `batchUpdate`, after reading it again. A write whose answer is lost
-stays `uncertain` until `check` reads the cells back; it is never sent twice.
+as the asset owner. One sync covers the whole file: every mapping of the
+link. `preview` reads the linked tabs and the app's linked collections and
+stores what would change, one part per mapping; `apply` takes the person's
+decisions, checks that neither side moved, commits the app's part of every
+collection through the broker in one transaction (once per operation,
+whatever the retries) and then writes every tab in one atomic
+`batchUpdate`, after reading the file again. A write whose answer is lost
+stays `uncertain` until `check` reads the cells back; it is never sent
+twice, and no other sync of the file plans rows until it is settled.
 
 The comparison is three-way per cell: the app's value, the sheet's value and
 the base, the value both sides agreed on at the last sync. A column owned by
@@ -37,17 +40,27 @@ from app.domain_errors import (
     LimitExceededError,
     NotFoundError,
 )
-from app.models import Asset, MicroAppEnvironment, SheetBase, SheetLink, SheetOperation, User
+from app.models import (
+    Asset,
+    MicroAppEnvironment,
+    SheetBase,
+    SheetLink,
+    SheetMapping,
+    SheetOperation,
+    User,
+)
 
-from . import links, values, write
+from . import links, mapping_rules, values, write
+from .book import Book
 from .common import (
     BrokerUnavailableError,
     call_broker,
-    fetch_sheet,
+    fetch_book,
     google_user_for,
     grant_user_of,
     operation,
     placed,
+    placer,
     required_fields,
     row_limit,
     runnable_link,
@@ -55,7 +68,7 @@ from .common import (
     token_for,
     update_conditions,
 )
-from .compare import UNCONFIRMED, Sheet, compare
+from .compare import UNCONFIRMED, compare
 
 # ------------------------------------------------------------------ helpers
 
@@ -72,18 +85,31 @@ async def _move(session: AsyncSession, op_id: UUID, source: str, **changes: Any)
     return moved is not None
 
 
+def _parts(op: SheetOperation) -> dict[str, dict[str, Any]]:
+    parts: dict[str, dict[str, Any]] = op.preview.get("mappings") or {}
+    return parts
+
+
+def _total(parts: list[dict[str, Any]]) -> dict[str, int]:
+    total: dict[str, int] = {}
+    for part in parts:
+        for k, v in part["summary"].items():
+            total[k] = total.get(k, 0) + v
+    return total
+
+
 # ------------------------------------------------------------------ preview
 
 
-async def linked_sheet(
+async def linked_book(
     session: AsyncSession, settings: Settings, user: User, asset_id: UUID
-) -> Sheet:
-    """The linked columns of the sheet as they are now, read as `user`."""
-    asset, link, _ = await runnable_link(session, user, asset_id)
+) -> Book:
+    """The linked columns of every linked tab as they are now, read as `user`."""
+    asset, link, _, mappings = await runnable_link(session, user, asset_id)
     limit = await row_limit(session, settings, asset)
     token = await token_for(session, settings, google_user_for(link, asset, user))
     await session.commit()  # no transaction across the call below
-    return await fetch_sheet(token, link, limit)
+    return await fetch_book(token, link, mappings, limit)
 
 
 async def _plan(
@@ -91,21 +117,30 @@ async def _plan(
     settings: Settings,
     user: User,
     asset_id: UUID,
-    sheet: Sheet | None = None,
+    book: Book | None = None,
 ) -> tuple[SheetLink, UUID, dict[str, Any]]:
-    """Read both sides (the sheet unless given) and compare them; stores nothing."""
-    asset, link, env = await runnable_link(session, user, asset_id)
-    await links.refuse_while_applying(session, link)
+    """Read both sides (the file unless given) and compare every mapping;
+    stores nothing but the tab ids the read pinned."""
+    asset, link, env, mappings = await runnable_link(session, user, asset_id)
+    await links.refuse_while_busy(session, link)
     manifest = await links.manifest_of(session, env)
-    fields = links.field_defs(manifest, link)
-    if len(fields) != len(link.columns):
-        raise ConflictError("sheet_link_outdated", "a linked field is gone from the active release")
+    fields = {}
+    for m in mappings:
+        fields[m.id] = links.field_defs(manifest, m)
+        if len(fields[m.id]) != len(mapping_rules.owners(m)):
+            raise ConflictError(
+                "sheet_link_outdated",
+                f"a field linked in {m.collection!r} is gone from the active release",
+                extra={"collection": m.collection},
+            )
     google_user = google_user_for(link, asset, user)
-    base: dict[str, dict[str, Any]] = {}
-    seen_at: dict[str, int | None] = {}
-    for b in await session.scalars(select(SheetBase).where(SheetBase.link_id == link.id)):
-        base[str(b.record_id)] = b.values
-        seen_at[str(b.record_id)] = b.row
+    base: dict[UUID, dict[str, dict[str, Any]]] = {m.id: {} for m in mappings}
+    seen: dict[UUID, dict[str, tuple[int | None, int | None]]] = {m.id: {} for m in mappings}
+    for b in await session.scalars(
+        select(SheetBase).where(SheetBase.mapping_id.in_([m.id for m in mappings]))
+    ):
+        base[b.mapping_id][str(b.record_id)] = b.values
+        seen[b.mapping_id][str(b.record_id)] = (b.sheet_id, b.row)
     limit = await row_limit(session, settings, asset)
     token = await token_for(session, settings, google_user)
     await session.commit()  # no transaction across the calls below
@@ -114,32 +149,50 @@ async def _plan(
         f"/admin/apps/{env.asset_hex}/prod/sheets/read",
         {
             "user_id": str(user.id),
-            "collection": link.collection,
-            "fields": list(fields),
+            "collections": [
+                {"collection": m.collection, "fields": list(fields[m.id])} for m in mappings
+            ],
             "limit": limit,
         },
     )
-    if sheet is None:
-        sheet, read = await asyncio.gather(fetch_sheet(token, link, limit), read_app)
+    if book is None:
+        book, read = await asyncio.gather(fetch_book(token, link, mappings, limit), read_app)
     else:
         read = await read_app
+    assert book is not None
     if read.get("truncated"):
         raise LimitExceededError(
             "collection_too_large",
             f"the app owner's limit is {limit} rows",
             extra={"limit": limit},
         )
-    plan = compare(
-        link,
-        fields,
-        sheet,
-        read["rows"],
-        base,
-        seen_at,
-        required_fields(manifest, link),
-        update_conditions(manifest, link),
-    )
-    plan["release"] = read.get("release")
+    await links.pin_tabs(session, mappings, book)
+    await session.commit()
+    parts: dict[str, dict[str, Any]] = {}
+    for m in mappings:
+        sheet = book[str(m.id)]
+        seen_at: dict[str, int | None] = {}
+        for rid, (sheet_id, row) in seen[m.id].items():
+            tab = sheet.tab(sheet_id)
+            seen_at[rid] = tab.first + row if tab is not None and row is not None else None
+        part = compare(
+            m,
+            fields[m.id],
+            sheet,
+            read["collections"][m.collection],
+            base[m.id],
+            seen_at,
+            required_fields(manifest, m),
+            update_conditions(manifest, m),
+        )
+        part["collection"] = m.collection
+        part["headers"] = {c["field"]: c["header"] for c in m.columns}
+        parts[str(m.id)] = part
+    plan = {
+        "release": read.get("release"),
+        "summary": _total(list(parts.values())),
+        "mappings": parts,
+    }
     return link, google_user, plan
 
 
@@ -176,9 +229,9 @@ async def _store(
 
 async def preview(
     session: AsyncSession, settings: Settings, user: User, asset_id: UUID
-) -> tuple[SheetOperation, SheetLink]:
+) -> SheetOperation:
     link, google_user, plan = await _plan(session, settings, user, asset_id)
-    return await _store(session, user, link, google_user, plan, auto=False), link
+    return await _store(session, user, link, google_user, plan, auto=False)
 
 
 # What makes an automatic preview worth a row: something to apply, or
@@ -191,11 +244,11 @@ async def auto_preview(
     settings: Settings,
     owner: User,
     asset_id: UUID,
-    sheet: Sheet | None = None,
+    book: Book | None = None,
 ) -> SheetOperation | None:
     """An automatic run's preview, stored only when it is worth a row: most
     runs find nothing to do and leave nothing behind."""
-    link, google_user, plan = await _plan(session, settings, owner, asset_id, sheet)
+    link, google_user, plan = await _plan(session, settings, owner, asset_id, book)
     if not any(plan["summary"].get(k) for k in _WORTH_STORING):
         return None
     return await _store(session, owner, link, google_user, plan, auto=True)
@@ -205,51 +258,61 @@ async def auto_preview(
 
 
 def _decide(op: SheetOperation, decisions: Mapping[str, str]) -> dict[str, Any]:
-    """The app changes the decisions give and the values both sides will
-    agree on: `local_base` once the app commits, `remote_base` once the
-    sheet write is confirmed; `rows` where each record was seen."""
-    plan = op.preview
+    """The app changes the decisions give, for every collection, and per
+    mapping the values both sides will agree on: `local_base` once the app
+    commits, `remote_base` once the sheet write is confirmed; `rows` where
+    each record was seen, as [sheet_id, row in that tab]."""
     patches: list[dict[str, Any]] = []
-    local_base: dict[str, dict[str, Any]] = {}
-    remote_base: dict[str, dict[str, Any]] = {}
+    out: dict[str, dict[str, Any]] = {}
     undecided = []
-    for u in plan["updates"]:
-        rid = u["record_id"]
-        patch = dict(u["import"])
-        export = dict(u["export"])
-        for c in u["conflicts"]:
-            choice = decisions.get(f"{rid}:{c['field']}")
-            if choice == "sheet":
-                patch[c["field"]] = c["sheet"]
-            elif choice == "app":
-                export[c["field"]] = c["app"]
-            else:
-                undecided.append(f"{rid}:{c['field']}")
-        if patch:
-            patches.append({"op": "update", "id": rid, "revision": u["revision"], "patch": patch})
-        local_base[rid] = {**u["same"], **patch}
-        remote_base[rid] = export
+    for mid, part in _parts(op).items():
+        local_base: dict[str, dict[str, Any]] = {}
+        remote_base: dict[str, dict[str, Any]] = {}
+        collection = part["collection"]
+        for u in part["updates"]:
+            rid = u["record_id"]
+            patch = dict(u["import"])
+            export = dict(u["export"])
+            for c in u["conflicts"]:
+                choice = decisions.get(f"{rid}:{c['field']}")
+                if choice == "sheet":
+                    patch[c["field"]] = c["sheet"]
+                elif choice == "app":
+                    export[c["field"]] = c["app"]
+                else:
+                    undecided.append(f"{rid}:{c['field']}")
+            if patch:
+                patches.append(
+                    {
+                        "op": "update",
+                        "collection": collection,
+                        "id": rid,
+                        "revision": u["revision"],
+                        "patch": patch,
+                    }
+                )
+            local_base[rid] = {**u["same"], **patch}
+            remote_base[rid] = export
+        place = placer(part)
+        rows = {rid: place(row) for rid, row in part["rows"].items()}
+        for c in part["creates"]:
+            patches.append(
+                {"op": "create", "collection": collection, "id": c["record_id"], "data": c["data"]}
+            )
+            local_base[c["record_id"]] = dict(c["data"])
+            rows[c["record_id"]] = place(c["row"])
+        for c in part["converged"]:
+            local_base.setdefault(c["record_id"], {}).update(c["values"])
+        for a in part["appends"]:
+            # Until the write is confirmed a missing row means "append again".
+            local_base[a["record_id"]] = {**a["values"], UNCONFIRMED: True}
+            remote_base[a["record_id"]] = {UNCONFIRMED: False}
+        out[mid] = {"local_base": local_base, "remote_base": remote_base, "rows": rows}
     if undecided:
         raise InvalidInputError(
             "decisions_missing", "decide every conflict", extra={"undecided": undecided}
         )
-    rows = dict(plan["rows"])
-    for c in plan["creates"]:
-        patches.append({"op": "create", "id": c["record_id"], "data": c["data"]})
-        local_base[c["record_id"]] = dict(c["data"])
-        rows[c["record_id"]] = c["row"]
-    for c in plan["converged"]:
-        local_base.setdefault(c["record_id"], {}).update(c["values"])
-    for a in plan["appends"]:
-        # Until the write is confirmed a missing row means "append again".
-        local_base[a["record_id"]] = {**a["values"], UNCONFIRMED: True}
-        remote_base[a["record_id"]] = {UNCONFIRMED: False}
-    return {
-        "patches": patches,
-        "local_base": local_base,
-        "remote_base": remote_base,
-        "rows": rows,
-    }
+    return {"patches": patches, "mappings": out}
 
 
 async def _reserve(
@@ -257,12 +320,14 @@ async def _reserve(
     settings: Settings,
     asset: Asset,
     link: SheetLink,
+    mappings: list[SheetMapping],
     op: SheetOperation,
     google_user: UUID,
     decisions: Mapping[str, str],
 ) -> None:
     """`previewed` -> `applying`, after checking that neither the link nor the
-    rows the preview touched changed and that no other sync is applying."""
+    rows the preview touched changed and that no other sync of the file is
+    applying or has a sheet write still unsettled."""
     if op.link_revision != link.revision or op.google_user_id != google_user:
         await _move(session, op.id, "previewed", state="stale")
         raise ConflictError(
@@ -272,24 +337,38 @@ async def _reserve(
     limit = await row_limit(session, settings, asset)
     token = await token_for(session, settings, grant_user_of(op))
     await session.commit()
-    if placed(op.preview, link, await fetch_sheet(token, link, limit)) is None:
-        await _move(session, op.id, "previewed", state="stale")
-        raise ConflictError("sheet_changed", "the sheet changed since the preview; preview again")
-    other = exists().where(
-        SheetOperation.link_id == link.id,
-        SheetOperation.state == "applying",
-        SheetOperation.id != op.id,
+    book = await fetch_book(token, link, mappings, limit)
+    for m in mappings:
+        part = _parts(op).get(str(m.id))
+        if part is None or placed(part, book[str(m.id)]) is None:
+            await _move(session, op.id, "previewed", state="stale")
+            raise ConflictError(
+                "sheet_changed", "the sheet changed since the preview; preview again"
+            )
+    # The link's row is locked first, so two reservations of the same file
+    # queue up and the second one sees the first as busy.
+    current = await session.scalar(
+        select(SheetLink.revision).where(SheetLink.id == link.id).with_for_update()
     )
-    same_link = exists().where(SheetLink.id == link.id, SheetLink.revision == op.link_revision)
+    if current != op.link_revision:
+        await _move(session, op.id, "previewed", state="stale")
+        raise ConflictError(
+            "sheet_link_changed", "the link changed since the preview; preview again"
+        )
     won = await session.scalar(
         update(SheetOperation)
-        .where(SheetOperation.id == op.id, SheetOperation.state == "previewed", ~other, same_link)
+        .where(
+            SheetOperation.id == op.id,
+            SheetOperation.state == "previewed",
+            ~exists().where(links.busy_clause(link.id, but=op.id)),
+        )
         .values(state="applying", decisions=dict(decisions), export=plan)
         .returning(SheetOperation.id)
     )
     await session.commit()
     await session.refresh(op)
     if won is None and op.state not in ("applying", "applied"):
+        await links.refuse_while_busy(session, link)
         raise ConflictError("sheet_sync_in_progress", "another sync of this sheet is being applied")
 
 
@@ -300,33 +379,44 @@ async def apply(
     asset_id: UUID,
     op_id: UUID,
     decisions: Mapping[str, str],
-) -> tuple[SheetOperation, SheetLink]:
-    asset, link, env = await runnable_link(session, user, asset_id)
+) -> SheetOperation:
+    asset, link, env, mappings = await runnable_link(session, user, asset_id)
     op = await operation(session, link, op_id)
     if op.actor_id != user.id:
         raise NotFoundError("sheet_operation_not_found", "no such preview of yours")
     if op.state == "previewed":
         await _reserve(
-            session, settings, asset, link, op, google_user_for(link, asset, user), decisions
+            session,
+            settings,
+            asset,
+            link,
+            mappings,
+            op,
+            google_user_for(link, asset, user),
+            decisions,
         )
     if op.state == "applied":
-        return op, link  # A repeated request: the outcome is already recorded.
+        return op  # A repeated request: the outcome is already recorded.
     if op.state != "applying":
         raise ConflictError(f"sheet_operation_{op.state}", "this preview can no longer be applied")
 
     plan = op.export or {}
+    parts = _parts(op)
     done: dict[str, Any] = {"results": []}
     if plan["patches"]:
+        linked: dict[str, list[str]] = {}
+        for part in parts.values():
+            cols = list(part["sheet"]["cols"])
+            linked[part["collection"]] = cols
         try:
             done = await call_broker(
                 settings,
                 f"/admin/apps/{env.asset_hex}/prod/sheets/apply",
                 {
                     "user_id": str(user.id),
-                    "collection": link.collection,
                     "key": str(op.id),
                     "changes": plan["patches"],
-                    "fields": [c["field"] for c in link.columns],
+                    "fields": linked,
                     "release": op.preview.get("release"),
                 },
                 # The broker's deadline for one transaction grows with its
@@ -344,18 +434,21 @@ async def apply(
     op = await operation(session, link, op.id, lock=True)
     if op.state != "applying":
         await session.commit()
-        return op, link  # Another request finished it meanwhile.
-    created = await _created_values(session, env, link, done["results"])
-    await save_base(session, link.id, plan["local_base"], plan["rows"])
+        return op  # Another request finished it meanwhile.
+    created = await _created_values(session, env, mappings, parts, done["results"])
+    out = {}
+    for mid, own in plan["mappings"].items():
+        await save_base(session, mid, own["local_base"], own["rows"])
+        # A created record's own columns reach its row with the write.
+        remote = dict(own["remote_base"])
+        for c in parts[mid]["creates"]:
+            remote[c["record_id"]] = created.get(c["record_id"], {})
+        out[mid] = {**own, "remote_base": remote}
     # The automatic sync's idle shortcut no longer holds after an apply.
     await session.execute(
         update(SheetLink).where(SheetLink.id == link.id).values(auto_sheet_hash=None)
     )
-    # A created record's own columns reach its row with the write.
-    remote = dict(plan["remote_base"])
-    for c in op.preview["creates"]:
-        remote[c["record_id"]] = created.get(c["record_id"], {})
-    op.export = {**plan, "created": created, "remote_base": remote}
+    op.export = {**plan, "mappings": out, "created": created}
     op.state = "applied"
     op.google_status = "pending"
     op.result = {"app_changes": len(done["results"]), "replayed": bool(done.get("replayed"))}
@@ -368,22 +461,32 @@ async def apply(
     )
     await session.commit()
     await write.write(session, settings, asset, link, env, op)
-    return op, link
+    return op
 
 
 async def _created_values(
     session: AsyncSession,
     env: MicroAppEnvironment,
-    link: SheetLink,
+    mappings: list[SheetMapping],
+    parts: dict[str, dict[str, Any]],
     results: list[dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
     """The app's own columns of each created record (its defaults), for its row."""
-    returned = [r for r in results if "values" in r]
+    returned = {r["id"]: r for r in results if "values" in r}
     if not returned:
         return {}
-    fields = links.field_defs(await links.manifest_of(session, env), link)
-    app_owned = [c["field"] for c in link.columns if c["owner"] == "app" and c["field"] in fields]
-    return {
-        r["id"]: {f: values.from_app(fields[f], r["values"].get(f)) for f in app_owned}
-        for r in returned
-    }
+    manifest = await links.manifest_of(session, env)
+    out: dict[str, dict[str, Any]] = {}
+    for m in mappings:
+        part = parts.get(str(m.id))
+        if part is None:
+            continue
+        fields = links.field_defs(manifest, m)
+        app_owned = [c["field"] for c in m.columns if c["owner"] == "app" and c["field"] in fields]
+        for c in part["creates"]:
+            r = returned.get(c["record_id"])
+            if r is not None:
+                out[r["id"]] = {
+                    f: values.from_app(fields[f], r["values"].get(f)) for f in app_owned
+                }
+    return out

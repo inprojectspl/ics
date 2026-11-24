@@ -193,23 +193,6 @@ def a1_tab(title: str) -> str:
     return "'" + title.replace("'", "''") + "'"
 
 
-async def read_values(access_token: str, spreadsheet_id: str, range_a1: str) -> list[list[Any]]:
-    """Raw values: numbers as numbers, dates as serial numbers, no formatting,
-    so what is compared does not depend on the sheet's locale."""
-    body = await _request(
-        "GET",
-        f"{SHEETS_URL}/{quote(spreadsheet_id, safe='')}/values/{quote(range_a1, safe='')}",
-        headers=_auth(access_token),
-        params={
-            "valueRenderOption": "UNFORMATTED_VALUE",
-            "dateTimeRenderOption": "SERIAL_NUMBER",
-            "majorDimension": "ROWS",
-        },
-    )
-    values: list[list[Any]] = body.get("values", [])
-    return values
-
-
 async def batch_update(
     access_token: str, spreadsheet_id: str, requests: list[dict[str, Any]]
 ) -> dict[str, Any]:
@@ -223,11 +206,12 @@ async def batch_update(
     )
 
 
-async def read_columns(
-    access_token: str, spreadsheet_id: str, ranges: list[str]
+async def _batch_get(
+    access_token: str, spreadsheet_id: str, ranges: list[str], major: str
 ) -> list[list[Any]]:
-    """Each A1 range (one column) as a list of raw values, top to bottom; the
-    same rendering as `read_values`. One call for every linked column."""
+    """The first row (ROWS) or column (COLUMNS) of each A1 range, raw:
+    numbers as numbers, dates as serial numbers, no formatting, so what is
+    compared does not depend on the sheet's locale. One call for all."""
     body = await _request(
         "GET",
         f"{SHEETS_URL}/{quote(spreadsheet_id, safe='')}/values:batchGet",
@@ -235,15 +219,25 @@ async def read_columns(
         params=[
             ("valueRenderOption", "UNFORMATTED_VALUE"),
             ("dateTimeRenderOption", "SERIAL_NUMBER"),
-            ("majorDimension", "COLUMNS"),
+            ("majorDimension", major),
             *(("ranges", r) for r in ranges),
         ],
     )
-    out: list[list[Any]] = []
-    for vr in body.get("valueRanges", []):
-        cols = vr.get("values") or [[]]
-        out.append(cols[0])
-    return out
+    return [(vr.get("values") or [[]])[0] for vr in body.get("valueRanges", [])]
+
+
+async def read_columns(
+    access_token: str, spreadsheet_id: str, ranges: list[str]
+) -> list[list[Any]]:
+    """Each A1 range (one column) as a list of values, top to bottom."""
+    return await _batch_get(access_token, spreadsheet_id, ranges, "COLUMNS")
+
+
+async def read_header_rows(
+    access_token: str, spreadsheet_id: str, ranges: list[str]
+) -> list[list[Any]]:
+    """The first row of each A1 range."""
+    return await _batch_get(access_token, spreadsheet_id, ranges, "ROWS")
 
 
 async def grid(access_token: str, spreadsheet_id: str, range_a1: str) -> dict[str, Any]:
@@ -258,6 +252,6 @@ async def grid(access_token: str, spreadsheet_id: str, range_a1: str) -> dict[st
             "includeGridData": "true",
             "fields": "properties(title,timeZone),"
             "sheets(properties(title),data(rowData(values(effectiveValue,"
-            "effectiveFormat/numberFormat/type,formattedValue))))",
+            "effectiveFormat/numberFormat/type,formattedValue,userEnteredValue/formulaValue))))",
         },
     )

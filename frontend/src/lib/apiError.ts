@@ -31,6 +31,12 @@ export function statusCode(err: unknown): number | null {
   return m ? Number(m[1]) : null;
 }
 
+/** A server error's text extra (`tab`, `action`), or null. */
+export function extraString(err: unknown, key: string): string | null {
+  const value = err instanceof ApiError ? err.extra[key] : undefined;
+  return typeof value === "string" ? value : null;
+}
+
 /** Strings of a server error's list extra (`choices`, `missing`, `tabs`). */
 export function extraList(err: unknown, key: string): string[] {
   const value = err instanceof ApiError ? err.extra[key] : undefined;

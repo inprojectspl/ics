@@ -28,6 +28,7 @@ from app.models import (
     MicroAppStats,
     ShareLink,
     SheetLink,
+    SheetMapping,
     User,
 )
 from app.redis_client import get_redis
@@ -393,14 +394,18 @@ async def report(
         stored += 1
     if changed:
         # Recorded on the link only: the sheets sweeper decides when to run.
+        linked = (
+            select(SheetMapping.link_id)
+            .join(SheetLink, SheetLink.id == SheetMapping.link_id)
+            .where(
+                tuple_(SheetLink.asset_id, SheetMapping.collection).in_(
+                    [(asset_id, name) for asset_id, names in changed.items() for name in names]
+                )
+            )
+        )
         await session.execute(
             update(SheetLink)
-            .where(
-                SheetLink.auto_sync.is_(True),
-                tuple_(SheetLink.asset_id, SheetLink.collection).in_(
-                    [(asset_id, name) for asset_id, names in changed.items() for name in names]
-                ),
-            )
+            .where(SheetLink.auto_sync.is_(True), SheetLink.id.in_(linked))
             .values(app_changed_at=now)
         )
     await session.commit()

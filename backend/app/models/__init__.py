@@ -26,7 +26,7 @@ from app.models.projects import Project, ProjectMember
 from app.models.publications import PublicationReceipt
 from app.models.relations import AssetRelation, DuplicateDismissal
 from app.models.sharing import AssetProjectShare, AssetShare, ShareLink
-from app.models.sheets import GoogleGrant, SheetBase, SheetLink, SheetOperation
+from app.models.sheets import GoogleGrant, SheetBase, SheetLink, SheetMapping, SheetOperation
 from app.models.storage_cleanup import StorageCleanup
 from app.models.tokens import PersonalAccessToken
 from app.models.users import AuthAttempt, EmailOutbox, User
@@ -73,6 +73,7 @@ __all__ = [
     "ShareLink",
     "SheetBase",
     "SheetLink",
+    "SheetMapping",
     "SheetOperation",
     "StorageCleanup",
     "User",

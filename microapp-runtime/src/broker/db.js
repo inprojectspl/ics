@@ -117,7 +117,7 @@ export class PoolRegistry {
  * deadline means the connection is destroyed rather than returned: the
  * server then aborts whatever transaction it still holds.
  */
-export async function inTransaction(registry, appKey, binding, { readOnly, statementTimeoutMs, signal }, fn) {
+export async function inTransaction(registry, appKey, binding, { readOnly, snapshot, statementTimeoutMs, signal }, fn) {
   const client = await registry.connect(appKey, binding);
   let destroy = false;
   const onAbort = () => {
@@ -128,7 +128,9 @@ export async function inTransaction(registry, appKey, binding, { readOnly, state
   };
   signal?.addEventListener("abort", onAbort, { once: true });
   try {
-    await client.query(readOnly ? "BEGIN READ ONLY" : "BEGIN");
+    // `snapshot`: every statement sees the database as of the first one, so
+    // reads of several tables agree with each other.
+    await client.query(readOnly ? (snapshot ? "BEGIN READ ONLY ISOLATION LEVEL REPEATABLE READ" : "BEGIN READ ONLY") : "BEGIN");
     await client.query(`SET LOCAL statement_timeout = ${Math.max(100, Math.floor(statementTimeoutMs))}`);
     const result = await fn(client);
     if (signal?.aborted) throw new DataError(504, "execution_deadline", "request deadline exceeded");
