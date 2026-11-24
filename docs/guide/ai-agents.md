@@ -131,6 +131,16 @@ Planning needs an OAuth sign-in as described above: personal access tokens are r
 
 When an agent reads an app (`ics_asset_read`), it gets the app's own view with your records filled in, as on the **Data** tab, and then the records of each collection you may read. The app's code is shown only to its publishers.
 
+## Build an app on a Google spreadsheet
+
+An agent can build a micro-application on a spreadsheet you already keep in Google and link the two, so your team goes on typing in the sheet while the app adds forms, roles and rules. Give it the file's address and say how people work, for example:
+
+> Build an app on https://docs.google.com/spreadsheets/d/.../edit. Orders are in one tab per month; staff take orders and change their status in the app; accounting keeps the Customers tab in the sheet; the Summary tab is a report.
+
+The agent reads the file with your Google account (`ics_sheets_inspect`): every tab, its headers, what kind of data each column holds, which tabs look alike and which columns are formulas. The first time it gives you a link to Google's consent screen: open it, accept, and tell the agent. Then it decides what each tab is, asks about what the data cannot tell (where new orders go, whether a column people type in matters), builds and publishes the app, gives people roles and links the file (`ics_sheets_link`). The first sync starts with a preview (`ics_sheets_preview`) you see before anything changes; applying it (`ics_sheets_apply`) asks for your confirmation.
+
+The agent never asks you to change the sheet: no id column, no renamed headers. If a tab cannot be linked (merged headers, several tables in one tab), it says so and links the rest. Later you can ask it to add a tab (a new month), link another collection or turn automatic sync on or off; it sends the whole link again and nothing already agreed is lost. What the link does and how syncs work is on the [Google Sheets](google-sheets.md) page.
+
 ## Retry a write safely
 
 Writes through ics-mcp can be made safe to repeat when a response gets lost:
@@ -149,3 +159,4 @@ Both are optional, and the details for developers are in the [publication receip
 - [Formats](formats.md): how PDF, Word and HTML documents are converted to text.
 - [Administration](administration.md): the audit log.
 - [Micro-applications](micro-applications.md): what agents build and publish.
+- [Google Sheets](google-sheets.md): apps on a Google spreadsheet and their syncs.

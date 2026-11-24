@@ -98,6 +98,7 @@ nav:
       - guide/search.md
       - guide/sharing.md
       - guide/micro-applications.md
+      - guide/google-sheets.md
       - guide/projects.md
       - guide/graph.md
       - guide/notifications.md
