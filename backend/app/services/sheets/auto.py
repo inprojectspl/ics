@@ -1,4 +1,4 @@
-"""Automatic syncs of sheet links (ADR-0031, ADR-0032).
+"""Automatic syncs of sheet links (ADR-0031, ADR-0032, ADR-0033).
 
 A link with `auto_sync` is synced by ICS itself, as the asset owner on the
 owner's Google account, through the same preview and apply a person runs.
@@ -37,8 +37,8 @@ from app.services.notifications import preferences
 from app.services.notifications.fanout import notify_user
 from app.services.notifications.items import AssetRef, build_payload
 
-from . import grants, sync
-from .compare import Sheet
+from . import grants, links, sync, write
+from .book import Book
 
 log = structlog.get_logger(__name__)
 
@@ -57,6 +57,9 @@ _PASSING = frozenset(
         "sheet_link_applying",
         "release_changed",
         "sheet_operation_superseded",
+        # An earlier sync of the file still settling: the next run checks it.
+        "sheet_sync_in_progress",
+        "sheet_sync_unsettled",
     }
 )
 
@@ -131,22 +134,36 @@ def _due(
     return interval is not None and now - checked_at >= interval
 
 
-def _sheet_hash(sheet: Sheet, revision: int, release: UUID | None) -> str:
-    """The linked columns as read, under this link and release."""
+def _sheet_hash(book: Book, revision: int, release: UUID | None) -> str:
+    """The linked columns of every linked tab as read, under this link and
+    release; the tabs and their columns are part of it."""
     raw = json.dumps(
         [
             revision,
             str(release),
-            sheet.sheet_id,
-            sheet.tz,
-            sheet.header,
-            sheet.rows,
-            sorted(sheet.duplicates),
+            [
+                [str(mid), s.tz, [[t.sheet_id, t.title, t.cols] for t in s.tabs], s.rows]
+                for mid, s in sorted(book.items())
+            ],
         ],
         default=str,
         separators=(",", ":"),
     )
     return hashlib.sha256(raw.encode()).hexdigest()
+
+
+async def _settle(session: AsyncSession, settings: Settings, owner: User, link: SheetLink) -> None:
+    """Finish what an earlier sync of the file left: resume the owner's own
+    apply, or read back a sheet write whose answer was lost. Raises the
+    refusal when it is still unsettled, so the run retries later."""
+    busy = await links.busy_operation(session, link)
+    if busy is None:
+        return
+    if busy.state == "applying" and busy.actor_id == owner.id:
+        await sync.apply(session, settings, owner, link.asset_id, busy.id, busy.decisions or {})
+    elif busy.state == "applied":
+        await write.check(session, settings, owner, link.asset_id, busy.id)
+    await links.refuse_while_busy(session, link)
 
 
 async def run(session: AsyncSession, settings: Settings, link_id: UUID) -> str:
@@ -175,19 +192,20 @@ async def run(session: AsyncSession, settings: Settings, link_id: UUID) -> str:
     outcome = "synced"
     digest: str | None = None
     try:
-        sheet = await sync.linked_sheet(session, settings, owner, asset.id)
+        await _settle(session, settings, owner, link)
+        book = await sync.linked_book(session, settings, owner, asset.id)
         release = await session.scalar(
             select(MicroAppEnvironment.active_release_id).where(
                 MicroAppEnvironment.asset_id == asset.id,
                 MicroAppEnvironment.environment == ENVIRONMENT,
             )
         )
-        digest = _sheet_hash(sheet, link.revision, release)
+        digest = _sheet_hash(book, link.revision, release)
         if digest == link.auto_sheet_hash and not app_changed:
             # Neither side moved since a run that found nothing to do.
             op, outcome = None, "idle"
         else:
-            op = await sync.auto_preview(session, settings, owner, asset.id, sheet)
+            op = await sync.auto_preview(session, settings, owner, asset.id, book)
         conflicts = int((op.summary or {}).get("conflicts") or 0) if op else 0
         if op is None:
             outcome = "idle"

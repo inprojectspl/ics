@@ -1,7 +1,9 @@
-"""What a person sees of a link and its syncs, and the access request (ADR-0031)."""
+"""What a person sees of a link and its syncs, and the access request
+(ADR-0031, ADR-0033)."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 from uuid import UUID
 
@@ -15,7 +17,7 @@ from app.domain_errors import (
     AccessDeniedError,
     ConflictError,
 )
-from app.models import SheetLink, SheetOperation, User
+from app.models import SheetOperation, User
 from app.redis_client import get_redis
 from app.services.notifications import preferences
 from app.services.notifications.fanout import notify_user
@@ -23,14 +25,68 @@ from app.services.notifications.items import AssetRef, build_payload
 from app.services.versions import author_label
 
 from . import grants, links
-from .common import operation, row_limit, runnable_link
+from .common import operation, placer, row_limit, runnable_link
 
 # ------------------------------------------------------------------- views
 
 
-def op_view(
-    op: SheetOperation, link: SheetLink, user: User, *, detail: bool = True
-) -> dict[str, Any]:
+def _where(
+    place: Callable[[int], list[int]], titles: dict[int, str]
+) -> Callable[[int | None], dict[str, Any]]:
+    """The tab and the tab's own row of a row a preview part counts across
+    its tabs, as an item of a view carries them."""
+
+    def where(row: int | None) -> dict[str, Any]:
+        if row is None:
+            return {}
+        sheet_id, own = place(row)
+        return {"tab": titles[sheet_id], "row": own}
+
+    return where
+
+
+def _details(op: SheetOperation) -> dict[str, Any]:
+    """The changes of every mapping as flat lists, each item naming its
+    collection, tab and the row in that tab."""
+    out: dict[str, Any] = {"headers": {}, "updates": [], "creates": [], "appends": [], "issues": []}
+    for part in (op.preview.get("mappings") or {}).values():
+        coll = part["collection"]
+        titles = {t["sheet_id"]: t["title"] for t in part["sheet"]["tabs"]}
+        where = _where(placer(part), titles)
+
+        out["headers"][coll] = part.get("headers") or {}
+        out["updates"] += [
+            {
+                "collection": coll,
+                "record_id": u["record_id"],
+                **where(u["row"]),
+                **{k: u[k] for k in ("import", "export", "conflicts")},
+            }
+            for u in part["updates"]
+        ]
+        out["creates"] += [
+            {"collection": coll, "record_id": c["record_id"], **where(c["row"]), "data": c["data"]}
+            for c in part["creates"]
+        ]
+        out["appends"] += [
+            {
+                "collection": coll,
+                "record_id": a["record_id"],
+                "tab": titles.get(a.get("sheet_id")),
+                "values": a["values"],
+            }
+            for a in part["appends"]
+        ]
+        for issue in part["issues"]:
+            item = {**issue, "collection": coll, **where(issue.get("row"))}
+            if "first_row" in issue:
+                first = where(issue["first_row"])
+                item["first_row"], item["first_tab"] = first["row"], first["tab"]
+            out["issues"].append(item)
+    return out
+
+
+def op_view(op: SheetOperation, user: User, *, detail: bool = True) -> dict[str, Any]:
     """An operation; its changes only for the person who made it (values come
     from records that person could read) and only when asked for."""
     mine = op.actor_id == user.id
@@ -44,16 +100,12 @@ def op_view(
         "summary": op.summary,
         "result": op.result,
         "auto": op.auto,
+        # Its sheet write is not known to have landed: check it before the
+        # next sync of the file.
+        "unsettled": op.state == "applied" and op.google_status in links.UNSETTLED,
     }
     if mine and detail and op.preview:
-        out["headers"] = {c["field"]: c["header"] for c in link.columns}
-        out["updates"] = [
-            {k: u[k] for k in ("record_id", "row", "import", "export", "conflicts")}
-            for u in op.preview["updates"]
-        ]
-        out["creates"] = op.preview["creates"]
-        out["appends"] = op.preview["appends"]
-        out["issues"] = op.preview["issues"]
+        out.update(_details(op))
         if op.decisions:
             out["decisions"] = op.decisions
     return out
@@ -85,7 +137,7 @@ async def status(
     out["auto_active_interval_seconds"] = settings.google_sheets_active_poll_seconds
     if link is None:
         return out
-    out["link"] = links.view(link)
+    out["link"] = links.view(link, await links.mappings_of(session, link))
     if link.account_mode == "owner_account":
         out["owner_google_connected"] = await grants.grant_of(session, asset.owner_id) is not None
     if not rights.control:
@@ -101,10 +153,10 @@ async def status(
             .limit(10)
         )
     )
-    views = [op_view(op, link, user, detail=False) for op in ops]
+    views = [op_view(op, user, detail=False) for op in ops]
     if ops and ops[0].actor_id == user.id and _unfinished(ops[0]):
         await session.refresh(ops[0], ["preview"])
-        views[0] = op_view(ops[0], link, user)
+        views[0] = op_view(ops[0], user)
     out["operations"] = views
     return out
 
@@ -116,7 +168,7 @@ async def get_operation(
     if not rights.control:
         raise AccessDeniedError("forbidden", "the sync needs the app.control right")
     link = await links.require(session, asset_id)
-    return op_view(await operation(session, link, op_id), link, user)
+    return op_view(await operation(session, link, op_id), user)
 
 
 ACCESS_REQUEST_TTL = 3600
@@ -128,7 +180,7 @@ async def request_access(
     """Ask the asset's owner, in their ICS inbox, to share the spreadsheet
     with this person's Google account. Grants nothing: Google still decides,
     and the person checks again with a new preview. One request an hour."""
-    asset, link, _ = await runnable_link(session, user, asset_id)
+    asset, link, _, _ = await runnable_link(session, user, asset_id)
     if link.account_mode != "per_user":
         raise ConflictError("access_request_not_needed", "the sync uses the owner's Google account")
     if asset.owner_id == user.id:

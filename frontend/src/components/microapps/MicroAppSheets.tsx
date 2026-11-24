@@ -9,6 +9,7 @@ import {
   removeSheetLink,
   type SheetColumnOwner,
   type SheetLink,
+  type SheetMapping,
   type SheetStatus,
 } from "../../api/sheets";
 import { formatApiError } from "../../lib/apiError";
@@ -34,8 +35,9 @@ const sheetStatusQuery = (assetId: string) =>
   queryOptions({ queryKey: [...microAppKey(assetId), "sheets"], queryFn: () => getSheetStatus(assetId) });
 
 /**
- * The Google Sheets tab: my Google connection, the link of one collection
- * to one sheet tab and the sync on demand (`app.control`). The link, and
+ * The Google Sheets tab: my Google connection, the link of the app to a
+ * spreadsheet file with each linked collection and its tabs, and the sync
+ * of the whole file on demand (`app.control`). The link, and
  * whether it syncs by itself (`auto_sync`), is set up only by an AI agent
  * through ics-mcp; here it is read-only, apart from removing it
  * (`app.access.manage`).
@@ -240,7 +242,6 @@ function LinkSummary({
     }
   };
 
-  const keyColumn = link.key_field ? link.columns.find((c) => c.field === link.key_field) : undefined;
   return (
     <div className="space-y-3">
       {error && (
@@ -260,25 +261,11 @@ function LinkSummary({
             </Badge>
           )}
         </DetailItem>
-        <DetailItem label={t("microapps.sheets.field.sheetTitle")}>{link.sheet_title}</DetailItem>
-        <DetailItem label={t("microapps.sheets.field.collection")}>
-          <code className="font-code">{link.collection}</code>
-        </DetailItem>
-        <DetailItem label={t("microapps.sheets.field.columns")}>
-          <ul className="grid gap-0.5">
-            {link.columns.map((c) => (
-              <li key={c.field}>
-                {c.header} <span className="text-text-tertiary">({c.field})</span>
-                <span className="text-text-secondary">: {t(OWNER_LABEL[c.owner])}</span>
-              </li>
-            ))}
-          </ul>
-        </DetailItem>
-        <DetailItem label={t("microapps.sheets.field.matching")}>
-          {link.key_field
-            ? t("microapps.sheets.matching.key", { header: keyColumn?.header ?? link.key_field, field: link.key_field })
-            : t("microapps.sheets.matching.content")}
-        </DetailItem>
+        {link.mappings.map((m) => (
+          <DetailItem key={m.id} label={t("microapps.sheets.field.collectionNamed", { name: m.collection })}>
+            <MappingSummary mapping={m} />
+          </DetailItem>
+        ))}
         <DetailItem label={t("microapps.sheets.field.accountMode")}>
           {t(link.account_mode === "owner_account" ? "microapps.sheets.mode.owner_account" : "microapps.sheets.mode.per_user")}
         </DetailItem>
@@ -297,6 +284,45 @@ function LinkSummary({
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+/** One collection's tabs, columns and how rows are matched to records. */
+function MappingSummary({ mapping: m }: { mapping: SheetMapping }) {
+  const keyColumn = m.key_field ? m.columns.find((c) => c.field === m.key_field) : undefined;
+  const several = m.tabs.length > 1;
+  return (
+    <div className="space-y-1">
+      <p>
+        {t(several ? "microapps.sheets.tabsMany" : "microapps.sheets.tabsOne", {
+          tabs: m.tabs.map((tab) => tab.title ?? `#${tab.sheet_id}`).join(", "),
+        })}
+        {several && m.tabs.some((tab) => tab.append) && (
+          <span className="block text-meta text-text-secondary">
+            {t("microapps.sheets.appendTab", { tab: m.tabs.find((tab) => tab.append)?.title ?? "" })}
+          </span>
+        )}
+        {m.read_only && <span className="block text-meta text-text-secondary">{t("microapps.sheets.readOnly")}</span>}
+      </p>
+      <ul className="grid gap-0.5">
+        {m.columns.map((c) => (
+          <li key={c.field}>
+            {c.header} <span className="text-text-tertiary">({c.field})</span>
+            <span className="text-text-secondary">: {t(OWNER_LABEL[c.owner])}</span>
+          </li>
+        ))}
+        {m.tab_field && (
+          <li>
+            {t("microapps.sheets.tabField")} <span className="text-text-tertiary">({m.tab_field})</span>
+          </li>
+        )}
+      </ul>
+      <p className="text-meta text-text-secondary">
+        {m.key_field
+          ? t("microapps.sheets.matching.key", { header: keyColumn?.header ?? m.key_field, field: m.key_field })
+          : t("microapps.sheets.matching.content")}
+      </p>
     </div>
   );
 }

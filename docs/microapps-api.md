@@ -170,22 +170,22 @@ The values for a server are in the `limits` section of the contract.
 
 ## Google Sheets links
 
-A collection of an app can be linked to a tab of a Google spreadsheet and synced on request or automatically ([ADR-0031](decisions/0031-google-sheets-links.md); automatic syncs follow the app's activity, [ADR-0032](decisions/0032-micro-application-realtime.md)). The link is set up by an agent through ICS-MCP (`ics_sheets_inspect`, `ics_sheets_link`); the panel connects Google and runs syncs. Both use the same API; the actor is always the signed-in person. The sheet needs no id column: rows match records by an optional `key_field` or by content.
+An app can be linked to one Google spreadsheet file and synced on request or automatically ([ADR-0031](decisions/0031-google-sheets-links.md), per file since [ADR-0033](decisions/0033-google-sheets-file-links.md); automatic syncs follow the app's activity, [ADR-0032](decisions/0032-micro-application-realtime.md)). Each linked collection has a mapping to one tab or to several tabs of one kind of record (with a `key_field` unique across them and `append_to`, the tab new records go to); a mapping whose columns are all owned by `sheet` is a list the app only reads. One sync covers every mapping: one broker transaction, one sheet write. The link is set up by an agent through ICS-MCP (`ics_sheets_inspect`, `ics_sheets_link`); the panel connects Google and runs syncs. Both use the same API; the actor is always the signed-in person. The sheet needs no id column: rows match records by an optional `key_field` or by content.
 
 | Request | Purpose |
 |---|---|
 | `GET /api/integrations/google` | `{enabled, connected, email}` of the caller's Google connection |
 | `GET /api/integrations/google/connect?next=` | starts the consent (302 to Google); back at `next` with `?google=connected` or an error code |
 | `DELETE /api/integrations/google` | disconnect the caller's Google account |
-| `POST /api/integrations/google/inspect` | `{spreadsheet, tab?}`: tabs, headers and per column a proposed field name and type, fill rate, uniqueness and samples, read with the caller's own Google account |
-| `GET /api/micro-applications/{id}/sheets` | the link, the caller's rights and Google connection, `row_limit`, recent operations |
-| `PUT /api/micro-applications/{id}/sheets` | `{collection, spreadsheet, sheet_title, columns: [{field, header, owner}], account_mode, key_field?, paused?, auto_sync?}`: create or change the link (owner-like role; `owner_account` only by the asset owner); `expected_revision` guards concurrent edits |
+| `POST /api/integrations/google/inspect` | `{spreadsheet, tab?}` (`tab`: name or `sheet_id`): every tab with its `sheet_id` and headers, `groups` of tabs with the same headers, and per column of one tab a proposed field name and type, fill rate, uniqueness, `formula` and samples, read with the caller's own Google account |
+| `GET /api/micro-applications/{id}/sheets` | the link with its `mappings`, the caller's rights and Google connection, `row_limit`, recent operations |
+| `PUT /api/micro-applications/{id}/sheets` | `{spreadsheet, account_mode, mappings: [{collection, tabs, columns: [{field, header, owner}], key_field?, append_to?, tab_field?}], paused?, auto_sync?, expected_revision?}`: create or replace the whole link (owner-like role; `owner_account` only by the asset owner); a mapping kept keeps its agreed values, one left out is removed. The body of one collection on one tab (`collection`, `sheet_title`, `columns`, `key_field`) is still accepted |
 | `DELETE /api/micro-applications/{id}/sheets` | remove the link |
-| `POST /api/micro-applications/{id}/sheets/preview` | read both sides and store a preview (needs `app.control`) |
+| `POST /api/micro-applications/{id}/sheets/preview` | read both sides of every mapping and store one preview of the file (needs `app.control`); each change names its `collection`, `tab` and `row` in that tab |
 | `GET /api/micro-applications/{id}/sheets/operations/{op}` | one operation; its details only for the person who made it |
 | `POST /api/micro-applications/{id}/sheets/operations/{op}/apply` | `{decisions: {"<record id>:<field>": "app" \| "sheet"}}`; repeat the same call after a `503` |
 | `POST /api/micro-applications/{id}/sheets/operations/{op}/check` | read back an `uncertain` write; never writes |
 | `POST /api/micro-applications/{id}/sheets/request-access` | `per_user` links: notify the owner to share the file (once an hour) |
 
-Errors that need the person carry `action`: `connect_google` (`google_not_connected`, `google_grant_invalid`) or `request_access` (`google_no_access`, `google_not_found`). `409 sheet_changed`, `app_changed` and `sheet_link_changed` mean preview again; `app_rule_refused` means the app's rules do not let the record change now.
+Errors that need the person carry `action`: `connect_google` (`google_not_connected`, `google_grant_invalid`) or `request_access` (`google_no_access`, `google_not_found`). `409 sheet_changed`, `app_changed` and `sheet_link_changed` mean preview again; `app_rule_refused` means the app's rules do not let the record change now; `sheet_sync_unsettled` means an earlier sheet write (`operation_id`) must be checked first.
 

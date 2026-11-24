@@ -10,6 +10,13 @@ import { AppRegistry } from "../src/broker/apps.js";
 const manifest = {
   database: {
     collections: {
+      rooms: {
+        fields: { name: { type: "string", maxLength: 100 } },
+        crud: {
+          list: { permission: "b.read", rowScope: "all", readFields: ["id", "revision", "name"] },
+          create: { permission: "r.write", rowScope: "all", writeFields: ["name"] },
+        },
+      },
       bookings: {
         fields: { room: { type: "string", maxLength: 100 }, note: { type: "string", maxLength: 500 }, secret: { type: "string" } },
         crud: {
@@ -22,7 +29,7 @@ const manifest = {
   },
   capabilities: {},
   endpoints: [],
-  permissions: { "b.read": { label: "Read" }, "b.write": { label: "Write" } },
+  permissions: { "b.read": { label: "Read" }, "b.write": { label: "Write" }, "r.write": { label: "Rooms" } },
   roles: { editor: { label: "Editor", permissions: ["b.read", "b.write"] } },
 };
 
@@ -106,7 +113,8 @@ function gatewayWith(db, permissions) {
   return gw;
 }
 
-const target = { assetHex: "a".repeat(32), environment: "prod", userId: "u1", collection: "bookings" };
+const target = { assetHex: "a".repeat(32), environment: "prod", userId: "u1" };
+const read = (fields, extra = {}) => ({ ...target, collections: [{ collection: "bookings", fields }], ...extra });
 
 async function apply(db, gw, changes, key = "op-00000001", release = "r1") {
   try {
@@ -120,23 +128,23 @@ async function apply(db, gw, changes, key = "op-00000001", release = "r1") {
 }
 
 test("rows come with id, revision and only the linked fields", async () => {
-  const out = await readRows(gatewayWith(fakeDb(), ["b.read"]), { ...target, fields: ["room", "note"] });
-  assert.deepEqual(out.rows, [{ id: ID1, revision: 2, room: "A", note: null }]);
+  const out = await readRows(gatewayWith(fakeDb(), ["b.read"]), read(["room", "note"]));
+  assert.deepEqual(out.collections.bookings, [{ id: ID1, revision: 2, room: "A", note: null }]);
   assert.equal(out.truncated, false);
 });
 
 test("a field the list rule hides cannot be linked", async () => {
-  await assert.rejects(readRows(gatewayWith(fakeDb(), ["b.read"]), { ...target, fields: ["secret"] }), (e) => e.code === "field_not_readable");
+  await assert.rejects(readRows(gatewayWith(fakeDb(), ["b.read"]), read(["secret"])), (e) => e.code === "field_not_readable");
 });
 
 test("without the list permission nothing is read", async () => {
-  await assert.rejects(readRows(gatewayWith(fakeDb(), []), { ...target, fields: ["room"] }), (e) => e.code === "forbidden");
+  await assert.rejects(readRows(gatewayWith(fakeDb(), []), read(["room"])), (e) => e.code === "forbidden");
 });
 
 test("changes apply once; the same key replays the stored result", async () => {
   const db = fakeDb();
   const gw = gatewayWith(db, ["b.read", "b.write"]);
-  const changes = [{ op: "update", id: ID1, revision: 2, patch: { room: "B" } }, { op: "create", id: ID2, data: { room: "C" } }];
+  const changes = [{ op: "update", collection: "bookings", id: ID1, revision: 2, patch: { room: "B" } }, { op: "create", collection: "bookings", id: ID2, data: { room: "C" } }];
   const first = await apply(db, gw, changes);
   assert.equal(first.replayed, false);
   assert.equal(first.results[0].revision, 3);
@@ -155,7 +163,7 @@ test("a stale revision rolls back the whole operation and names the change", asy
   db.failUpdate = true;
   const gw = gatewayWith(db, ["b.read", "b.write"]);
   await assert.rejects(
-    apply(db, gw, [{ op: "create", id: ID2, data: { room: "C" } }, { op: "update", id: ID1, revision: 2, patch: { room: "B" } }]),
+    apply(db, gw, [{ op: "create", collection: "bookings", id: ID2, data: { room: "C" } }, { op: "update", collection: "bookings", id: ID1, revision: 2, patch: { room: "B" } }]),
     (e) => e.code === "revision_mismatch" && e.change === 1 && e.currentRevision === 5,
   );
   assert.ok(db.queries.includes("ROLLBACK"));
@@ -164,29 +172,29 @@ test("a stale revision rolls back the whole operation and names the change", asy
 
 test("a field outside the write rule is refused", async () => {
   const db = fakeDb();
-  await assert.rejects(apply(db, gatewayWith(db, ["b.read", "b.write"]), [{ op: "update", id: ID1, revision: 2, patch: { secret: "x" } }]), (e) => e.code === "validation_failed" && e.change === 0);
+  await assert.rejects(apply(db, gatewayWith(db, ["b.read", "b.write"]), [{ op: "update", collection: "bookings", id: ID1, revision: 2, patch: { secret: "x" } }]), (e) => e.code === "validation_failed" && e.change === 0);
 });
 
 test("without the write permission nothing is applied", async () => {
   const db = fakeDb();
-  await assert.rejects(apply(db, gatewayWith(db, ["b.read"]), [{ op: "update", id: ID1, revision: 2, patch: { room: "B" } }]), (e) => e.code === "forbidden");
+  await assert.rejects(apply(db, gatewayWith(db, ["b.read"]), [{ op: "update", collection: "bookings", id: ID1, revision: 2, patch: { room: "B" } }]), (e) => e.code === "forbidden");
 });
 
 test("a preview made under another release is not applied", async () => {
   const db = fakeDb();
-  await assert.rejects(apply(db, gatewayWith(db, ["b.read", "b.write"]), [{ op: "update", id: ID1, revision: 2, patch: { room: "B" } }], "op-00000002", "r0"), (e) => e.code === "release_changed");
+  await assert.rejects(apply(db, gatewayWith(db, ["b.read", "b.write"]), [{ op: "update", collection: "bookings", id: ID1, revision: 2, patch: { room: "B" } }], "op-00000002", "r0"), (e) => e.code === "release_changed");
   assert.equal(db.idem.size, 0);
 });
 
 test("only the linked fields of each page stay in memory", async () => {
-  const out = await readRows(gatewayWith(fakeDb(), ["b.read"]), { ...target, fields: ["room"] });
-  assert.deepEqual(out.rows, [{ id: ID1, revision: 2, room: "A" }]);
+  const out = await readRows(gatewayWith(fakeDb(), ["b.read"]), read(["room"]));
+  assert.deepEqual(out.collections.bookings, [{ id: ID1, revision: 2, room: "A" }]);
 });
 
 test("the owner's row limit cuts the read and says so", async () => {
-  const out = await readRows(gatewayWith(fakeDb(), ["b.read"]), { ...target, fields: ["room"], limit: 0 });
+  const out = await readRows(gatewayWith(fakeDb(), ["b.read"]), read(["room"], { limit: 0 }));
   assert.equal(out.truncated, true);
-  assert.deepEqual(out.rows, []);
+  assert.deepEqual(out.collections.bookings, []);
 });
 
 test("ICS's reads and writes count as in-flight work but neither wake the app nor keep it awake", async () => {
@@ -199,7 +207,7 @@ test("ICS's reads and writes count as in-flight work but neither wake the app no
     inflight.push(app.inflight);
     return connect();
   };
-  await apply(db, gw, [{ op: "update", id: ID1, revision: 2, patch: { room: "B" } }]);
+  await apply(db, gw, [{ op: "update", collection: "bookings", id: ID1, revision: 2, patch: { room: "B" } }]);
   gw.read = Gateway.prototype.read;
   gw.pools = {
     connect: async () => {
@@ -207,7 +215,7 @@ test("ICS's reads and writes count as in-flight work but neither wake the app no
       return { query: async (text) => (text.startsWith("SELECT") ? { rows: [{ id: ID1, revision: 3, room: "B", note: null }] } : { rows: [] }), release() {} };
     },
   };
-  assert.equal((await readRows(gw, { ...target, fields: ["room"] })).rows[0].room, "B");
+  assert.equal((await readRows(gw, read(["room"]))).collections.bookings[0].room, "B");
   // The drain barrier still waits for them.
   assert.deepEqual(inflight, [1, 1]);
   assert.equal(app.inflight, 0);
@@ -226,7 +234,7 @@ test("the sync's own writes reach realtime watchers but not the report to ICS", 
   const heard = [];
   gw.apps.registry.realtime = { changed: (a, names) => heard.push([...names]) };
   const app = gw.apps.get();
-  await apply(db, gw, [{ op: "update", id: ID1, revision: 2, patch: { room: "B" } }]);
+  await apply(db, gw, [{ op: "update", collection: "bookings", id: ID1, revision: 2, patch: { room: "B" } }]);
   assert.deepEqual(heard, [["bookings"]]);
   assert.equal(app.changed.size, 0, "a report would start a sync of the same link again");
   gw.apps.markChanged(app, ["bookings"], "PATCH /v1/collections/bookings/:id");
@@ -238,4 +246,42 @@ test("one apply takes a whole first sync, with a deadline that grows with it", (
   assert.equal(applyDeadlineMs(1), 20_020);
   assert.ok(applyDeadlineMs(5000) > applyDeadlineMs(1000));
   assert.equal(applyDeadlineMs(MAX_CHANGES), 300_000);
+});
+
+test("several collections are read in one snapshot", async () => {
+  const gw = gatewayWith(fakeDb(), ["b.read"]);
+  const seen = [];
+  const plain = gw.read;
+  gw.read = async (rc, fn, opts) => {
+    seen.push(opts);
+    return plain(rc, fn, opts);
+  };
+  const out = await readRows(gw, { ...target, collections: [{ collection: "bookings", fields: ["room"] }, { collection: "rooms", fields: ["name"] }] });
+  assert.deepEqual(Object.keys(out.collections), ["bookings", "rooms"]);
+  assert.deepEqual(seen, [{ snapshot: true }]);
+});
+
+test("the row limit counts the rows of every collection together", async () => {
+  const out = await readRows(gatewayWith(fakeDb(), ["b.read"]), { ...target, limit: 1, collections: [{ collection: "bookings", fields: ["room"] }, { collection: "rooms", fields: ["name"] }] });
+  assert.equal(out.truncated, true);
+});
+
+test("changes of several collections apply in one transaction or not at all", async () => {
+  const db = fakeDb();
+  const gw = gatewayWith(db, ["b.read", "b.write"]);
+  // No right to create rooms: the booking change before it rolls back too.
+  await assert.rejects(
+    apply(db, gw, [{ op: "update", collection: "bookings", id: ID1, revision: 2, patch: { room: "B" } }, { op: "create", collection: "rooms", id: ID2, data: { name: "C" } }]),
+    (e) => e.code === "forbidden",
+  );
+  assert.equal(db.queries.filter((q) => q.startsWith("UPDATE \"a_x\".\"bookings\"")).length, 0);
+  const both = gatewayWith(db, ["b.read", "b.write", "r.write"]);
+  const out = await apply(db, both, [{ op: "update", collection: "bookings", id: ID1, revision: 2, patch: { room: "B" } }, { op: "create", collection: "rooms", id: ID2, data: { name: "C" } }], "op-00000003");
+  assert.equal(out.results.length, 2);
+  assert.ok(db.queries.filter((q) => q === "BEGIN").length >= 1);
+});
+
+test("a change without its collection is refused", async () => {
+  const db = fakeDb();
+  await assert.rejects(apply(db, gatewayWith(db, ["b.read", "b.write"]), [{ op: "update", id: ID1, revision: 2, patch: { room: "B" } }]), (e) => e.code === "bad_request");
 });

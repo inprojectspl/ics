@@ -1,8 +1,8 @@
-"""Google Sheets links of micro-applications (ADR-0031).
+"""Google Sheets links of micro-applications (ADR-0031, ADR-0033).
 
 `/api/integrations/google/*` connects the signed-in person's Google account
 for Sheets; `/api/micro-applications/{id}/sheets/*` configures an app's link
-and runs a sync: preview, apply with decisions, check an uncertain write.
+to a spreadsheet file and its mappings of collections to tabs, and runs a sync: preview, apply with decisions, check an uncertain write.
 The same endpoints serve the panel (cookie session) and ICS-MCP (bearer).
 """
 
@@ -109,9 +109,15 @@ async def google_disconnect(
     return {"disconnected": await grants.disconnect(session, settings, user)}
 
 
+# A tab, by its Google id or its name.
+TabRef = int | Annotated[str, Field(max_length=100)]
+
+
 class InspectIn(BaseModel):
     spreadsheet: str = Field(max_length=500, description="Spreadsheet URL or id")
-    tab: str | None = Field(default=None, max_length=100)
+    tab: TabRef | None = Field(
+        default=None, description="The tab to sample: its name or id; the first tab by default"
+    )
 
 
 async def _sync_gate(user: CurrentUser, settings: AppSettings) -> None:
@@ -144,16 +150,37 @@ class ColumnIn(BaseModel):
     owner: Literal["sheet", "app", "both"]
 
 
-class LinkIn(BaseModel):
+class MappingIn(BaseModel):
     collection: str = Field(max_length=64)
-    spreadsheet: str = Field(max_length=500, description="Spreadsheet URL or id")
-    sheet_title: str = Field(max_length=100)
+    tabs: list[TabRef] = Field(
+        min_length=1,
+        max_length=50,
+        description="The tabs whose rows are this collection's records: names or ids",
+    )
+    append_to: TabRef | None = Field(
+        default=None, description="With several tabs, the one new records are appended to"
+    )
     columns: list[ColumnIn] = Field(max_length=200)
     key_field: str | None = Field(
         default=None,
         max_length=64,
-        description="A linked field unique in the sheet that matches rows to records",
+        description="A linked field unique across the tabs that matches rows to records; "
+        "required with several tabs",
     )
+    tab_field: str | None = Field(
+        default=None, max_length=64, description="A string field that takes the row's tab name"
+    )
+
+
+class LinkIn(BaseModel):
+    spreadsheet: str = Field(max_length=500, description="Spreadsheet URL or id")
+    mappings: list[MappingIn] | None = Field(default=None, max_length=20)
+    # One collection on one tab, as ICS-MCP before ADR-0033 (plugin 3.8.0)
+    # sends it; drop once those plugins are gone.
+    collection: str | None = Field(default=None, max_length=64)
+    sheet_title: str | None = Field(default=None, max_length=100)
+    columns: list[ColumnIn] | None = Field(default=None, max_length=200)
+    key_field: str | None = Field(default=None, max_length=64)
     account_mode: Literal["owner_account", "per_user"]
     paused: bool = False
     auto_sync: bool = Field(
@@ -163,6 +190,25 @@ class LinkIn(BaseModel):
     )
     expected_revision: int | None = None
     reset_base: bool = False
+
+    def as_body(self) -> dict[str, Any]:
+        body = self.model_dump(exclude={"collection", "sheet_title", "columns", "key_field"})
+        if self.mappings is None:
+            if self.collection is None or self.sheet_title is None or self.columns is None:
+                raise ApiError(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    "mappings_invalid",
+                    "link the collections in `mappings`",
+                )
+            body["mappings"] = [
+                {
+                    "collection": self.collection,
+                    "tabs": [self.sheet_title],
+                    "columns": [c.model_dump() for c in self.columns],
+                    "key_field": self.key_field,
+                }
+            ]
+        return body
 
 
 class ApplyIn(BaseModel):
@@ -181,9 +227,9 @@ async def sheet_save(
     asset_id: UUID, body: LinkIn, user: CurrentUser, session: Session, settings: AppSettings
 ) -> dict[str, Any]:
     _require_enabled(settings)
-    link = await links.save(session, user, asset_id, body.model_dump())
+    link, mappings = await links.save(session, user, asset_id, body.as_body())
     await session.commit()
-    return links.view(link)
+    return links.view(link, mappings)
 
 
 @router.delete(_APP, status_code=status.HTTP_204_NO_CONTENT)
@@ -198,8 +244,8 @@ async def sheet_remove(
 async def sheet_preview(
     asset_id: UUID, _: SyncGate, user: CurrentUser, session: Session, settings: AppSettings
 ) -> dict[str, Any]:
-    op, link = await sync.preview(session, settings, user, asset_id)
-    return views.op_view(op, link, user)
+    op = await sync.preview(session, settings, user, asset_id)
+    return views.op_view(op, user)
 
 
 @router.get(f"{_APP}/operations/{{op_id}}")
@@ -219,8 +265,8 @@ async def sheet_apply(
     session: Session,
     settings: AppSettings,
 ) -> dict[str, Any]:
-    op, link = await sync.apply(session, settings, user, asset_id, op_id, body.decisions)
-    return views.op_view(op, link, user)
+    op = await sync.apply(session, settings, user, asset_id, op_id, body.decisions)
+    return views.op_view(op, user)
 
 
 @router.post(f"{_APP}/operations/{{op_id}}/check")
@@ -232,8 +278,8 @@ async def sheet_check(
     session: Session,
     settings: AppSettings,
 ) -> dict[str, Any]:
-    op, link = await write.check(session, settings, user, asset_id, op_id)
-    return views.op_view(op, link, user)
+    op = await write.check(session, settings, user, asset_id, op_id)
+    return views.op_view(op, user)
 
 
 @router.post(f"{_APP}/request-access")

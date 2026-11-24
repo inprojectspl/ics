@@ -1,6 +1,6 @@
 # Google Sheets links of micro-applications
 
-Status: accepted
+Status: accepted; Scope amended by [ADR-0033](0033-google-sheets-file-links.md)
 
 ## Context
 

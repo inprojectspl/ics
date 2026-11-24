@@ -1,10 +1,13 @@
 """Reading an unlinked spreadsheet for whoever designs an app around it
-(ADR-0031): its tabs, the headers of one tab and, per column, the field type
-its values suggest, so an agent can model the collection on the sheet as it
-is and link it without asking anyone to change the file."""
+(ADR-0031, ADR-0033): every tab with its id and headers, the groups of tabs
+that share their headers (one collection split by month, state, team...),
+and for one tab, per column, the field type its values suggest and whether
+it holds formulas, so an agent can model the app's collections on the file
+as it is and link them without asking anyone to change it."""
 
 from __future__ import annotations
 
+import asyncio
 import re
 import unicodedata
 from typing import Any
@@ -17,8 +20,8 @@ from app.domain_errors import NotFoundError
 from app.models import SheetLink, User
 
 from . import google, values
+from .book import column_letter, header_range, norm_header
 from .common import google_error, token_for
-from .compare import column_letter, norm_header
 from .links import spreadsheet_id_of
 
 SAMPLE_ROWS = 200
@@ -43,6 +46,17 @@ def field_name(header: str, taken: set[str]) -> str:
         candidate, n = f"{name}_{n}", n + 1
     taken.add(candidate)
     return candidate
+
+
+def _groups(catalog: list[dict[str, Any]]) -> list[list[str]]:
+    """Tabs whose header rows hold the same names, in any order: candidates
+    for one collection. Only a suggestion: the data decides."""
+    by_headers: dict[tuple[str, ...], list[str]] = {}
+    for tab in catalog:
+        names = tuple(sorted({norm_header(h) for h in tab["headers"] if norm_header(h)}))
+        if names:
+            by_headers.setdefault(names, []).append(tab["title"])
+    return [titles for titles in by_headers.values() if len(titles) > 1]
 
 
 def _kind(cell: dict[str, Any]) -> tuple[str, Any] | None:
@@ -112,7 +126,7 @@ async def inspect(
     settings: Settings,
     user: User,
     spreadsheet: str,
-    tab: str | None,
+    tab: str | int | None,
 ) -> dict[str, Any]:
     spreadsheet_id = spreadsheet_id_of(spreadsheet)
     linked = await session.scalar(
@@ -124,22 +138,38 @@ async def inspect(
         meta = await google.spreadsheet_meta(token, spreadsheet_id)
         tabs = [s["properties"] for s in meta.get("sheets", [])]
         tz = (meta.get("properties") or {}).get("timeZone") or "UTC"
-        chosen = next((t for t in tabs if tab is None or t["title"] == tab), None)
+        chosen = next(
+            (
+                t
+                for t in tabs
+                if tab is None
+                or (t["title"] == tab if isinstance(tab, str) else int(t["sheetId"]) == tab)
+            ),
+            None,
+        )
         if chosen is None:
             raise NotFoundError(
                 "sheet_tab_not_found",
                 f"the spreadsheet has no tab {tab!r}",
                 extra={"tabs": [t["title"] for t in tabs][:50]},
             )
-        size = chosen.get("gridProperties", {})
-        width = max(int(size.get("columnCount", 26)), 1)
-        body = await google.grid(
-            token,
-            spreadsheet_id,
-            f"{google.a1_tab(chosen['title'])}!A1:{column_letter(width - 1)}{SAMPLE_ROWS + 1}",
+        # Every tab's header row and the sample of one tab, at once.
+        headers, body = await asyncio.gather(
+            google.read_header_rows(token, spreadsheet_id, [header_range(t) for t in tabs]),
+            google.grid(token, spreadsheet_id, header_range(chosen, SAMPLE_ROWS + 1)),
         )
     except google.GoogleError as e:
         raise google_error(e) from e
+    catalog = [
+        {
+            "sheet_id": int(t["sheetId"]),
+            "title": t["title"],
+            # The grid's size, not a count of records.
+            "grid_rows": int(t.get("gridProperties", {}).get("rowCount", 0)),
+            "headers": [str(h).strip() for h in row if str(h).strip()],
+        }
+        for t, row in zip(tabs, headers, strict=True)
+    ]
     data = ((body.get("sheets") or [{}])[0].get("data") or [{}])[0].get("rowData") or []
     grid = [list(r.get("values") or []) for r in data]
     header = grid[0] if grid else []
@@ -161,6 +191,12 @@ async def inspect(
                 "suggested": _suggest(cells, len(body_rows), tz),
                 "filled": f"{len(cells)}/{len(body_rows)}",
                 "unique": bool(cells) and len(set(texts)) == len(texts),
+                # A computed column: the sheet owns it, the app never writes it.
+                "formula": any(
+                    "formulaValue" in (r[i].get("userEnteredValue") or {})
+                    for r in body_rows
+                    if i < len(r)
+                ),
                 "duplicate_header": norm_header(name) in seen,
                 "samples": [
                     r[i].get("formattedValue")
@@ -174,10 +210,12 @@ async def inspect(
         "spreadsheet_id": spreadsheet_id,
         "title": (meta.get("properties") or {}).get("title"),
         "time_zone": tz,
-        "tabs": [t["title"] for t in tabs],
+        "tabs": catalog,
+        "groups": _groups(catalog),
         "tab": chosen["title"],
+        "sheet_id": int(chosen["sheetId"]),
         "sampled_rows": len(body_rows),
-        # Types are guessed from the first rows only.
+        # Types, fill and uniqueness come from the first rows only.
         "more_rows": len(grid) > SAMPLE_ROWS,
         "columns": columns,
         "already_linked": linked is not None,

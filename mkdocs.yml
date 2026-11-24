@@ -150,3 +150,4 @@ nav:
       - decisions/0030-copyable-share-addresses.md
       - decisions/0031-google-sheets-links.md
       - decisions/0032-micro-application-realtime.md
+      - decisions/0033-google-sheets-file-links.md

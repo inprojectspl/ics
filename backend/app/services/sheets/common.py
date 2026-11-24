@@ -1,8 +1,9 @@
-"""What every sync step shares: rights, the broker, Google tokens (ADR-0031)."""
+"""What every sync step shares: rights, the broker, Google tokens, reading
+the file and the base (ADR-0031, ADR-0033)."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 from uuid import UUID
 
@@ -20,11 +21,19 @@ from app.domain_errors import (
     NotFoundError,
     UnavailableError,
 )
-from app.models import Asset, MicroAppEnvironment, SheetBase, SheetLink, SheetOperation, User
+from app.models import (
+    Asset,
+    MicroAppEnvironment,
+    SheetBase,
+    SheetLink,
+    SheetMapping,
+    SheetOperation,
+    User,
+)
 from app.services.micro_applications.common import broker_admin
 
-from . import google, grants, links
-from .compare import Sheet, layout, locate, read_sheet
+from . import google, grants, links, mapping_rules
+from .book import Book, Sheet, locate, read_book, tab_at
 
 _BASE_CHUNK = 2000
 
@@ -113,23 +122,25 @@ async def row_limit(session: AsyncSession, settings: Settings, asset: Asset) -> 
     return min(own or 0, settings.google_sheets_max_rows)
 
 
-async def fetch_sheet(token: str, link: SheetLink, max_rows: int) -> Sheet:
+async def fetch_book(
+    token: str, link: SheetLink, mappings: list[SheetMapping], max_rows: int
+) -> Book:
     try:
-        return await read_sheet(token, link, max_rows)
+        return await read_book(token, link.spreadsheet_id, mappings, max_rows)
     except google.GoogleError as e:
         raise google_error(e) from e
 
 
 async def runnable_link(
     session: AsyncSession, user: User, asset_id: UUID
-) -> tuple[Asset, SheetLink, MicroAppEnvironment]:
+) -> tuple[Asset, SheetLink, MicroAppEnvironment, list[SheetMapping]]:
     asset, env, rights = await links.rights_for(session, user, asset_id)
     if not rights.control:
         raise AccessDeniedError("forbidden", "running the sync needs the app.control right")
     link = await links.require(session, asset_id)
     if link.paused:
         raise ConflictError("sheet_link_paused", "the sheet link is paused")
-    return asset, link, env
+    return asset, link, env, await links.mappings_of(session, link)
 
 
 async def operation(
@@ -146,35 +157,53 @@ async def operation(
     return op
 
 
-def update_conditions(manifest: dict[str, Any], link: SheetLink) -> dict[str, Any]:
+def update_conditions(manifest: dict[str, Any], mapping: SheetMapping) -> dict[str, Any]:
     """Conditions of the app's update rule that the linked fields let us check."""
     conditions = (
-        links.update_rule(links.collection_def(manifest, link.collection)).get("conditions") or {}
+        mapping_rules.update_rule(mapping_rules.collection_def(manifest, mapping.collection)).get(
+            "conditions"
+        )
+        or {}
     )
-    linked = {c["field"] for c in link.columns}
+    linked = mapping_rules.owners(mapping)
     return {f: v for f, v in conditions.items() if f in linked}
 
 
-def required_fields(manifest: dict[str, Any], link: SheetLink) -> list[str]:
-    fields = links.collection_def(manifest, link.collection).get("fields") or {}
+def required_fields(manifest: dict[str, Any], mapping: SheetMapping) -> list[str]:
+    fields = mapping_rules.collection_def(manifest, mapping.collection).get("fields") or {}
     return [name for name, f in fields.items() if f.get("required") and "default" not in f]
+
+
+def placer(part: dict[str, Any]) -> Callable[[int], list[int]]:
+    """A function giving [sheet_id, row in that tab] of a row a preview part
+    counts across its tabs; the tabs are indexed once."""
+    tabs = part["sheet"]["tabs"]
+    firsts = [t["first"] for t in tabs]
+
+    def place(row: int) -> list[int]:
+        i, own = tab_at(firsts, row)
+        return [tabs[i]["sheet_id"], own]
+
+    return place
 
 
 async def save_base(
     session: AsyncSession,
-    link_id: UUID,
+    mapping_id: str,
     agreed: Mapping[str, Mapping[str, Any]],
-    rows: Mapping[str, int] | None = None,
+    rows: Mapping[str, list[int]] | None = None,
 ) -> None:
-    """Merge agreed values and the rows records were seen in into the base,
-    one statement per chunk."""
+    """Merge agreed values and the tab rows records were seen in into the
+    base, one statement per chunk."""
     rows = rows or {}
+    mid = UUID(mapping_id)
     entries = [
         {
-            "link_id": link_id,
+            "mapping_id": mid,
             "record_id": UUID(rid),
             "values": dict(agreed.get(rid) or {}),
-            "row": rows.get(rid),
+            "sheet_id": rows[rid][0] if rid in rows else None,
+            "row": rows[rid][1] if rid in rows else None,
         }
         for rid in {*agreed, *rows}
         if agreed.get(rid) or rid in rows
@@ -183,22 +212,23 @@ async def save_base(
         stmt = insert(SheetBase).values(entries[start : start + _BASE_CHUNK])
         await session.execute(
             stmt.on_conflict_do_update(
-                index_elements=[SheetBase.link_id, SheetBase.record_id],
+                index_elements=[SheetBase.mapping_id, SheetBase.record_id],
                 set_={
                     "values": SheetBase.values.op("||")(stmt.excluded["values"]),
+                    "sheet_id": func.coalesce(stmt.excluded["sheet_id"], SheetBase.sheet_id),
                     "row": func.coalesce(stmt.excluded["row"], SheetBase.row),
                 },
             )
         )
 
 
-def placed(preview: dict[str, Any], link: SheetLink, sheet: Sheet) -> dict[int, int] | None:
-    """Where the rows the preview touched are now, or None when the columns
-    or one of those rows changed since."""
-    try:
-        cols = layout(link, sheet)
-    except ConflictError:
+def placed(part: dict[str, Any], sheet: Sheet) -> dict[int, int] | None:
+    """Where the rows a preview part touched are now, or None when a tab's
+    linked columns or one of those rows changed since."""
+    then = {t["sheet_id"]: t["cols"] for t in part["sheet"]["tabs"]}
+    for tab in sheet.tabs:
+        if tab.sheet_id in then and then[tab.sheet_id] != tab.cols:
+            return None
+    if part["sheet"]["cols"] != sheet.cols:
         return None
-    if cols != preview["sheet"]["cols"]:
-        return None
-    return locate(preview["snapshot"], sheet, cols)
+    return locate(part["snapshot"], sheet, sheet.cols)

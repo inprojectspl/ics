@@ -10,6 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - First public release.
+- Google Sheets links per spreadsheet file ([ADR-0033](docs/decisions/0033-google-sheets-file-links.md)).
+  A micro-application links one spreadsheet file with a mapping per collection: one tab, several
+  tabs of one kind of record (a tab per month, state or team, matched by a `key_field` unique across
+  them, new records going to the `append_to` tab, an optional `tab_field` keeping the row's tab name
+  on the record) or a list the app only reads (every column owned by the sheet: nothing is written
+  to its tabs). Tabs are tracked by Google's tab id, so renaming one keeps the link; a row moved by
+  hand between tabs of a group stays the same record. One sync covers the whole file: one read of
+  the linked tabs, one broker transaction for every collection (read in one snapshot), one atomic
+  `batchUpdate` for every tab. New rows leave the sheet's own columns empty when the app has no
+  value, so formulas there stay. Inspect lists every tab with its id and headers, suggests groups of
+  tabs with the same headers and marks formula columns. The panel shows each collection with its
+  tabs and names the collection, tab and row of every change. Migration `0056` turns each link into
+  one single-tab mapping and keeps what was agreed.
 - Live updates and channels of micro-applications ([ADR-0032](docs/decisions/0032-micro-application-realtime.md)).
   An open app page keeps one WebSocket to the broker (`/__ics/realtime`): `ics.collection(name).watch(cb)`
   hears when a collection it may list changed (any committed write, a Google Sheets sync included),
@@ -177,6 +190,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A Google Sheets record is no longer appended twice: a second sync could plan the same new rows
+  while the sheet write of an earlier one was not yet done or confirmed. A sync whose sheet write is
+  pending or uncertain now blocks the next one (`sheet_sync_unsettled`) until it is checked; the
+  automatic sync settles its own first.
 - A micro-application's list rule no longer leaks fields its `readFields` hide: `sort` and
   `filters` of `GET /api/v1/collections/{name}` (and `data.list` in handlers) accept only readable
   fields, so neither the order nor the cursor, which carries the last sort value, reveals a hidden
