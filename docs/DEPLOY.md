@@ -170,8 +170,10 @@ app and remove `ICS_BOOTSTRAP_ADMIN_PASSWORD` from the configuration.
 
 ## Step 5a: Google Sheets links of micro-applications (optional)
 
-Apps can sync a collection with a Google Sheets tab
-([ADR-0031](decisions/0031-google-sheets-links.md)). It needs its own OAuth
+Apps can sync their collections with the tabs of a Google spreadsheet
+([ADR-0031](decisions/0031-google-sheets-links.md),
+[ADR-0033](decisions/0033-google-sheets-file-links.md); what users get is in
+the [Google Sheets guide](guide/google-sheets.md)). It needs its own OAuth
 client, since it asks for the Sheets scope and keeps a refresh token:
 
 1. In the Google Cloud project, enable the *Google Sheets API*.
@@ -186,8 +188,9 @@ client, since it asks for the Sheets scope and keeps a refresh token:
 Refresh tokens are encrypted with a key derived from `ICS_SECRET_KEY`;
 rotating that key disconnects every Google account.
 
-A sync handles at most the app owner's `sheet_max_rows` (5000 by default,
-changed in the admin user settings), capped for everyone by
+A sync handles at most the app owner's `sheet_max_rows` rows, all linked tabs
+of the file together (5000 by default, changed in the admin user settings),
+capped for everyone by
 `ICS_GOOGLE_SHEETS_MAX_ROWS` (50000): a preview is stored in one row and the
 runtime holds the records in memory.
 
@@ -199,8 +202,10 @@ and Google nothing for an app nobody uses: a change in the app syncs at once,
 the sheet is read every `ICS_GOOGLE_SHEETS_ACTIVE_POLL_SECONDS` (30) while
 someone has the app open and every `ICS_GOOGLE_SHEETS_POLL_SECONDS` (120)
 while it is only awake; a sleeping app does not sync and syncs when it wakes
-up. Each read is one Sheets API request on the owner's account (Google's
-default quota: 300 a minute per project, 60 per user).
+up. A read of the file is three Sheets API requests on the owner's account,
+however many tabs are linked: the tab list, the header rows, the linked
+columns (Google's default quota: 300 a minute per project, 60 per user). A
+run that finds nothing to do writes nothing.
 
 ## Step 6: MCP clients (optional)
 

@@ -30,6 +30,7 @@ New to ICS? Read [Getting started](getting-started.md) to sign in and find your 
 - [Search](search.md): what the search finds, how matching works, the command palette as a launcher
 - [Sharing](sharing.md): share links and their modes, personal grants, project shares, what a visitor sees
 - [Micro-applications](micro-applications.md): opening and running apps, their data, roles, sharing and versions
+- [Google Sheets](google-sheets.md): apps on a Google spreadsheet: what can be linked, syncing, automatic sync
 
 ### Working together
 
