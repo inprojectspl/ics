@@ -159,6 +159,38 @@ async def create_project(
     return _project_row(project, my_role="owner", member_count=1, asset_count=0)
 
 
+async def _member_rows(session: AsyncSession, project: Project) -> list:
+    return list(
+        (
+            await session.execute(
+                select(ProjectMember, User)
+                .join(User, User.id == ProjectMember.user_id)
+                .where(ProjectMember.project_id == project.id)
+                .order_by(ProjectMember.invited_at.asc())
+            )
+        ).all()
+    )
+
+
+@router.get("/{slug}/members")
+async def list_members(
+    slug: str,
+    user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict:
+    """The project's people without its documents, for clients that only ask
+    who belongs to it (ics-mcp)."""
+    project, my_role = await _project_with_min_role(session, slug, user, "viewer")
+    rows = await _member_rows(session, project)
+    return {
+        "slug": project.slug,
+        "name": project.name,
+        "my_role": my_role,
+        "member_count": sum(1 for m, _ in rows if m.accepted_at is not None),
+        "members": [_member_row(m, user=u) for m, u in rows],
+    }
+
+
 @router.get("/{slug}")
 async def get_project(
     slug: str,
@@ -172,14 +204,7 @@ async def get_project(
     ] = "active",
 ) -> dict:
     project, my_role = await _project_with_min_role(session, slug, user, "viewer")
-    members_rows = (
-        await session.execute(
-            select(ProjectMember, User)
-            .join(User, User.id == ProjectMember.user_id)
-            .where(ProjectMember.project_id == project.id)
-            .order_by(ProjectMember.invited_at.asc())
-        )
-    ).all()
+    members_rows = await _member_rows(session, project)
     members = [_member_row(m, user=u) for m, u in members_rows]
     in_project = project_shares_svc.in_project_filter(project.id)
     # The header counts the project's active documents and the filter offers

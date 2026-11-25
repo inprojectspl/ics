@@ -22,6 +22,7 @@ from .crud import (
     create_project,
     delete_project,
     get_project,
+    list_members,
     list_projects,
     patch_project,
 )
@@ -50,6 +51,7 @@ __all__ = [  # noqa: RUF022 - semantic order (router, DTOs, handlers)
     "create_project",
     "delete_project",
     "get_project",
+    "list_members",
     "list_projects",
     "patch_project",
     # Membership handlers
