@@ -310,6 +310,7 @@
   "appChanges.area.capability": "capability",
   "appChanges.area.collection": "collection",
   "appChanges.area.endpoint": "endpoint",
+  "appChanges.area.external_host": "external host",
   "appChanges.area.permission": "permission",
   "appChanges.area.realtime_channel": "live channel",
   "appChanges.area.role": "role",

@@ -1,7 +1,7 @@
 // Share-link entry of the gateway: who keeps which session, and the budgets.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Gateway } from "../src/broker/gateway.js";
+import { Gateway, contentSecurityPolicy } from "../src/broker/gateway.js";
 import { RateLimiter } from "../src/broker/ratelimit.js";
 import { SESSION_COOKIE, START_COOKIE, issueSession, readSession } from "../src/broker/session.js";
 
@@ -119,4 +119,15 @@ test("the session tells the page which app roles the person holds", () => {
   const body = JSON.parse(res.body);
   assert.deepEqual(body.roles, ["reviewer"]);
   assert.deepEqual(body.permissions, ["requests.approve"]);
+});
+
+test("the page CSP keeps scripts local and opens only the declared connect hosts", () => {
+  const plain = contentSecurityPolicy({ frontend: { entry: "public/index.html" } });
+  assert.match(plain, /script-src 'self';/);
+  assert.match(plain, /img-src 'self' data: blob: https:;/);
+  assert.match(plain, /style-src 'self' 'unsafe-inline';/);
+  assert.match(plain, /worker-src 'self' blob:;/);
+  assert.ok(plain.endsWith("connect-src 'self'"));
+  const map = contentSecurityPolicy({ frontend: { entry: "public/index.html", connect: ["tiles.openfreemap.org", "*.maptiler.com"] } });
+  assert.ok(map.endsWith("connect-src 'self' https://tiles.openfreemap.org https://*.maptiler.com"));
 });

@@ -152,3 +152,4 @@ nav:
       - decisions/0031-google-sheets-links.md
       - decisions/0032-micro-application-realtime.md
       - decisions/0033-google-sheets-file-links.md
+      - decisions/0034-micro-application-page-csp.md

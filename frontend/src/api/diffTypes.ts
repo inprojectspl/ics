@@ -40,7 +40,7 @@ export type DiffFile = {
 /** One change in the app's terms (a role gained a permission, a collection
  * got a field). */
 export type AppChange = {
-  area: "role" | "permission" | "endpoint" | "capability" | "collection" | "setting" | "realtime_channel";
+  area: "role" | "permission" | "endpoint" | "capability" | "collection" | "setting" | "realtime_channel" | "external_host";
   name: string;
   change: "added" | "removed" | "changed";
   /** `+a -b` for sets, otherwise the manifest keys that differ. */

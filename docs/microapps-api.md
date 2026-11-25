@@ -127,6 +127,16 @@ Every generic operation is allowed only by the permission the manifest names for
 
 Notable answers: `401 app_session_required` (open the app through ICS), `403 forbidden` or `csrf_failed`, `422 validation_failed` with a JSON Pointer, `429 rate_limited` with `Retry-After`, `507 app_data_quota_exceeded` (the owner's data limit is full; reads and deletes still work), `503 app_suspended`, `503 circuit_open` (the app failed repeatedly; wait for `Retry-After`), `504 execution_deadline`, `cpu_budget` or `commit_unknown` (retry with the same `Idempotency-Key`).
 
+### What a page may load
+
+Pages are served with a Content Security Policy ([ADR-0034](decisions/0034-micro-application-page-csp.md)): scripts only from the app's `public/` files (no CDN, no inline `<script>`), styles from `public/` and inline, images and media from the app and any `https:` host (map tiles), fonts from `public/` or `data:`, workers from `public/` or `blob:`. `fetch`, XHR and WebSocket reach the app's own origin and the hosts declared in the manifest:
+
+```json
+"frontend": {"entry": "public/index.html", "connect": ["tiles.openfreemap.org", "*.maptiler.com"]}
+```
+
+Up to 20 host names without scheme, port or path, optionally with a leading `*.`; each is allowed as `https://<host>`. A plan lists added and removed hosts in `app_changes` (area `external_host`).
+
 ## Realtime
 
 An open page can hear about changes and talk to other open pages of the same app ([ADR-0032](decisions/0032-micro-application-realtime.md)). The SDK opens one WebSocket per page at `/__ics/realtime` on first use, signed in with the app session, and reconnects by itself.

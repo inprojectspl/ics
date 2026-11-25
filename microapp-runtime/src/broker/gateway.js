@@ -17,7 +17,18 @@ import { HttpError, SECURITY_HEADERS, canonical, etag, parseIfMatch, readJson, s
 import { ENTRY_COOKIE, LAUNCH_RE, SCRIPT_PATH, ShareContextScript, TOKEN_RE, cleanTarget, injectHead, isDocumentPath, readToken, recoveryPage, scriptTag, targetPath } from "./share-context.js";
 
 const LIMITS = { wallMs: 5000, cpuMs: 1000, queueMs: 1000, maxDbCalls: 20, maxResponseBytes: 256 * 1024, memoryBytes: 32 * 1024 * 1024, stackBytes: 512 * 1024 };
-const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
+// Scripts stay the app's own. Inline styles and images from any https host
+// (map tiles, avatars) are allowed, as in HTML bundles: the app runs on its
+// own origin, so neither reaches anything of ICS. Requests the script reads (fetch,
+// vector tiles) go only to the hosts the release declares in
+// `frontend.connect`, so every way out is visible in the version history.
+const CSP_BASE = "default-src 'none'; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; media-src 'self' data: blob: https:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
+
+/** The page CSP of a release: the base policy plus its declared hosts. */
+export function contentSecurityPolicy(manifest) {
+  const hosts = (manifest?.frontend?.connect ?? []).map((h) => ` https://${h}`).join("");
+  return `${CSP_BASE}; connect-src 'self'${hosts}`;
+}
 const MIME = { html: "text/html; charset=utf-8", htm: "text/html; charset=utf-8", js: "text/javascript; charset=utf-8", mjs: "text/javascript; charset=utf-8", css: "text/css; charset=utf-8", json: "application/json", svg: "image/svg+xml", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", ico: "image/x-icon", woff2: "font/woff2", txt: "text/plain; charset=utf-8" };
 const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9._:-]{8,128}$/;
 
@@ -214,7 +225,7 @@ export class Gateway {
     const headers = {
       ...SECURITY_HEADERS,
       "content-type": MIME[ext] ?? "application/octet-stream",
-      "content-security-policy": CSP,
+      "content-security-policy": contentSecurityPolicy(bundle.manifest),
       "cache-control": isHtml ? "no-store" : "private, max-age=60",
       "x-ics-release": auth.release.id,
     };
