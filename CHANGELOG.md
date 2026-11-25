@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - First public release.
+- Micro-application pages may load images and media from any `https:` host, use inline styles and
+  `blob:` workers, and request (`fetch`, WebSocket) the external hosts a release declares in
+  `frontend.connect`; added and removed hosts appear in `app_changes` as `external_host`
+  ([ADR-0034](docs/decisions/0034-micro-application-page-csp.md)). Maps with raster or vector tiles
+  now work; scripts still come only from the app's own files.
 - Google Sheets links per spreadsheet file ([ADR-0033](docs/decisions/0033-google-sheets-file-links.md)).
   A micro-application links one spreadsheet file with a mapping per collection: one tab, several
   tabs of one kind of record (a tab per month, state or team, matched by a `key_field` unique across

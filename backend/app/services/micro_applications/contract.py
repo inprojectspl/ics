@@ -94,11 +94,13 @@ ics.realtime.on("error", (e) => {})        // { code, ref? }
 
 PROCEDURE = [
     "Check that the idea fits before building: ics_help('micro-applications'), section "
-    "'What fits and what does not' (no network, e-mail, scheduled jobs, file uploads, "
-    "joins or full-text search; own logic in handlers within the limits section).",
+    "'What fits and what does not' (no network in handlers, e-mail, scheduled jobs, file "
+    "uploads, joins or full-text search; own logic in handlers within the limits section).",
     "Read this contract (all sections share contract_hash).",
-    "Write microapp.json, public/ (static UI, no inline scripts: CSP script-src 'self') "
-    "and handlers/*.mjs only where CRUD is not enough.",
+    "Write microapp.json, public/ (static UI, no inline scripts: CSP script-src 'self'; "
+    "inline styles and https images such as map tiles are allowed; list hosts the page "
+    "fetches from, e.g. vector tiles, in frontend.connect) and handlers/*.mjs only where "
+    "CRUD is not enough.",
     "Start public/app.css from the template's: it carries the ICS palette (light and dark "
     "follow the system) and the classes for the header, cards, forms, buttons, lists, "
     "badges and empty states, so the app looks like part of ICS.",

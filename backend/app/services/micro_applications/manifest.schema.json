@@ -38,6 +38,17 @@
         "entry": {
           "type": "string",
           "pattern": "^public/(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+\\.(?:html|htm)$"
+        },
+        "connect": {
+          "description": "External hosts the page may request with fetch, XHR or WebSocket over https (e.g. vector map tiles and styles): host names without scheme, port or path, optionally with a leading \"*.\" for every subdomain. Images and inline styles need no declaration; scripts always come from public/.",
+          "type": "array",
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 253,
+            "pattern": "^(?:\\*\\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$"
+          }
         }
       },
       "required": [

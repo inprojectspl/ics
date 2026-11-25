@@ -155,6 +155,11 @@ def _with_manifest(change) -> list[tuple[str, bytes]]:
             lambda m: m["endpoints"][0].update(handler="handlers/missing.mjs#default"),
             "handler_missing",
         ),
+        (lambda m: m["frontend"].update(connect=["localhost"]), "manifest_schema"),
+        (lambda m: m["frontend"].update(connect=["10.0.0.1"]), "manifest_schema"),
+        (lambda m: m["frontend"].update(connect=["tiles.example.org:8080"]), "manifest_schema"),
+        (lambda m: m["frontend"].update(connect=["https://tiles.example.org"]), "manifest_schema"),
+        (lambda m: m["frontend"].update(connect=["*.com"]), "manifest_schema"),
     ],
 )
 def test_contract_violations_have_stable_codes_and_pointers(change, code):
@@ -162,6 +167,15 @@ def test_contract_violations_have_stable_codes_and_pointers(change, code):
     assert not pkg.ok
     assert code in {d.code for d in pkg.diagnostics}
     assert all(d.pointer is not None for d in pkg.diagnostics)
+
+
+def test_declared_external_hosts_pass_the_contract():
+    pkg = manifest.load_package(
+        _with_manifest(
+            lambda m: m["frontend"].update(connect=["tiles.openfreemap.org", "*.maptiler.com"])
+        )
+    )
+    assert pkg.ok, [d.as_dict() for d in pkg.diagnostics]
 
 
 @pytest.mark.parametrize(
@@ -1101,6 +1115,12 @@ def test_app_changes_speak_in_the_apps_terms():
     assert got[("realtime_channel", "board", "changed")] == "presence"
     assert ("realtime_channel", "cursors", "added") in got
     assert ("realtime_channel", "chat", "removed") in got
+    old["frontend"]["connect"] = ["tiles.example.org"]
+    new["frontend"]["connect"] = ["*.maps.example.com"]
+    got = {(c["area"], c["name"], c["change"]) for c in manifest_changes(old, new)}
+    assert ("external_host", "*.maps.example.com", "added") in got
+    assert ("external_host", "tiles.example.org", "removed") in got
+    assert not any(area == "setting" and name == "frontend" for area, name, _ in got)
 
 
 async def test_links_point_at_an_app_never_into_its_package(client, session):

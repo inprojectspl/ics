@@ -332,6 +332,7 @@
   "appChanges.area.capability": "operacja na danych",
   "appChanges.area.collection": "kolekcja",
   "appChanges.area.endpoint": "endpoint",
+  "appChanges.area.external_host": "zewnętrzny adres",
   "appChanges.area.permission": "uprawnienie",
   "appChanges.area.realtime_channel": "kanał na żywo",
   "appChanges.area.role": "rola",

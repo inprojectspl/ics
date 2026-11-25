@@ -1,6 +1,6 @@
 """What changed in an app between two manifests, in the app's own terms:
-roles, permissions, endpoints, capabilities, data model, realtime channels and
-settings.
+roles, permissions, endpoints, capabilities, data model, realtime channels,
+external hosts and settings.
 
 The file diff of two package versions says which lines moved; this says
 what that means for the people using the app (a role lost a permission, a
@@ -74,6 +74,7 @@ def _keyed(
 
 def _areas(m: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """Each area of a manifest as a name -> definition mapping."""
+    frontend = m.get("frontend") or {}
     return {
         "role": m.get("roles") or {},
         "permission": m.get("permissions") or {},
@@ -81,9 +82,11 @@ def _areas(m: dict[str, Any]) -> dict[str, dict[str, Any]]:
         "capability": m.get("capabilities") or {},
         "collection": (m.get("database") or {}).get("collections") or {},
         "realtime_channel": (m.get("realtime") or {}).get("channels") or {},
+        "external_host": {h: h for h in frontend.get("connect", [])},
         "setting": {
             **{k: m[k] for k in _SETTINGS if k in m},
-            **{k: m.get(k) or {} for k in ("metadata", "frontend")},
+            "metadata": m.get("metadata") or {},
+            "frontend": {k: v for k, v in frontend.items() if k != "connect"},
         },
     }
 
@@ -98,7 +101,7 @@ _DETAIL: dict[str, Detail] = {
 def manifest_changes(old: dict[str, Any], new: dict[str, Any]) -> list[dict[str, str]]:
     """Changes from `old` to `new`, by area in a stable order: roles,
     permissions, endpoints, capabilities, collections, realtime channels,
-    settings."""
+    external hosts, settings."""
     before, after = _areas(old), _areas(new)
     return [
         c
