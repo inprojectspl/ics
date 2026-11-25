@@ -169,6 +169,36 @@ async def test_get_project_non_member_404(session):
 
 
 @pytest.mark.asyncio
+async def test_list_members_gives_people_without_documents(session):
+    owner = await _mk_user(session)
+    invited = await _mk_user(session)
+    stranger = await _mk_user(session)
+    await session.commit()
+    project = await _mk_project(session, owner)
+    await _mk_project_asset(session, owner, project)
+    viewer = await _mk_accepted_member(session, project, owner, "viewer")
+    await proj.invite_member(
+        project.slug,
+        proj.InviteMemberIn(email=invited.email, role="editor"),
+        owner,
+        session,
+        get_settings(),
+    )
+
+    out = await proj.list_members(project.slug, viewer, session)
+    assert out["my_role"] == "viewer"
+    assert "assets" not in out
+    by_email = {m["email"]: m for m in out["members"]}
+    assert by_email[owner.email]["role"] == "owner"
+    assert by_email[viewer.email]["accepted_at"] is not None
+    assert by_email[invited.email]["accepted_at"] is None
+    assert out["member_count"] == 2
+    with pytest.raises(HTTPException) as ei:
+        await proj.list_members(project.slug, stranger, session)
+    assert ei.value.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_get_project_returns_full_asset_summary(session):
     # Project file rows must carry the same AssetSummary shape as the home
     # list (my_role, share modes, security, owner, ...) so the frontend renders

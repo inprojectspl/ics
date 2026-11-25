@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - First public release.
+- `GET /api/projects/{slug}/members`: the people of a project (role, invitation and acceptance
+  dates) without its documents, for any member; ics-mcp `ics_project_members` uses it.
 - Micro-application pages may load images and media from any `https:` host, use inline styles and
   `blob:` workers, and request (`fetch`, WebSocket) the external hosts a release declares in
   `frontend.connect`; added and removed hosts appear in `app_changes` as `external_host`
